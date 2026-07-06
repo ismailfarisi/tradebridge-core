@@ -6,10 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/redis/go-redis/v9"
-	"github.com/rs/zerolog"
-
-	"github.com/tradebridge/core/internal/protocol"
+	"github.com/tradebridge/core/internal/eventbus"
 	"github.com/tradebridge/core/pkg/db/sqlc"
 )
 
@@ -19,15 +16,13 @@ const maxMatches = 25
 // Service orchestrates RFQ creation: extract → match → persist → broadcast.
 type Service struct {
 	q         *sqlc.Queries
-	redis     *redis.Client // may be nil; broadcast still persists to agent_events
+	pub       *eventbus.Publisher
 	extractor Extractor
-	logger    zerolog.Logger
 }
 
-// NewService builds the RFQ service. redis may be nil (events are still durably
-// written to agent_events; only the live publish is skipped).
-func NewService(q *sqlc.Queries, rdb *redis.Client, extractor Extractor, logger zerolog.Logger) *Service {
-	return &Service{q: q, redis: rdb, extractor: extractor, logger: logger}
+// NewService builds the RFQ service.
+func NewService(q *sqlc.Queries, pub *eventbus.Publisher, extractor Extractor) *Service {
+	return &Service{q: q, pub: pub, extractor: extractor}
 }
 
 // MatchResult is one matched seller, returned to the buyer after creation.
@@ -174,35 +169,5 @@ func (s *Service) broadcast(ctx context.Context, rfq sqlc.Rfq, req Requirements,
 	if err != nil {
 		return err
 	}
-
-	// Write-always: persist the durable event first, then publish the live copy.
-	ev, err := s.q.CreateAgentEvent(ctx, sqlc.CreateAgentEventParams{
-		CompanyID: m.SellerCompanyID,
-		Type:      "rfq.matched",
-		Payload:   body,
-	})
-	if err != nil {
-		return err
-	}
-
-	if s.redis != nil {
-		// Publish the same envelope the Gateway builds on replay (carries seq),
-		// so live and replayed events are indistinguishable to the agent.
-		wire, err := json.Marshal(protocol.Event{
-			Seq:     ev.Seq,
-			ID:      ev.ID,
-			Type:    ev.Type,
-			Payload: body,
-		})
-		if err != nil {
-			return err
-		}
-		channel := protocol.Channel(m.SellerCompanyID)
-		if err := s.redis.Publish(ctx, channel, wire).Err(); err != nil {
-			// Redis is the live fast-path, not the source of truth — the event
-			// is already durably persisted, so a publish failure is non-fatal.
-			s.logger.Warn().Err(err).Str("channel", channel).Msg("rfq.matched redis publish failed")
-		}
-	}
-	return nil
+	return s.pub.Publish(ctx, m.SellerCompanyID, "rfq.matched", body)
 }

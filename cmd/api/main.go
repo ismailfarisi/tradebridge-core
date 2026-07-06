@@ -22,6 +22,7 @@ func main() {
 		TokenTTL:        24 * time.Hour,
 		Logger:          app.Logger,
 		Redis:           app.Redis,
+		Pool:            app.Pool,
 		AnthropicAPIKey: app.Config.AnthropicAPIKey,
 		AnthropicModel:  app.Config.AnthropicModel,
 	})

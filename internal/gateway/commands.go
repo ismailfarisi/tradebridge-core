@@ -8,6 +8,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/tradebridge/core/internal/quotes"
 	"github.com/tradebridge/core/internal/rfq"
 	"github.com/tradebridge/core/pkg/db/sqlc"
 )
@@ -69,6 +70,16 @@ func (h *Handler) command(c *fiber.Ctx) error {
 		payload = []byte("{}")
 	}
 
+	// Validate the quote body up front so a malformed quote is rejected before
+	// any command row is written.
+	var normalized quotes.Normalized
+	if req.Type == "quote.submit" {
+		normalized, err = quotes.Normalize(payload)
+		if err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, err.Error())
+		}
+	}
+
 	cmd, err := h.q.CreateAgentCommand(c.Context(), sqlc.CreateAgentCommandParams{
 		AgentCredentialID: agent.CredentialID,
 		CompanyID:         agent.CompanyID,
@@ -91,14 +102,43 @@ func (h *Handler) command(c *fiber.Ctx) error {
 		return err
 	}
 
-	// Side effect: a submitted quote moves the RFQ open → quoted.
-	if req.Type == "quote.submit" && rfqID != nil {
+	// Side effects by command type.
+	switch req.Type {
+	case "quote.submit":
+		if _, err := quotes.Record(c.Context(), h.q, *rfqID, agent.CompanyID, cmd.ID, normalized); err != nil {
+			return err
+		}
 		h.maybeQuote(c.Context(), *rfqID)
+	case "clarification.request":
+		if rfqID != nil {
+			h.threadClarification(c.Context(), *rfqID, agent.CompanyID, payload)
+		}
 	}
 
 	h.audit(c.Context(), agent, "command."+req.Type, cmd.ID, req)
 
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"id": cmd.ID, "status": cmd.Status})
+}
+
+// threadClarification appends the agent's clarification as a seller message on
+// its existing quote, if one exists. Best-effort; never fails the command.
+func (h *Handler) threadClarification(ctx context.Context, rfqID, sellerCompanyID string, payload []byte) {
+	q, err := h.q.GetQuoteBySeller(ctx, sqlc.GetQuoteBySellerParams{RfqID: rfqID, SellerCompanyID: sellerCompanyID})
+	if err != nil {
+		return // no quote yet — nothing to thread onto
+	}
+	var body struct {
+		Message string `json:"message"`
+	}
+	_ = json.Unmarshal(payload, &body)
+	if body.Message == "" {
+		return
+	}
+	if _, err := h.q.CreateQuoteMessage(ctx, sqlc.CreateQuoteMessageParams{
+		QuoteID: q.ID, Author: "seller", Body: body.Message,
+	}); err != nil {
+		h.logger.Warn().Err(err).Str("quote_id", q.ID).Msg("failed to thread clarification")
+	}
 }
 
 // maybeQuote advances an RFQ to `quoted` when a quote is submitted, if the

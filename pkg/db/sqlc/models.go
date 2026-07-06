@@ -70,6 +70,41 @@ type Company struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type Order struct {
+	ID              string    `json:"id"`
+	RfqID           string    `json:"rfq_id"`
+	QuoteID         string    `json:"quote_id"`
+	BuyerCompanyID  string    `json:"buyer_company_id"`
+	SellerCompanyID string    `json:"seller_company_id"`
+	TotalCents      int64     `json:"total_cents"`
+	Currency        string    `json:"currency"`
+	Status          string    `json:"status"`
+	CreatedAt       time.Time `json:"created_at"`
+}
+
+type Quote struct {
+	ID              string    `json:"id"`
+	RfqID           string    `json:"rfq_id"`
+	SellerCompanyID string    `json:"seller_company_id"`
+	AgentCommandID  *string   `json:"agent_command_id"`
+	PriceCents      int64     `json:"price_cents"`
+	Currency        string    `json:"currency"`
+	DeliveryDays    *int32    `json:"delivery_days"`
+	Notes           string    `json:"notes"`
+	Completeness    float64   `json:"completeness"`
+	Status          string    `json:"status"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+type QuoteMessage struct {
+	ID        string    `json:"id"`
+	QuoteID   string    `json:"quote_id"`
+	Author    string    `json:"author"`
+	Body      string    `json:"body"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type Rfq struct {
 	ID             string    `json:"id"`
 	BuyerCompanyID string    `json:"buyer_company_id"`

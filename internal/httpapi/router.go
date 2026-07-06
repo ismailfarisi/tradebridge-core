@@ -6,12 +6,16 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 
 	"github.com/tradebridge/core/internal/agent"
 	"github.com/tradebridge/core/internal/catalog"
+	"github.com/tradebridge/core/internal/eventbus"
 	"github.com/tradebridge/core/internal/identity"
+	"github.com/tradebridge/core/internal/orders"
+	"github.com/tradebridge/core/internal/quotes"
 	"github.com/tradebridge/core/internal/rfq"
 	"github.com/tradebridge/core/internal/suppliers"
 	"github.com/tradebridge/core/pkg/db/sqlc"
@@ -19,17 +23,19 @@ import (
 )
 
 // Config holds the settings the router needs: JWT secret, token TTL, logger,
-// Redis (for RFQ event broadcast), and the RFQ extractor configuration.
+// Redis (event broadcast), the pool (for transactional quote acceptance), and
+// the RFQ extractor configuration.
 type Config struct {
 	JWTSecret       string
 	TokenTTL        time.Duration
 	Logger          zerolog.Logger
 	Redis           *redis.Client
+	Pool            *pgxpool.Pool
 	AnthropicAPIKey string
 	AnthropicModel  string
 }
 
-// New builds the Core API with all Sprint A1 routes mounted.
+// New builds the Core API with all Phase 1 routes mounted.
 func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	f := fiber.New(fiber.Config{AppName: "tradebridge-core-api"})
 	f.Use(middleware.RequestLogger(cfg.Logger))
@@ -64,9 +70,13 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	catalog.NewHandler(q).Register(f, guard...)
 	agent.NewHandler(q).Register(f, guard...)
 
+	pub := eventbus.New(q, cfg.Redis, cfg.Logger)
+
 	extractor := rfq.NewExtractor(cfg.AnthropicAPIKey, cfg.AnthropicModel, cfg.Logger)
-	rfqSvc := rfq.NewService(q, cfg.Redis, extractor, cfg.Logger)
-	rfq.NewHandler(rfqSvc, q).Register(f, guard...)
+	rfq.NewHandler(rfq.NewService(q, pub, extractor), q).Register(f, guard...)
+
+	quotes.NewHandler(quotes.NewService(q, cfg.Pool, pub), q).Register(f, guard...)
+	orders.NewHandler(q).Register(f, guard...)
 
 	return f
 }
