@@ -6,7 +6,29 @@ package sqlc
 
 import (
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type AgentCredential struct {
+	ID         string             `json:"id"`
+	CompanyID  string             `json:"company_id"`
+	Label      string             `json:"label"`
+	SecretHash string             `json:"secret_hash"`
+	Status     string             `json:"status"`
+	LastSeen   pgtype.Timestamptz `json:"last_seen"`
+	CreatedAt  time.Time          `json:"created_at"`
+}
+
+type CatalogSummary struct {
+	ID        string    `json:"id"`
+	CompanyID string    `json:"company_id"`
+	Name      string    `json:"name"`
+	Category  string    `json:"category"`
+	Summary   *string   `json:"summary"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
 
 type Company struct {
 	ID        string    `json:"id"`
@@ -15,10 +37,34 @@ type Company struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type SupplierProfile struct {
+	ID          string    `json:"id"`
+	CompanyID   string    `json:"company_id"`
+	Description *string   `json:"description"`
+	Categories  []string  `json:"categories"`
+	Location    *string   `json:"location"`
+	Verified    bool      `json:"verified"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
 type User struct {
-	ID        string    `json:"id"`
-	CompanyID string    `json:"company_id"`
-	Email     string    `json:"email"`
-	Role      string    `json:"role"`
-	CreatedAt time.Time `json:"created_at"`
+	ID           string    `json:"id"`
+	CompanyID    string    `json:"company_id"`
+	Email        string    `json:"email"`
+	Role         string    `json:"role"`
+	CreatedAt    time.Time `json:"created_at"`
+	PasswordHash *string   `json:"password_hash"`
+}
+
+type UserInvite struct {
+	ID         string             `json:"id"`
+	CompanyID  string             `json:"company_id"`
+	Email      string             `json:"email"`
+	Role       string             `json:"role"`
+	Token      string             `json:"token"`
+	InvitedBy  string             `json:"invited_by"`
+	ExpiresAt  time.Time          `json:"expires_at"`
+	AcceptedAt pgtype.Timestamptz `json:"accepted_at"`
+	CreatedAt  time.Time          `json:"created_at"`
 }

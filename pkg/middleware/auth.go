@@ -10,10 +10,11 @@ import (
 )
 
 // Claims is the JWT payload TradeBridge issues. Every authenticated request
-// carries a company_id (tenant) and a user_id.
+// carries a company_id (tenant), a user_id, and the user's role.
 type Claims struct {
 	CompanyID string `json:"company_id"`
 	UserID    string `json:"user_id"`
+	Role      string `json:"role"`
 	jwt.RegisteredClaims
 }
 

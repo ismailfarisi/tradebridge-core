@@ -12,7 +12,7 @@ import (
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (company_id, email, role)
 VALUES ($1, $2, $3)
-RETURNING id, company_id, email, role, created_at
+RETURNING id, company_id, email, role, created_at, password_hash
 `
 
 type CreateUserParams struct {
@@ -30,12 +30,45 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.Email,
 		&i.Role,
 		&i.CreatedAt,
+		&i.PasswordHash,
+	)
+	return i, err
+}
+
+const createUserWithPassword = `-- name: CreateUserWithPassword :one
+INSERT INTO users (company_id, email, role, password_hash)
+VALUES ($1, $2, $3, $4)
+RETURNING id, company_id, email, role, created_at, password_hash
+`
+
+type CreateUserWithPasswordParams struct {
+	CompanyID    string  `json:"company_id"`
+	Email        string  `json:"email"`
+	Role         string  `json:"role"`
+	PasswordHash *string `json:"password_hash"`
+}
+
+func (q *Queries) CreateUserWithPassword(ctx context.Context, arg CreateUserWithPasswordParams) (User, error) {
+	row := q.db.QueryRow(ctx, createUserWithPassword,
+		arg.CompanyID,
+		arg.Email,
+		arg.Role,
+		arg.PasswordHash,
+	)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.CompanyID,
+		&i.Email,
+		&i.Role,
+		&i.CreatedAt,
+		&i.PasswordHash,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, company_id, email, role, created_at FROM users
+SELECT id, company_id, email, role, created_at, password_hash FROM users
 WHERE email = $1
 `
 
@@ -48,12 +81,32 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.Email,
 		&i.Role,
 		&i.CreatedAt,
+		&i.PasswordHash,
+	)
+	return i, err
+}
+
+const getUserByID = `-- name: GetUserByID :one
+SELECT id, company_id, email, role, created_at, password_hash FROM users
+WHERE id = $1
+`
+
+func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByID, id)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.CompanyID,
+		&i.Email,
+		&i.Role,
+		&i.CreatedAt,
+		&i.PasswordHash,
 	)
 	return i, err
 }
 
 const listUsersByCompany = `-- name: ListUsersByCompany :many
-SELECT id, company_id, email, role, created_at FROM users
+SELECT id, company_id, email, role, created_at, password_hash FROM users
 WHERE company_id = $1
 ORDER BY created_at
 `
@@ -73,6 +126,7 @@ func (q *Queries) ListUsersByCompany(ctx context.Context, companyID string) ([]U
 			&i.Email,
 			&i.Role,
 			&i.CreatedAt,
+			&i.PasswordHash,
 		); err != nil {
 			return nil, err
 		}
@@ -82,4 +136,19 @@ func (q *Queries) ListUsersByCompany(ctx context.Context, companyID string) ([]U
 		return nil, err
 	}
 	return items, nil
+}
+
+const setUserPassword = `-- name: SetUserPassword :exec
+UPDATE users SET password_hash = $2
+WHERE id = $1
+`
+
+type SetUserPasswordParams struct {
+	ID           string  `json:"id"`
+	PasswordHash *string `json:"password_hash"`
+}
+
+func (q *Queries) SetUserPassword(ctx context.Context, arg SetUserPasswordParams) error {
+	_, err := q.db.Exec(ctx, setUserPassword, arg.ID, arg.PasswordHash)
+	return err
 }

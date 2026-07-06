@@ -11,6 +11,10 @@ linters:
     - revive
 
   exclusions:
+    paths:
+      # Next.js frontend deps ship stray .go files (e.g. flatted) — not our code.
+      - "web/"
+      - "node_modules"
     rules:
       # sqlc/wire generated code is not ours to lint.
       - path: pkg/db/sqlc/

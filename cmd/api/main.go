@@ -1,12 +1,13 @@
 // Command api is the TradeBridge Core API. It owns companies, users, RFQs,
-// quotes and orders. Phase 0 exposes /health and a tenant-guarded /v1/me.
+// quotes and orders. Sprint A1 adds auth, the seller directory, and agent
+// credential issuance on top of the Phase 0 foundation.
 package main
 
 import (
-	"github.com/gofiber/fiber/v2"
+	"time"
 
 	"github.com/tradebridge/core/internal/di"
-	"github.com/tradebridge/core/pkg/middleware"
+	"github.com/tradebridge/core/internal/httpapi"
 )
 
 func main() {
@@ -16,27 +17,15 @@ func main() {
 	}
 	defer cleanup()
 
-	log := app.Logger
-	f := fiber.New(fiber.Config{AppName: "tradebridge-core-api"})
-	f.Use(middleware.RequestLogger(log))
-
-	// Public liveness probe.
-	f.Get("/health", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{"status": "ok"})
-	})
-
-	// Everything under /v1 requires a valid JWT + a tenant.
-	v1 := f.Group("/v1", middleware.JWT(app.Config.JWTSecret), middleware.TenantGuard())
-	v1.Get("/me", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{
-			"company_id": middleware.CompanyID(c),
-			"user_id":    middleware.UserID(c),
-		})
+	f := httpapi.New(app.Queries, httpapi.Config{
+		JWTSecret: app.Config.JWTSecret,
+		TokenTTL:  24 * time.Hour,
+		Logger:    app.Logger,
 	})
 
 	addr := ":" + app.Config.Port
-	log.Info().Str("addr", addr).Msg("core api listening")
+	app.Logger.Info().Str("addr", addr).Msg("core api listening")
 	if err := f.Listen(addr); err != nil {
-		log.Fatal().Err(err).Msg("api server stopped")
+		app.Logger.Fatal().Err(err).Msg("api server stopped")
 	}
 }

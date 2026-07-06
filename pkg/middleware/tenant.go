@@ -7,9 +7,10 @@ import "github.com/gofiber/fiber/v2"
 const (
 	LocalCompanyID = "company_id"
 	LocalUserID    = "user_id"
+	LocalRole      = "role"
 )
 
-// TenantGuard must run after JWT. It lifts company_id/user_id out of the
+// TenantGuard must run after JWT. It lifts company_id/user_id/role out of the
 // validated claims into request-scoped locals. A request that reaches here
 // without a company_id is rejected — no tenant, no access.
 func TenantGuard() fiber.Handler {
@@ -20,8 +21,32 @@ func TenantGuard() fiber.Handler {
 		}
 		c.Locals(LocalCompanyID, claims.CompanyID)
 		c.Locals(LocalUserID, claims.UserID)
+		c.Locals(LocalRole, claims.Role)
 		return c.Next()
 	}
+}
+
+// RequireRole must run after TenantGuard. It allows the request only if the
+// user's role is one of the permitted roles.
+func RequireRole(allowed ...string) fiber.Handler {
+	set := make(map[string]struct{}, len(allowed))
+	for _, r := range allowed {
+		set[r] = struct{}{}
+	}
+	return func(c *fiber.Ctx) error {
+		if _, ok := set[Role(c)]; !ok {
+			return fiber.NewError(fiber.StatusForbidden, "insufficient role")
+		}
+		return c.Next()
+	}
+}
+
+// Role returns the acting user's role for the current request.
+func Role(c *fiber.Ctx) string {
+	if v, ok := c.Locals(LocalRole).(string); ok {
+		return v
+	}
+	return ""
 }
 
 // CompanyID returns the tenant id for the current request. Safe only on routes
