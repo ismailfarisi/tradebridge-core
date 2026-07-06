@@ -3,13 +3,13 @@ package rfq
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"sort"
 	"strings"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 
+	"github.com/tradebridge/core/internal/protocol"
 	"github.com/tradebridge/core/pkg/db/sqlc"
 )
 
@@ -175,17 +175,30 @@ func (s *Service) broadcast(ctx context.Context, rfq sqlc.Rfq, req Requirements,
 		return err
 	}
 
-	if _, err := s.q.CreateAgentEvent(ctx, sqlc.CreateAgentEventParams{
+	// Write-always: persist the durable event first, then publish the live copy.
+	ev, err := s.q.CreateAgentEvent(ctx, sqlc.CreateAgentEventParams{
 		CompanyID: m.SellerCompanyID,
 		Type:      "rfq.matched",
 		Payload:   body,
-	}); err != nil {
+	})
+	if err != nil {
 		return err
 	}
 
 	if s.redis != nil {
-		channel := fmt.Sprintf("agent:events:%s", m.SellerCompanyID)
-		if err := s.redis.Publish(ctx, channel, body).Err(); err != nil {
+		// Publish the same envelope the Gateway builds on replay (carries seq),
+		// so live and replayed events are indistinguishable to the agent.
+		wire, err := json.Marshal(protocol.Event{
+			Seq:     ev.Seq,
+			ID:      ev.ID,
+			Type:    ev.Type,
+			Payload: body,
+		})
+		if err != nil {
+			return err
+		}
+		channel := protocol.Channel(m.SellerCompanyID)
+		if err := s.redis.Publish(ctx, channel, wire).Err(); err != nil {
 			// Redis is the live fast-path, not the source of truth — the event
 			// is already durably persisted, so a publish failure is non-fatal.
 			s.logger.Warn().Err(err).Str("channel", channel).Msg("rfq.matched redis publish failed")

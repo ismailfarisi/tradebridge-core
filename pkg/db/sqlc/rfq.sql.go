@@ -13,7 +13,7 @@ import (
 const createAgentEvent = `-- name: CreateAgentEvent :one
 INSERT INTO agent_events (company_id, type, payload)
 VALUES ($1, $2, $3::jsonb)
-RETURNING seq, id, company_id, type, payload, created_at, delivered_at
+RETURNING seq, id, company_id, type, payload, created_at, delivered_at, acked_at
 `
 
 type CreateAgentEventParams struct {
@@ -33,6 +33,7 @@ func (q *Queries) CreateAgentEvent(ctx context.Context, arg CreateAgentEventPara
 		&i.Payload,
 		&i.CreatedAt,
 		&i.DeliveredAt,
+		&i.AckedAt,
 	)
 	return i, err
 }

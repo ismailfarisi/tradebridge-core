@@ -10,6 +10,18 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AgentCommand struct {
+	ID                string    `json:"id"`
+	AgentCredentialID string    `json:"agent_credential_id"`
+	CompanyID         string    `json:"company_id"`
+	RfqID             *string   `json:"rfq_id"`
+	Type              string    `json:"type"`
+	IdempotencyKey    string    `json:"idempotency_key"`
+	Payload           []byte    `json:"payload"`
+	Status            string    `json:"status"`
+	CreatedAt         time.Time `json:"created_at"`
+}
+
 type AgentCredential struct {
 	ID         string             `json:"id"`
 	CompanyID  string             `json:"company_id"`
@@ -28,6 +40,17 @@ type AgentEvent struct {
 	Payload     []byte             `json:"payload"`
 	CreatedAt   time.Time          `json:"created_at"`
 	DeliveredAt pgtype.Timestamptz `json:"delivered_at"`
+	AckedAt     pgtype.Timestamptz `json:"acked_at"`
+}
+
+type AuditLog struct {
+	ID        string    `json:"id"`
+	CompanyID string    `json:"company_id"`
+	Actor     string    `json:"actor"`
+	Action    string    `json:"action"`
+	TargetID  *string   `json:"target_id"`
+	Detail    []byte    `json:"detail"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type CatalogSummary struct {
