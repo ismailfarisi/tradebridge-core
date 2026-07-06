@@ -1,0 +1,22 @@
+version: "2"
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - misspell
+    - revive
+
+  exclusions:
+    rules:
+      # sqlc/wire generated code is not ours to lint.
+      - path: pkg/db/sqlc/
+        linters: [revive, staticcheck, unused]
+      - path: internal/di/wire_gen.go
+        linters: [revive, unused]
+
+run:
+  timeout: 5m

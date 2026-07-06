@@ -1,0 +1,20 @@
+# Binaries
+/bin/
+/tmp/
+
+# Env
+.env
+
+# Go
+*.test
+*.out
+
+# Editor
+.idea/
+.vscode/
+
+# Next.js frontend (web/ has its own dependencies/build)
+web/node_modules/
+web/.next/
+web/out/
+web/.env.local

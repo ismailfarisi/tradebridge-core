@@ -1,0 +1,9 @@
+# Production overlay — placeholders for Phase 2 infra (plan §10, §12).
+# Real values come from AWS: RDS + PgBouncer, ElastiCache Redis Cluster.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up
+#
+# Phase 2 additions (uncomment + fill in when the infra exists):
+#   pgbouncer  — transaction pooling in front of RDS PostgreSQL
+#   redis      — replaced by a managed 3-primary ElastiCache cluster;
+#                go-redis routes by hash slot transparently
+services: {}

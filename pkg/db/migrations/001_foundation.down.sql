@@ -1,0 +1,4 @@
+DROP INDEX IF EXISTS idx_users_company;
+DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS companies;
+DROP FUNCTION IF EXISTS gen_ulid();
