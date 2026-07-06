@@ -20,6 +20,16 @@ type AgentCredential struct {
 	CreatedAt  time.Time          `json:"created_at"`
 }
 
+type AgentEvent struct {
+	Seq         int64              `json:"seq"`
+	ID          string             `json:"id"`
+	CompanyID   string             `json:"company_id"`
+	Type        string             `json:"type"`
+	Payload     []byte             `json:"payload"`
+	CreatedAt   time.Time          `json:"created_at"`
+	DeliveredAt pgtype.Timestamptz `json:"delivered_at"`
+}
+
 type CatalogSummary struct {
 	ID        string    `json:"id"`
 	CompanyID string    `json:"company_id"`
@@ -35,6 +45,29 @@ type Company struct {
 	Name      string    `json:"name"`
 	Type      string    `json:"type"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+type Rfq struct {
+	ID             string    `json:"id"`
+	BuyerCompanyID string    `json:"buyer_company_id"`
+	CreatedBy      string    `json:"created_by"`
+	Title          string    `json:"title"`
+	RawText        string    `json:"raw_text"`
+	Requirements   []byte    `json:"requirements"`
+	Category       string    `json:"category"`
+	Status         string    `json:"status"`
+	MatchCount     int32     `json:"match_count"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+type RfqMatch struct {
+	ID              string    `json:"id"`
+	RfqID           string    `json:"rfq_id"`
+	SellerCompanyID string    `json:"seller_company_id"`
+	Score           float64   `json:"score"`
+	Reason          string    `json:"reason"`
+	CreatedAt       time.Time `json:"created_at"`
 }
 
 type SupplierProfile struct {

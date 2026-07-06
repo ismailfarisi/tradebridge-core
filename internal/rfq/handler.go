@@ -1,0 +1,166 @@
+package rfq
+
+import (
+	"encoding/json"
+	"errors"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/jackc/pgx/v5"
+
+	"github.com/tradebridge/core/pkg/db/sqlc"
+	"github.com/tradebridge/core/pkg/middleware"
+)
+
+// Handler serves the buyer-facing RFQ routes.
+type Handler struct {
+	svc *Service
+	q   *sqlc.Queries
+}
+
+// NewHandler builds the RFQ handler over the service and query layer.
+func NewHandler(svc *Service, q *sqlc.Queries) *Handler {
+	return &Handler{svc: svc, q: q}
+}
+
+// Register mounts the RFQ routes under the given tenant guard.
+func (h *Handler) Register(app *fiber.App, guard ...fiber.Handler) {
+	g := app.Group("/v1/rfqs", guard...)
+	g.Post("/", h.create)
+	g.Get("/", h.list)
+	g.Get("/:id", h.get)
+	g.Post("/:id/close", h.close)
+}
+
+type createReq struct {
+	Title string `json:"title"`
+	Text  string `json:"text"`
+}
+
+// rfqView is the JSON shape returned to buyers, with requirements decoded.
+type rfqView struct {
+	ID           string       `json:"id"`
+	Title        string       `json:"title"`
+	RawText      string       `json:"raw_text"`
+	Requirements Requirements `json:"requirements"`
+	Category     string       `json:"category"`
+	Status       string       `json:"status"`
+	MatchCount   int32        `json:"match_count"`
+	CreatedAt    string       `json:"created_at"`
+}
+
+func view(r sqlc.Rfq) rfqView {
+	var req Requirements
+	if len(r.Requirements) > 0 {
+		_ = json.Unmarshal(r.Requirements, &req)
+	}
+	return rfqView{
+		ID:           r.ID,
+		Title:        r.Title,
+		RawText:      r.RawText,
+		Requirements: req,
+		Category:     r.Category,
+		Status:       r.Status,
+		MatchCount:   r.MatchCount,
+		CreatedAt:    r.CreatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
+	}
+}
+
+func (h *Handler) create(c *fiber.Ctx) error {
+	var req createReq
+	if err := c.BodyParser(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
+	}
+	if req.Title == "" || req.Text == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "title and text required")
+	}
+
+	rfq, matches, err := h.svc.CreateAndMatch(
+		c.Context(),
+		middleware.CompanyID(c),
+		middleware.UserID(c),
+		req.Title,
+		req.Text,
+	)
+	if err != nil {
+		return err
+	}
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
+		"rfq":         view(rfq),
+		"match_count": len(matches),
+		"matches":     matches,
+	})
+}
+
+func (h *Handler) list(c *fiber.Ctx) error {
+	rfqs, err := h.q.ListRFQsByBuyer(c.Context(), sqlc.ListRFQsByBuyerParams{
+		BuyerCompanyID: middleware.CompanyID(c),
+		Lim:            50,
+		Off:            0,
+	})
+	if err != nil {
+		return err
+	}
+	out := make([]rfqView, len(rfqs))
+	for i, r := range rfqs {
+		out[i] = view(r)
+	}
+	return c.JSON(fiber.Map{"rfqs": out, "count": len(out)})
+}
+
+// mustOwn fetches an RFQ and enforces buyer-tenant ownership, returning 404
+// across tenants so existence never leaks.
+func (h *Handler) mustOwn(c *fiber.Ctx) (sqlc.Rfq, error) {
+	rfq, err := h.q.GetRFQ(c.Context(), c.Params("id"))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return rfq, fiber.NewError(fiber.StatusNotFound, "rfq not found")
+	} else if err != nil {
+		return rfq, err
+	}
+	if rfq.BuyerCompanyID != middleware.CompanyID(c) {
+		return rfq, fiber.NewError(fiber.StatusNotFound, "rfq not found")
+	}
+	return rfq, nil
+}
+
+func (h *Handler) get(c *fiber.Ctx) error {
+	rfq, err := h.mustOwn(c)
+	if err != nil {
+		return err
+	}
+	rows, err := h.q.ListMatchesByRFQ(c.Context(), rfq.ID)
+	if err != nil {
+		return err
+	}
+	matches := make([]MatchResult, len(rows))
+	for i, r := range rows {
+		matches[i] = MatchResult{
+			SellerCompanyID: r.SellerCompanyID,
+			SellerName:      r.SellerName,
+			Score:           r.Score,
+			Reason:          r.Reason,
+		}
+	}
+	return c.JSON(fiber.Map{
+		"rfq":         view(rfq),
+		"match_count": len(matches),
+		"matches":     matches,
+	})
+}
+
+func (h *Handler) close(c *fiber.Ctx) error {
+	rfq, err := h.mustOwn(c)
+	if err != nil {
+		return err
+	}
+	if err := ValidateTransition(rfq.Status, StatusClosed); err != nil {
+		return fiber.NewError(fiber.StatusConflict, err.Error())
+	}
+	updated, err := h.q.SetRFQStatus(c.Context(), sqlc.SetRFQStatusParams{
+		ID:     rfq.ID,
+		Status: StatusClosed,
+	})
+	if err != nil {
+		return err
+	}
+	return c.JSON(view(updated))
+}

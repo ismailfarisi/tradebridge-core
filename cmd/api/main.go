@@ -18,9 +18,12 @@ func main() {
 	defer cleanup()
 
 	f := httpapi.New(app.Queries, httpapi.Config{
-		JWTSecret: app.Config.JWTSecret,
-		TokenTTL:  24 * time.Hour,
-		Logger:    app.Logger,
+		JWTSecret:       app.Config.JWTSecret,
+		TokenTTL:        24 * time.Hour,
+		Logger:          app.Logger,
+		Redis:           app.Redis,
+		AnthropicAPIKey: app.Config.AnthropicAPIKey,
+		AnthropicModel:  app.Config.AnthropicModel,
 	})
 
 	addr := ":" + app.Config.Port

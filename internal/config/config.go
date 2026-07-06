@@ -16,6 +16,12 @@ type Config struct {
 	RedisURL    string `mapstructure:"REDIS_URL"`
 	JWTSecret   string `mapstructure:"JWT_SECRET"`
 	LogLevel    string `mapstructure:"LOG_LEVEL"`
+
+	// AnthropicAPIKey enables Claude-backed RFQ requirement extraction. When
+	// empty, the RFQ engine falls back to a deterministic heuristic extractor.
+	AnthropicAPIKey string `mapstructure:"ANTHROPIC_API_KEY"`
+	// AnthropicModel overrides the extraction model (default claude-haiku-4-5).
+	AnthropicModel string `mapstructure:"ANTHROPIC_MODEL"`
 }
 
 // Load reads configuration from the environment, falling back to a local
@@ -29,6 +35,8 @@ func Load() (*Config, error) {
 	v.SetDefault("REDIS_URL", "redis://localhost:6389/0")
 	v.SetDefault("JWT_SECRET", "dev-secret-change-me")
 	v.SetDefault("LOG_LEVEL", "info")
+	v.SetDefault("ANTHROPIC_API_KEY", "")
+	v.SetDefault("ANTHROPIC_MODEL", "claude-haiku-4-5")
 
 	v.SetConfigName(".env")
 	v.SetConfigType("env")

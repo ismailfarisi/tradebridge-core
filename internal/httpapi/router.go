@@ -6,21 +6,27 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 
 	"github.com/tradebridge/core/internal/agent"
 	"github.com/tradebridge/core/internal/catalog"
 	"github.com/tradebridge/core/internal/identity"
+	"github.com/tradebridge/core/internal/rfq"
 	"github.com/tradebridge/core/internal/suppliers"
 	"github.com/tradebridge/core/pkg/db/sqlc"
 	"github.com/tradebridge/core/pkg/middleware"
 )
 
-// Config holds the settings the router needs: JWT secret, token TTL, and logger.
+// Config holds the settings the router needs: JWT secret, token TTL, logger,
+// Redis (for RFQ event broadcast), and the RFQ extractor configuration.
 type Config struct {
-	JWTSecret string
-	TokenTTL  time.Duration
-	Logger    zerolog.Logger
+	JWTSecret       string
+	TokenTTL        time.Duration
+	Logger          zerolog.Logger
+	Redis           *redis.Client
+	AnthropicAPIKey string
+	AnthropicModel  string
 }
 
 // New builds the Core API with all Sprint A1 routes mounted.
@@ -57,6 +63,10 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	suppliers.NewHandler(q).Register(f, guard...)
 	catalog.NewHandler(q).Register(f, guard...)
 	agent.NewHandler(q).Register(f, guard...)
+
+	extractor := rfq.NewExtractor(cfg.AnthropicAPIKey, cfg.AnthropicModel, cfg.Logger)
+	rfqSvc := rfq.NewService(q, cfg.Redis, extractor, cfg.Logger)
+	rfq.NewHandler(rfqSvc, q).Register(f, guard...)
 
 	return f
 }
