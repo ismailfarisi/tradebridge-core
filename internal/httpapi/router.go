@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
@@ -36,12 +37,24 @@ type Config struct {
 	AnthropicAPIKey string
 	AnthropicModel  string
 	SettingsEncKey  string
+	CORSOrigins     string
 }
 
 // New builds the Core API with all Phase 1 routes mounted.
 func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	f := fiber.New(fiber.Config{AppName: "tradebridge-core-api"})
 	f.Use(middleware.RequestLogger(cfg.Logger))
+
+	// The frontend runs on a different origin than the API; allow it explicitly.
+	origins := cfg.CORSOrigins
+	if origins == "" {
+		origins = "http://localhost:3010"
+	}
+	f.Use(cors.New(cors.Config{
+		AllowOrigins: origins,
+		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
+		AllowMethods: "GET, POST, PUT, DELETE, OPTIONS",
+	}))
 
 	f.Get("/health", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"status": "ok"})
@@ -55,11 +68,17 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	}
 
 	f.Get("/v1/me", append(guard, func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{
+		out := fiber.Map{
 			"company_id": middleware.CompanyID(c),
 			"user_id":    middleware.UserID(c),
 			"role":       middleware.Role(c),
-		})
+		}
+		// Include company name + type so the UI can render role-aware nav.
+		if co, err := q.GetCompanyByID(c.Context(), middleware.CompanyID(c)); err == nil {
+			out["company_name"] = co.Name
+			out["company_type"] = co.Type
+		}
+		return c.JSON(out)
 	})...)
 
 	ttl := cfg.TokenTTL

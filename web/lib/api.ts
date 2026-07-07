@@ -1,35 +1,19 @@
-// Thin client for the Core API: health, auth (to obtain a token), and the
-// per-company provider settings surface.
+// Client for the Core API. Fiber returns JSON on success and plain-text on
+// error, so the request helper handles both.
 
 export const CORE_URL =
   process.env.NEXT_PUBLIC_CORE_URL ?? "http://localhost:8080";
 
-export type HealthState = "ok" | "unreachable";
-
-export async function fetchHealth(): Promise<HealthState> {
-  try {
-    const res = await fetch(`${CORE_URL}/health`, { cache: "no-store" });
-    if (!res.ok) return "unreachable";
-    const body = (await res.json()) as { status?: string };
-    return body.status === "ok" ? "ok" : "unreachable";
-  } catch {
-    return "unreachable";
-  }
-}
-
-// --- auth (token stored in localStorage) ---
+// --- token store (localStorage + useSyncExternalStore) ---
 
 const TOKEN_KEY = "tb_core_token";
-
-const tokenListeners = new Set<() => void>();
-function emitToken() {
-  tokenListeners.forEach((l) => l());
+const listeners = new Set<() => void>();
+function emit() {
+  listeners.forEach((l) => l());
 }
-
-// useSyncExternalStore wiring — SSR-safe token reads with no effect.
 export function subscribeToken(cb: () => void): () => void {
-  tokenListeners.add(cb);
-  return () => tokenListeners.delete(cb);
+  listeners.add(cb);
+  return () => listeners.delete(cb);
 }
 export function tokenSnapshot(): string | null {
   return typeof window !== "undefined" ? localStorage.getItem(TOKEN_KEY) : null;
@@ -37,35 +21,83 @@ export function tokenSnapshot(): string | null {
 export function tokenServerSnapshot(): string | null {
   return null;
 }
-
-export function setToken(token: string): void {
-  localStorage.setItem(TOKEN_KEY, token);
-  emitToken();
+export function setToken(t: string): void {
+  localStorage.setItem(TOKEN_KEY, t);
+  emit();
 }
 export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY);
-  emitToken();
+  emit();
 }
 
-// The Core API returns fiber errors as plain text.
-async function errorText(res: Response, fallback: string): Promise<string> {
-  const t = await res.text().catch(() => "");
-  return t || fallback;
-}
-
-export async function login(email: string, password: string): Promise<string> {
-  const res = await fetch(`${CORE_URL}/v1/auth/login`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, password }),
+async function req<T>(
+  method: string,
+  path: string,
+  opts: { token?: string | null; body?: unknown } = {},
+): Promise<T> {
+  const res = await fetch(`${CORE_URL}${path}`, {
+    method,
+    headers: {
+      ...(opts.body ? { "content-type": "application/json" } : {}),
+      ...(opts.token ? { authorization: `Bearer ${opts.token}` } : {}),
+    },
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+    cache: "no-store",
   });
-  if (!res.ok) throw new Error(await errorText(res, "login failed"));
-  const body = (await res.json()) as { token: string };
-  return body.token;
+  const text = await res.text();
+  if (!res.ok) throw new Error(text || `HTTP ${res.status}`);
+  return (text ? JSON.parse(text) : null) as T;
 }
 
-// --- extraction settings ---
+// --- types ---
 
+export type CompanyType = "buyer" | "seller" | "both";
+export type Me = {
+  company_id: string;
+  user_id: string;
+  role: string;
+  company_name?: string;
+  company_type?: CompanyType;
+};
+export type RegisterInput = {
+  company_name: string;
+  company_type: CompanyType;
+  email: string;
+  password: string;
+};
+export type RFQ = {
+  id: string;
+  title: string;
+  raw_text: string;
+  requirements: Record<string, unknown>;
+  category: string;
+  status: string;
+  match_count: number;
+  created_at: string;
+};
+export type QuoteRow = {
+  id: string;
+  seller_company_id: string;
+  seller_name?: string;
+  price_cents: number;
+  currency: string;
+  delivery_days: number | null;
+  notes: string;
+  status: string;
+  rank?: number;
+};
+export type CatalogItem = {
+  id: string;
+  name: string;
+  category: string;
+  summary: string | null;
+};
+export type AgentCred = {
+  id: string;
+  label: string;
+  status: string;
+  last_seen: unknown;
+};
 export type ExtractionSettings = {
   provider: string;
   model: string;
@@ -74,37 +106,54 @@ export type ExtractionSettings = {
   key_last4: string;
 };
 
-export type ExtractionUpdate = {
-  provider: string;
-  model: string;
-  base_url: string;
-  api_key?: string;
-  clear_api_key?: boolean;
-};
+// --- auth ---
 
-export async function getExtractionSettings(
-  token: string,
-): Promise<ExtractionSettings> {
-  const res = await fetch(`${CORE_URL}/v1/settings/extraction`, {
-    headers: { authorization: `Bearer ${token}` },
-    cache: "no-store",
-  });
-  if (!res.ok) throw new Error(await errorText(res, "failed to load settings"));
-  return res.json();
-}
+export const health = () => req<{ status: string }>("GET", "/health");
+export const register = (b: RegisterInput) =>
+  req<{ token: string; role: string; company_id: string }>("POST", "/v1/auth/register", { body: b });
+export const login = (email: string, password: string) =>
+  req<{ token: string }>("POST", "/v1/auth/login", { body: { email, password } });
+export const me = (token: string) => req<Me>("GET", "/v1/me", { token });
 
-export async function updateExtractionSettings(
+// --- buyer: RFQs ---
+
+export const createRfq = (token: string, title: string, text: string) =>
+  req<{ rfq: RFQ; match_count: number }>("POST", "/v1/rfqs", { token, body: { title, text } });
+export const listRfqs = (token: string) =>
+  req<{ rfqs: RFQ[]; count: number }>("GET", "/v1/rfqs", { token });
+export const getRfq = (token: string, id: string) =>
+  req<{ rfq: RFQ; match_count: number; matches: unknown[] }>("GET", `/v1/rfqs/${id}`, { token });
+export const rfqQuotes = (token: string, id: string) =>
+  req<{ quotes: QuoteRow[]; count: number }>("GET", `/v1/rfqs/${id}/quotes`, { token });
+export const acceptQuote = (token: string, quoteId: string) =>
+  req<{ order_id: string; total_cents: number }>("POST", `/v1/quotes/${quoteId}/accept`, { token, body: {} });
+export const closeRfq = (token: string, id: string) =>
+  req<RFQ>("POST", `/v1/rfqs/${id}/close`, { token, body: {} });
+
+// --- seller ---
+
+export const getProfile = (token: string) =>
+  req<Record<string, unknown>>("GET", "/v1/suppliers/me", { token }).catch(() => null);
+export const upsertProfile = (token: string, body: { description: string; categories: string[]; location: string }) =>
+  req<Record<string, unknown>>("PUT", "/v1/suppliers/me", { token, body });
+export const listCatalog = (token: string) =>
+  req<{ items: CatalogItem[]; count: number }>("GET", "/v1/catalog", { token });
+export const createCatalog = (token: string, body: { name: string; category: string; summary: string }) =>
+  req<CatalogItem>("POST", "/v1/catalog", { token, body });
+export const deleteCatalog = (token: string, id: string) =>
+  req<null>("DELETE", `/v1/catalog/${id}`, { token });
+export const listAgentCreds = (token: string) =>
+  req<{ credentials: AgentCred[] }>("GET", "/v1/agent-credentials", { token });
+export const issueAgentCred = (token: string, label: string) =>
+  req<{ id: string; label: string; secret: string }>("POST", "/v1/agent-credentials", { token, body: { label } });
+export const revokeAgentCred = (token: string, id: string) =>
+  req<null>("POST", `/v1/agent-credentials/${id}/revoke`, { token, body: {} });
+
+// --- admin / settings ---
+
+export const getExtraction = (token: string) =>
+  req<ExtractionSettings>("GET", "/v1/settings/extraction", { token });
+export const updateExtraction = (
   token: string,
-  body: ExtractionUpdate,
-): Promise<ExtractionSettings> {
-  const res = await fetch(`${CORE_URL}/v1/settings/extraction`, {
-    method: "PUT",
-    headers: {
-      authorization: `Bearer ${token}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(await errorText(res, "save failed"));
-  return res.json();
-}
+  body: { provider: string; model: string; base_url: string; api_key?: string; clear_api_key?: boolean },
+) => req<ExtractionSettings>("PUT", "/v1/settings/extraction", { token, body });

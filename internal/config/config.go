@@ -26,6 +26,10 @@ type Config struct {
 	// SettingsEncKey encrypts provider API keys stored via the settings UI.
 	// When empty, a key is derived from JWT_SECRET (set a dedicated key in prod).
 	SettingsEncKey string `mapstructure:"SETTINGS_ENC_KEY"`
+
+	// CORSOrigins is a comma-separated allowlist of browser origins permitted to
+	// call the API (the frontend runs on a different origin than the API).
+	CORSOrigins string `mapstructure:"CORS_ORIGINS"`
 }
 
 // Load reads configuration from the environment, falling back to a local
@@ -42,6 +46,7 @@ func Load() (*Config, error) {
 	v.SetDefault("ANTHROPIC_API_KEY", "")
 	v.SetDefault("ANTHROPIC_MODEL", "claude-haiku-4-5")
 	v.SetDefault("SETTINGS_ENC_KEY", "")
+	v.SetDefault("CORS_ORIGINS", "http://localhost:3010")
 
 	v.SetConfigName(".env")
 	v.SetConfigType("env")
