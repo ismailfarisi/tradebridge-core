@@ -25,6 +25,7 @@ func main() {
 		Pool:            app.Pool,
 		AnthropicAPIKey: app.Config.AnthropicAPIKey,
 		AnthropicModel:  app.Config.AnthropicModel,
+		SettingsEncKey:  app.Config.SettingsEncKey,
 	})
 
 	addr := ":" + app.Config.Port

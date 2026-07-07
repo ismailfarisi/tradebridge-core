@@ -13,14 +13,37 @@ type Extractor interface {
 	Extract(ctx context.Context, title, text string) (Requirements, error)
 }
 
-// NewExtractor returns a Claude-backed extractor when an API key is configured,
-// otherwise a deterministic heuristic extractor. The heuristic path keeps the
-// RFQ engine fully functional (and testable) without any external dependency.
-func NewExtractor(apiKey, model string, logger zerolog.Logger) Extractor {
-	if apiKey != "" {
-		return newClaudeExtractor(apiKey, model, HeuristicExtractor{}, logger)
+// ProviderConfig is a resolved LLM configuration for requirement extraction.
+// Provider is "" (none → heuristic), "anthropic", or "openai_compatible".
+type ProviderConfig struct {
+	Provider string
+	Model    string
+	BaseURL  string
+	APIKey   string
+}
+
+// ExtractorResolver yields the extraction config for a given company, letting
+// each tenant configure its own provider/model/key (with an env fallback).
+type ExtractorResolver interface {
+	ExtractionConfig(ctx context.Context, companyID string) (ProviderConfig, error)
+}
+
+// BuildExtractor picks an extractor from a resolved config. With no API key it
+// falls back to the deterministic heuristic extractor, which keeps the RFQ
+// engine fully functional (and testable) without any external dependency.
+func BuildExtractor(cfg ProviderConfig, logger zerolog.Logger) Extractor {
+	switch {
+	case cfg.APIKey == "":
+		return HeuristicExtractor{}
+	case cfg.Provider == "openai_compatible":
+		return newOpenAIExtractor(cfg.BaseURL, cfg.Model, cfg.APIKey, HeuristicExtractor{}, logger)
+	default: // anthropic
+		model := cfg.Model
+		if model == "" {
+			model = "claude-haiku-4-5"
+		}
+		return newClaudeExtractor(cfg.APIKey, model, HeuristicExtractor{}, logger)
 	}
-	return HeuristicExtractor{}
 }
 
 // HeuristicExtractor derives requirements with regexes and a category lexicon.

@@ -70,6 +70,9 @@ export default function Home() {
         </span>
       </div>
       <code style={{ color: "#71717a", fontSize: "0.85rem" }}>{CORE_URL}</code>
+      <a href="/settings" style={{ color: "#2563eb", fontSize: "0.95rem", fontWeight: 600 }}>
+        Provider settings →
+      </a>
     </main>
   );
 }

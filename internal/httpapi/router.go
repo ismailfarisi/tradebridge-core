@@ -17,7 +17,9 @@ import (
 	"github.com/tradebridge/core/internal/orders"
 	"github.com/tradebridge/core/internal/quotes"
 	"github.com/tradebridge/core/internal/rfq"
+	"github.com/tradebridge/core/internal/settings"
 	"github.com/tradebridge/core/internal/suppliers"
+	"github.com/tradebridge/core/pkg/cryptobox"
 	"github.com/tradebridge/core/pkg/db/sqlc"
 	"github.com/tradebridge/core/pkg/middleware"
 )
@@ -33,6 +35,7 @@ type Config struct {
 	Pool            *pgxpool.Pool
 	AnthropicAPIKey string
 	AnthropicModel  string
+	SettingsEncKey  string
 }
 
 // New builds the Core API with all Phase 1 routes mounted.
@@ -72,9 +75,24 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 
 	pub := eventbus.New(q, cfg.Redis, cfg.Logger)
 
-	extractor := rfq.NewExtractor(cfg.AnthropicAPIKey, cfg.AnthropicModel, cfg.Logger)
-	rfq.NewHandler(rfq.NewService(q, pub, extractor), q).Register(f, guard...)
+	// Settings hold per-company provider config; the encryption key falls back
+	// to the JWT secret when a dedicated one isn't configured.
+	encSecret := cfg.SettingsEncKey
+	if encSecret == "" {
+		encSecret = cfg.JWTSecret
+	}
+	box, err := cryptobox.New(encSecret)
+	if err != nil {
+		panic(err)
+	}
+	envExtraction := rfq.ProviderConfig{Model: cfg.AnthropicModel, APIKey: cfg.AnthropicAPIKey}
+	if cfg.AnthropicAPIKey != "" {
+		envExtraction.Provider = "anthropic"
+	}
+	settingsSvc := settings.NewService(q, box, envExtraction)
+	settings.NewHandler(settingsSvc).Register(f, guard...)
 
+	rfq.NewHandler(rfq.NewService(q, pub, settingsSvc, cfg.Logger), q).Register(f, guard...)
 	quotes.NewHandler(quotes.NewService(q, cfg.Pool, pub), q).Register(f, guard...)
 	orders.NewHandler(q).Register(f, guard...)
 

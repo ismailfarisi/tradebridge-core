@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/rs/zerolog"
+
 	"github.com/tradebridge/core/internal/eventbus"
 	"github.com/tradebridge/core/pkg/db/sqlc"
 )
@@ -14,15 +16,29 @@ import (
 const maxMatches = 25
 
 // Service orchestrates RFQ creation: extract → match → persist → broadcast.
+// The extractor is resolved per RFQ from the buyer company's settings, so each
+// tenant can configure its own provider/model/key.
 type Service struct {
-	q         *sqlc.Queries
-	pub       *eventbus.Publisher
-	extractor Extractor
+	q        *sqlc.Queries
+	pub      *eventbus.Publisher
+	resolver ExtractorResolver
+	logger   zerolog.Logger
 }
 
 // NewService builds the RFQ service.
-func NewService(q *sqlc.Queries, pub *eventbus.Publisher, extractor Extractor) *Service {
-	return &Service{q: q, pub: pub, extractor: extractor}
+func NewService(q *sqlc.Queries, pub *eventbus.Publisher, resolver ExtractorResolver, logger zerolog.Logger) *Service {
+	return &Service{q: q, pub: pub, resolver: resolver, logger: logger}
+}
+
+// extractorFor resolves the buyer company's extraction config and builds an
+// extractor; on resolver error it degrades to the heuristic extractor.
+func (s *Service) extractorFor(ctx context.Context, companyID string) Extractor {
+	cfg, err := s.resolver.ExtractionConfig(ctx, companyID)
+	if err != nil {
+		s.logger.Warn().Err(err).Str("company_id", companyID).Msg("extraction config resolve failed; using heuristic")
+		return HeuristicExtractor{}
+	}
+	return BuildExtractor(cfg, s.logger)
 }
 
 // MatchResult is one matched seller, returned to the buyer after creation.
@@ -57,7 +73,7 @@ func (s *Service) CreateAndMatch(ctx context.Context, buyerCompanyID, userID, ti
 		return sqlc.Rfq{}, nil, err
 	}
 
-	req, err := s.extractor.Extract(ctx, title, text)
+	req, err := s.extractorFor(ctx, buyerCompanyID).Extract(ctx, title, text)
 	if err != nil {
 		return sqlc.Rfq{}, nil, err
 	}

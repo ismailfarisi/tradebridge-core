@@ -22,6 +22,10 @@ type Config struct {
 	AnthropicAPIKey string `mapstructure:"ANTHROPIC_API_KEY"`
 	// AnthropicModel overrides the extraction model (default claude-haiku-4-5).
 	AnthropicModel string `mapstructure:"ANTHROPIC_MODEL"`
+
+	// SettingsEncKey encrypts provider API keys stored via the settings UI.
+	// When empty, a key is derived from JWT_SECRET (set a dedicated key in prod).
+	SettingsEncKey string `mapstructure:"SETTINGS_ENC_KEY"`
 }
 
 // Load reads configuration from the environment, falling back to a local
@@ -37,6 +41,7 @@ func Load() (*Config, error) {
 	v.SetDefault("LOG_LEVEL", "info")
 	v.SetDefault("ANTHROPIC_API_KEY", "")
 	v.SetDefault("ANTHROPIC_MODEL", "claude-haiku-4-5")
+	v.SetDefault("SETTINGS_ENC_KEY", "")
 
 	v.SetConfigName(".env")
 	v.SetConfigType("env")

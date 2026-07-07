@@ -70,6 +70,16 @@ type Company struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type CompanySetting struct {
+	CompanyID             string    `json:"company_id"`
+	ExtractionProvider    string    `json:"extraction_provider"`
+	ExtractionModel       string    `json:"extraction_model"`
+	ExtractionBaseUrl     string    `json:"extraction_base_url"`
+	ExtractionApiKeyEnc   []byte    `json:"extraction_api_key_enc"`
+	ExtractionApiKeyLast4 string    `json:"extraction_api_key_last4"`
+	UpdatedAt             time.Time `json:"updated_at"`
+}
+
 type Order struct {
 	ID              string    `json:"id"`
 	RfqID           string    `json:"rfq_id"`
