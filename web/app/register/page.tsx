@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { register, setToken, type CompanyType } from "@/lib/api";
 import { AuthWrap } from "../login/page";
@@ -44,7 +45,7 @@ export default function RegisterPage() {
   };
 
   return (
-    <AuthWrap title="Create account" alt={<>Already registered? <a href="/login">Sign in</a></>}>
+    <AuthWrap title="Create account" alt={<>Already registered? <Link href="/login">Sign in</Link></>}>
       <form className="col" onSubmit={submit}>
         <div className="field">
           <label>Company name</label>

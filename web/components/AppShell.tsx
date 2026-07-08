@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { logout, useMe } from "@/lib/auth";
 import type { Me } from "@/lib/api";
@@ -42,12 +43,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const { token, me, ready } = useMe();
   const router = useRouter();
   const pathname = usePathname();
+  const [hydrated, setHydrated] = useState(false);
+
+  // On a hard page load the token store first returns its *server* snapshot
+  // (null) before the client snapshot (localStorage) is read one tick later.
+  // Redirecting on that first render bounces a logged-in user to /login, so we
+  // wait until the client has mounted — by then the real token has been read.
+  useEffect(() => setHydrated(true), []);
 
   useEffect(() => {
-    if (ready && !token) router.replace("/login");
-  }, [ready, token, router]);
+    if (hydrated && ready && !token) router.replace("/login");
+  }, [hydrated, ready, token, router]);
 
-  if (!ready) {
+  if (!hydrated || !ready) {
     return <Centered>Loading…</Centered>;
   }
   if (!me) {
@@ -68,9 +76,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           gap: "0.4rem",
         }}
       >
-        <a href="/dashboard" style={{ color: "var(--text)", fontWeight: 700, fontSize: "1.05rem", padding: "0 0.5rem 0.6rem" }}>
+        <Link href="/dashboard" style={{ color: "var(--text)", fontWeight: 700, fontSize: "1.05rem", padding: "0 0.5rem 0.6rem" }}>
           TradeBridge
-        </a>
+        </Link>
         {NAV.map((section) => {
           const items = section.items.filter((it) => it.show(me));
           if (items.length === 0) return null;
@@ -84,7 +92,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               {items.map((it) => {
                 const active = pathname === it.href || pathname.startsWith(it.href + "/");
                 return (
-                  <a
+                  <Link
                     key={it.href}
                     href={it.href}
                     style={{
@@ -98,7 +106,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     }}
                   >
                     {it.label}
-                  </a>
+                  </Link>
                 );
               })}
             </div>
