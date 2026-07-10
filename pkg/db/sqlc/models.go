@@ -92,6 +92,25 @@ type Order struct {
 	CreatedAt       time.Time `json:"created_at"`
 }
 
+type PlatformAdmin struct {
+	ID           string    `json:"id"`
+	Email        string    `json:"email"`
+	PasswordHash string    `json:"password_hash"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+type PlatformSetting struct {
+	ID                     string    `json:"id"`
+	ExtractionProvider     string    `json:"extraction_provider"`
+	ExtractionModel        string    `json:"extraction_model"`
+	ExtractionBaseUrl      string    `json:"extraction_base_url"`
+	ExtractionApiKeyEnc    []byte    `json:"extraction_api_key_enc"`
+	ExtractionApiKeyLast4  string    `json:"extraction_api_key_last4"`
+	ExtractionSystemPrompt string    `json:"extraction_system_prompt"`
+	IntakeSystemPrompt     string    `json:"intake_system_prompt"`
+	UpdatedAt              time.Time `json:"updated_at"`
+}
+
 type Quote struct {
 	ID              string    `json:"id"`
 	RfqID           string    `json:"rfq_id"`
