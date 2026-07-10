@@ -16,20 +16,24 @@ import (
 type claudeExtractor struct {
 	client   anthropic.Client
 	model    anthropic.Model
+	system   string
 	fallback Extractor
 	logger   zerolog.Logger
 }
 
-func newClaudeExtractor(apiKey, model string, fallback Extractor, logger zerolog.Logger) Extractor {
+func newClaudeExtractor(apiKey, model, system string, fallback Extractor, logger zerolog.Logger) Extractor {
 	return &claudeExtractor{
 		client:   anthropic.NewClient(option.WithAPIKey(apiKey)),
 		model:    anthropic.Model(model),
+		system:   system,
 		fallback: fallback,
 		logger:   logger,
 	}
 }
 
-const extractSystemPrompt = `You extract structured procurement requirements from a buyer's plain-text RFQ.
+// DefaultExtractionPrompt is the built-in extraction system prompt, used when
+// the platform admin has not set a custom one.
+const DefaultExtractionPrompt = `You extract structured procurement requirements from a buyer's plain-text RFQ.
 Respond with ONLY a JSON object, no prose, matching exactly this shape:
 {"category":"","quantity":"","specs":[],"location":"","deadline":"","keywords":[]}
 - category: a short product category (e.g. "packaging", "electronics", "food & beverage").
@@ -44,7 +48,7 @@ func (e *claudeExtractor) Extract(ctx context.Context, title, text string) (Requ
 	msg, err := e.client.Messages.New(ctx, anthropic.MessageNewParams{
 		Model:     e.model,
 		MaxTokens: 1024,
-		System:    []anthropic.TextBlockParam{{Text: extractSystemPrompt}},
+		System:    []anthropic.TextBlockParam{{Text: e.system}},
 		Messages: []anthropic.MessageParam{
 			anthropic.NewUserMessage(anthropic.NewTextBlock(
 				fmt.Sprintf("Title: %s\n\nRFQ:\n%s", title, text),

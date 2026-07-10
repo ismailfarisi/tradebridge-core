@@ -16,10 +16,12 @@ type Extractor interface {
 // ProviderConfig is a resolved LLM configuration for requirement extraction.
 // Provider is "" (none → heuristic), "anthropic", or "openai_compatible".
 type ProviderConfig struct {
-	Provider string
-	Model    string
-	BaseURL  string
-	APIKey   string
+	Provider         string
+	Model            string
+	BaseURL          string
+	APIKey           string
+	ExtractionPrompt string // overrides DefaultExtractionPrompt when non-empty
+	IntakePrompt     string // overrides DefaultIntakePrompt when non-empty
 }
 
 // ExtractorResolver yields the extraction config for a given company, letting
@@ -32,17 +34,21 @@ type ExtractorResolver interface {
 // falls back to the deterministic heuristic extractor, which keeps the RFQ
 // engine fully functional (and testable) without any external dependency.
 func BuildExtractor(cfg ProviderConfig, logger zerolog.Logger) Extractor {
+	prompt := cfg.ExtractionPrompt
+	if prompt == "" {
+		prompt = DefaultExtractionPrompt
+	}
 	switch {
 	case cfg.APIKey == "":
 		return HeuristicExtractor{}
 	case cfg.Provider == "openai_compatible":
-		return newOpenAIExtractor(cfg.BaseURL, cfg.Model, cfg.APIKey, HeuristicExtractor{}, logger)
+		return newOpenAIExtractor(cfg.BaseURL, cfg.Model, cfg.APIKey, prompt, HeuristicExtractor{}, logger)
 	default: // anthropic
 		model := cfg.Model
 		if model == "" {
 			model = "claude-haiku-4-5"
 		}
-		return newClaudeExtractor(cfg.APIKey, model, HeuristicExtractor{}, logger)
+		return newClaudeExtractor(cfg.APIKey, model, prompt, HeuristicExtractor{}, logger)
 	}
 }
 

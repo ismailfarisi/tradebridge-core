@@ -19,12 +19,13 @@ type openAIExtractor struct {
 	baseURL  string
 	model    string
 	apiKey   string
+	system   string
 	client   *http.Client
 	fallback Extractor
 	logger   zerolog.Logger
 }
 
-func newOpenAIExtractor(baseURL, model, apiKey string, fallback Extractor, logger zerolog.Logger) Extractor {
+func newOpenAIExtractor(baseURL, model, apiKey, system string, fallback Extractor, logger zerolog.Logger) Extractor {
 	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	if baseURL == "" {
 		baseURL = "https://api.openai.com/v1"
@@ -36,6 +37,7 @@ func newOpenAIExtractor(baseURL, model, apiKey string, fallback Extractor, logge
 		baseURL:  baseURL,
 		model:    model,
 		apiKey:   apiKey,
+		system:   system,
 		client:   &http.Client{Timeout: 30 * time.Second},
 		fallback: fallback,
 		logger:   logger,
@@ -62,7 +64,7 @@ func (e *openAIExtractor) Extract(ctx context.Context, title, text string) (Requ
 	body, err := json.Marshal(chatRequest{
 		Model: e.model,
 		Messages: []chatMessage{
-			{Role: "system", Content: extractSystemPrompt},
+			{Role: "system", Content: e.system},
 			{Role: "user", Content: fmt.Sprintf("Title: %s\n\nRFQ:\n%s", title, text)},
 		},
 	})

@@ -150,3 +150,36 @@ func TestLLMIntake_FallsBackOnGarbage(t *testing.T) {
 		t.Fatalf("expected heuristic ask on garbage, got %+v", d)
 	}
 }
+
+type spyChat struct{ onComplete func(system string) }
+
+func (s spyChat) complete(_ context.Context, system string, _ []ChatMessage) (string, error) {
+	if s.onComplete != nil {
+		s.onComplete(system)
+	}
+	return `{"action":"create","title":"t","rfq_text":"x"}`, nil
+}
+
+func TestLLMIntake_UsesConfiguredSystemPrompt(t *testing.T) {
+	var gotSystem string
+	spy := spyChat{onComplete: func(system string) { gotSystem = system }}
+	li := llmIntake{chat: spy, fallback: HeuristicIntake{}, logger: zerolog.Nop(), system: "CUSTOM INTAKE PROMPT"}
+	_, _ = li.Decide(context.Background(), []ChatMessage{{Role: "user", Content: "cartons"}})
+	if gotSystem != "CUSTOM INTAKE PROMPT" {
+		t.Fatalf("intake used system %q, want the configured prompt", gotSystem)
+	}
+}
+
+func TestBuildIntake_FallsBackToDefaultPrompt(t *testing.T) {
+	li, ok := BuildIntake(ProviderConfig{Provider: "anthropic", APIKey: "k"}, zerolog.Nop()).(llmIntake)
+	if !ok {
+		t.Fatal("expected an llmIntake for a keyed anthropic config")
+	}
+	if li.system != DefaultIntakePrompt {
+		t.Fatalf("blank IntakePrompt should fall back to DefaultIntakePrompt")
+	}
+	li2, _ := BuildIntake(ProviderConfig{Provider: "anthropic", APIKey: "k", IntakePrompt: "X"}, zerolog.Nop()).(llmIntake)
+	if li2.system != "X" {
+		t.Fatalf("IntakePrompt should be used when set")
+	}
+}

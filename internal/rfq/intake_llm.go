@@ -13,10 +13,10 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// intakeSystemPrompt tells the model to return exactly one JSON decision. The
+// DefaultIntakePrompt tells the model to return exactly one JSON decision. The
 // service composes the user-facing confirmation on create, so on "create" the
 // model only needs to supply a title + rfq_text.
-const intakeSystemPrompt = `You are a procurement assistant helping a buyer post an RFQ (request for quote).
+const DefaultIntakePrompt = `You are a procurement assistant helping a buyer post an RFQ (request for quote).
 Given the conversation so far, decide whether you have enough to post the RFQ or need ONE more clarifying question.
 Respond with ONLY a JSON object, no prose, matching exactly one of:
 {"action":"ask","message":"<a single short clarifying question>"}
@@ -43,10 +43,11 @@ type llmIntake struct {
 	chat     llmChat
 	fallback IntakeAgent
 	logger   zerolog.Logger
+	system   string
 }
 
 func (l llmIntake) Decide(ctx context.Context, msgs []ChatMessage) (IntakeDecision, error) {
-	raw, err := l.chat.complete(ctx, intakeSystemPrompt, msgs)
+	raw, err := l.chat.complete(ctx, l.system, msgs)
 	if err != nil {
 		l.logger.Warn().Err(err).Msg("intake LLM call failed; using heuristic")
 		return l.fallback.Decide(ctx, msgs)
