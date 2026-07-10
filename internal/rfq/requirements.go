@@ -7,19 +7,21 @@ import "fmt"
 
 // RFQ lifecycle states.
 const (
-	StatusDraft  = "draft"
-	StatusOpen   = "open"
-	StatusQuoted = "quoted"
-	StatusClosed = "closed"
+	StatusDraft   = "draft"
+	StatusOpen    = "open"
+	StatusQuoted  = "quoted"
+	StatusClosed  = "closed"
+	StatusExpired = "expired"
 )
 
 // transitions defines the allowed status graph: draft → open → quoted → closed,
-// with open/quoted also able to close directly.
+// with open/quoted also able to expire.
 var transitions = map[string]map[string]bool{
-	StatusDraft:  {StatusOpen: true, StatusClosed: true},
-	StatusOpen:   {StatusQuoted: true, StatusClosed: true},
-	StatusQuoted: {StatusClosed: true},
-	StatusClosed: {},
+	StatusDraft:   {StatusOpen: true, StatusClosed: true},
+	StatusOpen:    {StatusQuoted: true, StatusClosed: true, StatusExpired: true},
+	StatusQuoted:  {StatusClosed: true, StatusExpired: true},
+	StatusClosed:  {},
+	StatusExpired: {},
 }
 
 // CanTransition reports whether an RFQ may move from one status to another.
