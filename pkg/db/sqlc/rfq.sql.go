@@ -138,6 +138,33 @@ func (q *Queries) GetRFQ(ctx context.Context, id string) (Rfq, error) {
 	return i, err
 }
 
+const listExpirableRFQIDs = `-- name: ListExpirableRFQIDs :many
+SELECT id FROM rfqs
+WHERE status IN ('open', 'quoted') AND expires_at IS NOT NULL AND expires_at <= NOW()
+ORDER BY expires_at
+LIMIT $1
+`
+
+func (q *Queries) ListExpirableRFQIDs(ctx context.Context, lim int32) ([]string, error) {
+	rows, err := q.db.Query(ctx, listExpirableRFQIDs, lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listMatchesByRFQ = `-- name: ListMatchesByRFQ :many
 SELECT m.id, m.rfq_id, m.seller_company_id, m.score, m.reason, m.created_at, c.name AS seller_name
 FROM rfq_matches m

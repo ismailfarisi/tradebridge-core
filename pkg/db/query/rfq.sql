@@ -66,3 +66,9 @@ LIMIT sqlc.arg(lim);
 INSERT INTO agent_events (company_id, type, payload)
 VALUES ($1, $2, sqlc.arg(payload)::jsonb)
 RETURNING *;
+
+-- name: ListExpirableRFQIDs :many
+SELECT id FROM rfqs
+WHERE status IN ('open', 'quoted') AND expires_at IS NOT NULL AND expires_at <= NOW()
+ORDER BY expires_at
+LIMIT sqlc.arg(lim);
