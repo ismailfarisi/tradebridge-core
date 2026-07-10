@@ -101,8 +101,11 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 
 	pub := eventbus.New(q, cfg.Redis, cfg.Logger)
 
-	// Settings hold per-company provider config; the encryption key falls back
-	// to the JWT secret when a dedicated one isn't configured.
+	// Settings hold the global (platform-wide) provider config; the encryption
+	// key falls back to the JWT secret when a dedicated one isn't configured.
+	// Built here (outside the admin block) because rfq needs settingsSvc as its
+	// extractor resolver even when the admin realm is disabled; its HTTP
+	// handler is only registered below, inside the admin guard.
 	encSecret := cfg.SettingsEncKey
 	if encSecret == "" {
 		encSecret = cfg.JWTSecret
@@ -116,7 +119,6 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 		envExtraction.Provider = "anthropic"
 	}
 	settingsSvc := settings.NewService(q, box, envExtraction)
-	settings.NewHandler(settingsSvc).Register(f, guard...)
 
 	rfq.NewHandler(rfq.NewService(q, pub, settingsSvc, cfg.Logger), q).Register(f, guard...)
 	quotes.NewHandler(quotes.NewService(q, cfg.Pool, pub), q).Register(f, guard...)
@@ -134,6 +136,7 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 		adminTokens := admin.NewTokenService(cfg.AdminJWTSecret, 24*time.Hour)
 		adminGuard := middleware.PlatformAdminGuard(cfg.AdminJWTSecret)
 		admin.NewHandler(adminSvc, adminTokens).Register(f, adminGuard)
+		settings.NewHandler(settingsSvc).Register(f, adminGuard)
 	} else {
 		cfg.Logger.Warn().Msg("ADMIN_JWT_SECRET unset — platform admin routes disabled")
 	}

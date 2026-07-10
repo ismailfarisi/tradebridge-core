@@ -97,6 +97,44 @@ func TestAdmin_CompanyTokenRejected(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, st, "a company token must not reach the admin realm")
 }
 
+// TestAdmin_SettingsRoundTrip verifies the global settings surface lives under
+// the admin realm: an admin can set model config + both prompts + a key, GET
+// returns a masked view with prompts + defaults, a company token cannot reach
+// it, and the legacy per-company route is gone.
+func TestAdmin_SettingsRoundTrip(t *testing.T) {
+	api, email, pass := buildAdminAPI(t)
+	st, body := doJSON(t, api, "POST", "/admin/v1/login", "", map[string]any{"email": email, "password": pass})
+	require.Equal(t, http.StatusOK, st)
+	tok := body["token"].(string)
+
+	// Set model config + both prompts + a key.
+	st, _ = doJSON(t, api, "PUT", "/admin/v1/settings", tok, map[string]any{
+		"provider": "anthropic", "model": "claude-haiku-4-5",
+		"api_key": "sk-secret-1234",
+		"extraction_system_prompt": "EX", "intake_system_prompt": "IN",
+	})
+	require.Equal(t, http.StatusOK, st)
+
+	// GET returns masked key + prompts + defaults, never the plaintext key.
+	st, got := doJSON(t, api, "GET", "/admin/v1/settings", tok, nil)
+	require.Equal(t, http.StatusOK, st)
+	ex := got["extraction"].(map[string]any)
+	require.Equal(t, true, ex["has_key"])
+	require.Equal(t, "1234", ex["key_last4"])
+	require.NotContains(t, got, "api_key")
+	require.Equal(t, "EX", got["extraction_system_prompt"])
+	require.Equal(t, "IN", got["intake_system_prompt"])
+	require.NotEmpty(t, got["default_extraction_prompt"])
+
+	// Company token cannot reach settings.
+	st, _ = doJSON(t, api, "GET", "/admin/v1/settings", "", nil)
+	require.Equal(t, http.StatusUnauthorized, st)
+
+	// Legacy per-company route is gone.
+	st, _ = doJSON(t, api, "GET", "/v1/settings/extraction", tok, nil)
+	require.Equal(t, http.StatusNotFound, st)
+}
+
 // TestAdmin_BootstrapIsIdempotent verifies a second Bootstrap call for the same
 // email is a no-op: no error and no duplicate admin created.
 func TestAdmin_BootstrapIsIdempotent(t *testing.T) {

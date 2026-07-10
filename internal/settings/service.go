@@ -1,6 +1,8 @@
-// Package settings stores per-company provider configuration (RFQ extraction
-// model + API key) entered from the frontend. Secret keys are encrypted at
-// rest; reads return only a masked hint. DB values override the env defaults.
+// Package settings stores the platform-wide provider configuration (RFQ
+// extraction model + API key + prompts) entered from the admin portal. The
+// settings are global — a single row — not per-company. Secret keys are
+// encrypted at rest; reads return only a masked hint. DB values override the
+// env defaults.
 package settings
 
 import (
@@ -14,7 +16,7 @@ import (
 	"github.com/tradebridge/core/pkg/db/sqlc"
 )
 
-// Service resolves and updates company settings. It implements
+// Service resolves and updates the global platform settings. It implements
 // rfq.ExtractorResolver.
 type Service struct {
 	q   *sqlc.Queries
@@ -36,20 +38,35 @@ type ExtractionView struct {
 	KeyLast4 string `json:"key_last4"`
 }
 
-// ExtractionInput is a settings update from the UI. APIKey is applied only when
-// non-empty; ClearKey removes a stored key.
-type ExtractionInput struct {
-	Provider string `json:"provider"`
-	Model    string `json:"model"`
-	BaseURL  string `json:"base_url"`
-	APIKey   string `json:"api_key"`
-	ClearKey bool   `json:"clear_api_key"`
+// SettingsView is the full masked view returned to the admin portal: the
+// extraction provider config, the two configurable system prompts, and the
+// built-in defaults (so the UI can show what an empty prompt falls back to).
+type SettingsView struct {
+	Extraction              ExtractionView `json:"extraction"`
+	ExtractionSystemPrompt  string         `json:"extraction_system_prompt"`
+	IntakeSystemPrompt      string         `json:"intake_system_prompt"`
+	DefaultExtractionPrompt string         `json:"default_extraction_prompt"`
+	DefaultIntakePrompt     string         `json:"default_intake_prompt"`
 }
 
-// ExtractionConfig resolves the effective extraction config for a company:
-// stored settings layered over the env defaults. Implements rfq.ExtractorResolver.
-func (s *Service) ExtractionConfig(ctx context.Context, companyID string) (rfq.ProviderConfig, error) {
-	row, err := s.q.GetCompanySettings(ctx, companyID)
+// ExtractionInput is a settings update from the admin portal. APIKey is
+// applied only when non-empty; ClearKey removes a stored key.
+type ExtractionInput struct {
+	Provider               string `json:"provider"`
+	Model                  string `json:"model"`
+	BaseURL                string `json:"base_url"`
+	APIKey                 string `json:"api_key"`
+	ClearKey               bool   `json:"clear_api_key"`
+	ExtractionSystemPrompt string `json:"extraction_system_prompt"`
+	IntakeSystemPrompt     string `json:"intake_system_prompt"`
+}
+
+// ExtractionConfig resolves the effective extraction config: the global
+// platform settings layered over the env defaults. The companyID argument is
+// ignored — settings are global, not per-company. Implements
+// rfq.ExtractorResolver.
+func (s *Service) ExtractionConfig(ctx context.Context, _ string) (rfq.ProviderConfig, error) {
+	row, err := s.q.GetPlatformSettings(ctx)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return s.env, nil
 	} else if err != nil {
@@ -73,35 +90,46 @@ func (s *Service) ExtractionConfig(ctx context.Context, companyID string) (rfq.P
 		}
 		cfg.APIKey = key
 	}
+	cfg.ExtractionPrompt = row.ExtractionSystemPrompt
+	cfg.IntakePrompt = row.IntakeSystemPrompt
 	return cfg, nil
 }
 
-// Get returns the masked view of a company's settings.
-func (s *Service) Get(ctx context.Context, companyID string) (ExtractionView, error) {
-	row, err := s.q.GetCompanySettings(ctx, companyID)
+// Get returns the masked view of the global platform settings.
+func (s *Service) Get(ctx context.Context) (SettingsView, error) {
+	row, err := s.q.GetPlatformSettings(ctx)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return ExtractionView{}, nil
+		return SettingsView{
+			DefaultExtractionPrompt: rfq.DefaultExtractionPrompt,
+			DefaultIntakePrompt:     rfq.DefaultIntakePrompt,
+		}, nil
 	} else if err != nil {
-		return ExtractionView{}, err
+		return SettingsView{}, err
 	}
-	return ExtractionView{
-		Provider: row.ExtractionProvider,
-		Model:    row.ExtractionModel,
-		BaseURL:  row.ExtractionBaseUrl,
-		HasKey:   len(row.ExtractionApiKeyEnc) > 0,
-		KeyLast4: row.ExtractionApiKeyLast4,
+	return SettingsView{
+		Extraction: ExtractionView{
+			Provider: row.ExtractionProvider,
+			Model:    row.ExtractionModel,
+			BaseURL:  row.ExtractionBaseUrl,
+			HasKey:   len(row.ExtractionApiKeyEnc) > 0,
+			KeyLast4: row.ExtractionApiKeyLast4,
+		},
+		ExtractionSystemPrompt:  row.ExtractionSystemPrompt,
+		IntakeSystemPrompt:      row.IntakeSystemPrompt,
+		DefaultExtractionPrompt: rfq.DefaultExtractionPrompt,
+		DefaultIntakePrompt:     rfq.DefaultIntakePrompt,
 	}, nil
 }
 
-// UpdateExtraction upserts a company's extraction settings and returns the
-// masked view. An empty APIKey preserves the stored key unless ClearKey is set.
-func (s *Service) UpdateExtraction(ctx context.Context, companyID string, in ExtractionInput) (ExtractionView, error) {
-	existing, err := s.q.GetCompanySettings(ctx, companyID)
+// Update upserts the global platform settings and returns the masked view. An
+// empty APIKey preserves the stored key unless ClearKey is set.
+func (s *Service) Update(ctx context.Context, in ExtractionInput) (SettingsView, error) {
+	existing, err := s.q.GetPlatformSettings(ctx)
 	haveExisting := true
 	if errors.Is(err, pgx.ErrNoRows) {
 		haveExisting = false
 	} else if err != nil {
-		return ExtractionView{}, err
+		return SettingsView{}, err
 	}
 
 	var enc []byte
@@ -112,7 +140,7 @@ func (s *Service) UpdateExtraction(ctx context.Context, companyID string, in Ext
 	case in.APIKey != "":
 		sealed, err := s.box.Seal(in.APIKey)
 		if err != nil {
-			return ExtractionView{}, err
+			return SettingsView{}, err
 		}
 		enc = sealed
 		last4 = mask(in.APIKey)
@@ -121,23 +149,30 @@ func (s *Service) UpdateExtraction(ctx context.Context, companyID string, in Ext
 		last4 = existing.ExtractionApiKeyLast4
 	}
 
-	row, err := s.q.UpsertCompanySettings(ctx, sqlc.UpsertCompanySettingsParams{
-		CompanyID:             companyID,
-		ExtractionProvider:    in.Provider,
-		ExtractionModel:       in.Model,
-		ExtractionBaseUrl:     in.BaseURL,
-		ExtractionApiKeyEnc:   enc,
-		ExtractionApiKeyLast4: last4,
+	row, err := s.q.UpsertPlatformSettings(ctx, sqlc.UpsertPlatformSettingsParams{
+		ExtractionProvider:     in.Provider,
+		ExtractionModel:        in.Model,
+		ExtractionBaseUrl:      in.BaseURL,
+		ExtractionApiKeyEnc:    enc,
+		ExtractionApiKeyLast4:  last4,
+		ExtractionSystemPrompt: in.ExtractionSystemPrompt,
+		IntakeSystemPrompt:     in.IntakeSystemPrompt,
 	})
 	if err != nil {
-		return ExtractionView{}, err
+		return SettingsView{}, err
 	}
-	return ExtractionView{
-		Provider: row.ExtractionProvider,
-		Model:    row.ExtractionModel,
-		BaseURL:  row.ExtractionBaseUrl,
-		HasKey:   len(row.ExtractionApiKeyEnc) > 0,
-		KeyLast4: row.ExtractionApiKeyLast4,
+	return SettingsView{
+		Extraction: ExtractionView{
+			Provider: row.ExtractionProvider,
+			Model:    row.ExtractionModel,
+			BaseURL:  row.ExtractionBaseUrl,
+			HasKey:   len(row.ExtractionApiKeyEnc) > 0,
+			KeyLast4: row.ExtractionApiKeyLast4,
+		},
+		ExtractionSystemPrompt:  row.ExtractionSystemPrompt,
+		IntakeSystemPrompt:      row.IntakeSystemPrompt,
+		DefaultExtractionPrompt: rfq.DefaultExtractionPrompt,
+		DefaultIntakePrompt:     rfq.DefaultIntakePrompt,
 	}, nil
 }
 
