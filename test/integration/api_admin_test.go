@@ -103,6 +103,12 @@ func TestAdmin_CompanyTokenRejected(t *testing.T) {
 // it, and the legacy per-company route is gone.
 func TestAdmin_SettingsRoundTrip(t *testing.T) {
 	api, email, pass := buildAdminAPI(t)
+	q := sqlc.New(poolOrSkip(t))
+	t.Cleanup(func() {
+		// Reset the shared global settings row so this test doesn't push other
+		// RFQ integration tests onto the (real) provider path.
+		_, _ = q.UpsertPlatformSettings(context.Background(), sqlc.UpsertPlatformSettingsParams{})
+	})
 	st, body := doJSON(t, api, "POST", "/admin/v1/login", "", map[string]any{"email": email, "password": pass})
 	require.Equal(t, http.StatusOK, st)
 	tok := body["token"].(string)
@@ -126,8 +132,18 @@ func TestAdmin_SettingsRoundTrip(t *testing.T) {
 	require.Equal(t, "IN", got["intake_system_prompt"])
 	require.NotEmpty(t, got["default_extraction_prompt"])
 
-	// Company token cannot reach settings.
+	// No token cannot reach settings.
 	st, _ = doJSON(t, api, "GET", "/admin/v1/settings", "", nil)
+	require.Equal(t, http.StatusUnauthorized, st)
+
+	// A real company token must not reach the admin settings endpoint.
+	st, s := doJSON(t, api, "POST", "/v1/auth/register", "", map[string]any{
+		"company_name": "SettingsAcme", "company_type": "buyer",
+		"email": uniqueEmail("sc-"), "password": "supersecret",
+	})
+	require.Equal(t, http.StatusCreated, st)
+	companyTok := s["token"].(string)
+	st, _ = doJSON(t, api, "GET", "/admin/v1/settings", companyTok, nil)
 	require.Equal(t, http.StatusUnauthorized, st)
 
 	// Legacy per-company route is gone.
