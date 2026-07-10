@@ -8,7 +8,6 @@ import { listRfqs, type Me, type RFQ } from "@/lib/api";
 import { useCoreHealth } from "@/lib/health";
 
 const isSeller = (m: Me) => m.company_type === "seller" || m.company_type === "both";
-const isAdmin = (m: Me) => m.role === "owner" || m.role === "admin";
 
 export default function ChatShell({ children }: { children: React.ReactNode }) {
   const { token, me, ready } = useMe();
@@ -94,7 +93,6 @@ export default function ChatShell({ children }: { children: React.ReactNode }) {
             {me.company_name ?? "—"}
           </strong>
           {isSeller(me) && <Link href="/seller/profile" className="small muted">Seller console</Link>}
-          {isAdmin(me) && <Link href="/admin/models" className="small muted">Admin settings</Link>}
           <button
             className="btn btn-sm btn-ghost"
             style={{ marginTop: "0.25rem", alignSelf: "flex-start" }}

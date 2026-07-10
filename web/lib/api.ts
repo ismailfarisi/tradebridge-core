@@ -100,14 +100,6 @@ export type AgentCred = {
   status: string;
   last_seen: unknown;
 };
-export type ExtractionSettings = {
-  provider: string;
-  model: string;
-  base_url: string;
-  has_key: boolean;
-  key_last4: string;
-};
-
 // --- auth ---
 
 export const health = () => req<{ status: string }>("GET", "/health");
@@ -156,12 +148,3 @@ export const issueAgentCred = (token: string, label: string) =>
   req<{ id: string; label: string; secret: string }>("POST", "/v1/agent-credentials", { token, body: { label } });
 export const revokeAgentCred = (token: string, id: string) =>
   req<null>("POST", `/v1/agent-credentials/${id}/revoke`, { token, body: {} });
-
-// --- admin / settings ---
-
-export const getExtraction = (token: string) =>
-  req<ExtractionSettings>("GET", "/v1/settings/extraction", { token });
-export const updateExtraction = (
-  token: string,
-  body: { provider: string; model: string; base_url: string; api_key?: string; clear_api_key?: boolean },
-) => req<ExtractionSettings>("PUT", "/v1/settings/extraction", { token, body });

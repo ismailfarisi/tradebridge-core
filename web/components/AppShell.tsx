@@ -10,7 +10,6 @@ type NavItem = { href: string; label: string; show: (me: Me) => boolean };
 
 const isSeller = (m: Me) => m.company_type === "seller" || m.company_type === "both";
 const isBuyer = (m: Me) => m.company_type === "buyer" || m.company_type === "both" || !m.company_type;
-const isAdmin = (m: Me) => m.role === "owner" || m.role === "admin";
 
 const NAV: { group: string; items: NavItem[] }[] = [
   {
@@ -27,14 +26,6 @@ const NAV: { group: string; items: NavItem[] }[] = [
       { href: "/seller/profile", label: "Supplier profile", show: isSeller },
       { href: "/seller/catalog", label: "Catalog", show: isSeller },
       { href: "/seller/agent", label: "Agent credentials", show: isSeller },
-    ],
-  },
-  {
-    group: "Admin",
-    items: [
-      { href: "/admin/models", label: "Model settings", show: isAdmin },
-      { href: "/admin/usage", label: "Usage", show: isAdmin },
-      { href: "/admin/fraud", label: "Fraud detection", show: isAdmin },
     ],
   },
 ];
