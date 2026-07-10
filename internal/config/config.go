@@ -30,6 +30,11 @@ type Config struct {
 	// CORSOrigins is a comma-separated allowlist of browser origins permitted to
 	// call the API (the frontend runs on a different origin than the API).
 	CORSOrigins string `mapstructure:"CORS_ORIGINS"`
+
+	// Platform superadmin realm (separate from company auth).
+	AdminJWTSecret        string `mapstructure:"ADMIN_JWT_SECRET"`
+	PlatformAdminEmail    string `mapstructure:"PLATFORM_ADMIN_EMAIL"`
+	PlatformAdminPassword string `mapstructure:"PLATFORM_ADMIN_PASSWORD"`
 }
 
 // Load reads configuration from the environment, falling back to a local
@@ -47,6 +52,9 @@ func Load() (*Config, error) {
 	v.SetDefault("ANTHROPIC_MODEL", "claude-haiku-4-5")
 	v.SetDefault("SETTINGS_ENC_KEY", "")
 	v.SetDefault("CORS_ORIGINS", "http://localhost:3010")
+	v.SetDefault("ADMIN_JWT_SECRET", "")
+	v.SetDefault("PLATFORM_ADMIN_EMAIL", "")
+	v.SetDefault("PLATFORM_ADMIN_PASSWORD", "")
 
 	v.SetConfigName(".env")
 	v.SetConfigType("env")

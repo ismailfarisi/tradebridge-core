@@ -27,6 +27,10 @@ func main() {
 		AnthropicModel:  app.Config.AnthropicModel,
 		SettingsEncKey:  app.Config.SettingsEncKey,
 		CORSOrigins:     app.Config.CORSOrigins,
+
+		AdminJWTSecret:        app.Config.AdminJWTSecret,
+		PlatformAdminEmail:    app.Config.PlatformAdminEmail,
+		PlatformAdminPassword: app.Config.PlatformAdminPassword,
 	})
 
 	addr := ":" + app.Config.Port

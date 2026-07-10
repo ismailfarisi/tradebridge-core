@@ -3,6 +3,7 @@
 package httpapi
 
 import (
+	"context"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -11,6 +12,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 
+	"github.com/tradebridge/core/internal/admin"
 	"github.com/tradebridge/core/internal/agent"
 	"github.com/tradebridge/core/internal/catalog"
 	"github.com/tradebridge/core/internal/eventbus"
@@ -38,6 +40,11 @@ type Config struct {
 	AnthropicModel  string
 	SettingsEncKey  string
 	CORSOrigins     string
+
+	// Platform superadmin realm (separate from company auth).
+	AdminJWTSecret        string
+	PlatformAdminEmail    string
+	PlatformAdminPassword string
 }
 
 // New builds the Core API with all Phase 1 routes mounted.
@@ -114,6 +121,22 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	rfq.NewHandler(rfq.NewService(q, pub, settingsSvc, cfg.Logger), q).Register(f, guard...)
 	quotes.NewHandler(quotes.NewService(q, cfg.Pool, pub), q).Register(f, guard...)
 	orders.NewHandler(q).Register(f, guard...)
+
+	// Platform superadmin realm: a separate credential store and JWT secret
+	// from company auth. Fail-closed — routes are not mounted at all when no
+	// secret is configured, rather than mounting with a guessable default.
+	if cfg.AdminJWTSecret != "" {
+		adminSvc := admin.NewService(q)
+		// Seed the platform admin from env (idempotent). Errors are logged, not fatal.
+		if err := adminSvc.Bootstrap(context.Background(), cfg.PlatformAdminEmail, cfg.PlatformAdminPassword); err != nil {
+			cfg.Logger.Error().Err(err).Msg("platform admin bootstrap failed")
+		}
+		adminTokens := admin.NewTokenService(cfg.AdminJWTSecret, 24*time.Hour)
+		adminGuard := middleware.PlatformAdminGuard(cfg.AdminJWTSecret)
+		admin.NewHandler(adminSvc, adminTokens).Register(f, adminGuard)
+	} else {
+		cfg.Logger.Warn().Msg("ADMIN_JWT_SECRET unset — platform admin routes disabled")
+	}
 
 	return f
 }

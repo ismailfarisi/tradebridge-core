@@ -18,6 +18,9 @@ import (
 	"github.com/tradebridge/core/pkg/db/sqlc"
 )
 
+// fiberApp is the subset of *fiber.App the JSON helpers use.
+type fiberApp = *fiber.App
+
 // buildAPI wires the real router against the test database.
 func buildAPI(t *testing.T) *fiber.App {
 	t.Helper()
@@ -26,6 +29,20 @@ func buildAPI(t *testing.T) *fiber.App {
 		JWTSecret: "test-secret",
 		Logger:    zerolog.Nop(),
 		Pool:      pool,
+	})
+}
+
+// buildAPIWithAdmin builds the router and seeds a platform admin.
+func buildAPIWithAdmin(t *testing.T, email, password string) *fiber.App {
+	t.Helper()
+	pool := poolOrSkip(t)
+	return httpapi.New(sqlc.New(pool), httpapi.Config{
+		JWTSecret:             "test-secret",
+		AdminJWTSecret:        "admin-test-secret",
+		PlatformAdminEmail:    email,
+		PlatformAdminPassword: password,
+		Logger:                zerolog.Nop(),
+		Pool:                  pool,
 	})
 }
 
