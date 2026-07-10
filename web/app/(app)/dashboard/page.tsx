@@ -37,7 +37,7 @@ export default function Dashboard() {
       </div>
 
       <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))" }}>
-        {buyer && <Action href="/rfqs" title="Post an RFQ" body="Describe what you need in plain language and get ranked quotes." />}
+        {buyer && <Action href="/chat" title="Post an RFQ" body="Describe what you need in plain language and get ranked quotes." />}
         {seller && <Action href="/seller/catalog" title="Manage catalog" body="Upload products so your agent can quote accurately." />}
         {seller && <Action href="/seller/agent" title="Agent credentials" body="Issue a credential so your seller agent can connect." />}
         {admin && <Action href="/admin/models" title="Model settings" body="Choose the provider + model that powers reasoning." />}

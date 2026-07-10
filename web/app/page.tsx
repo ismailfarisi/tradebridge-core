@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useToken } from "@/lib/auth";
 
 export default function Landing() {
@@ -26,9 +27,9 @@ export default function Landing() {
       </div>
       <div className="row">
         {token ? (
-          <a className="btn btn-primary" href="/dashboard">
-            Go to dashboard →
-          </a>
+          <Link className="btn btn-primary" href="/chat">
+            Open chat →
+          </Link>
         ) : (
           <>
             <a className="btn btn-primary" href="/register">

@@ -3,7 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { login, setToken } from "@/lib/api";
+import { login, me, setToken } from "@/lib/api";
+import { landingPath } from "@/lib/landing";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -19,7 +20,8 @@ export default function LoginPage() {
     try {
       const { token } = await login(email, password);
       setToken(token);
-      router.replace("/dashboard");
+      const profile = await me(token);
+      router.replace(landingPath(profile));
     } catch (e) {
       setErr(e instanceof Error ? e.message : "login failed");
       setBusy(false);

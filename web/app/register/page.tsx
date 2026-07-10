@@ -3,7 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { register, setToken, type CompanyType } from "@/lib/api";
+import { me, register, setToken, type CompanyType } from "@/lib/api";
+import { landingPath } from "@/lib/landing";
 import { AuthWrap } from "../login/page";
 
 const TYPES: { value: CompanyType; label: string; hint: string }[] = [
@@ -37,7 +38,8 @@ export default function RegisterPage() {
         password,
       });
       setToken(token);
-      router.replace("/dashboard");
+      const profile = await me(token);
+      router.replace(landingPath(profile));
     } catch (e) {
       setErr(e instanceof Error ? e.message : "registration failed");
       setBusy(false);

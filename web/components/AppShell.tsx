@@ -19,7 +19,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
   },
   {
     group: "Buyer",
-    items: [{ href: "/rfqs", label: "RFQs", show: isBuyer }],
+    items: [{ href: "/chat", label: "RFQ chat", show: isBuyer }],
   },
   {
     group: "Seller",
@@ -49,6 +49,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   // (null) before the client snapshot (localStorage) is read one tick later.
   // Redirecting on that first render bounces a logged-in user to /login, so we
   // wait until the client has mounted — by then the real token has been read.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => setHydrated(true), []);
 
   useEffect(() => {
