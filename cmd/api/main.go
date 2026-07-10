@@ -4,10 +4,13 @@
 package main
 
 import (
+	"context"
 	"time"
 
 	"github.com/tradebridge/core/internal/di"
+	"github.com/tradebridge/core/internal/eventbus"
 	"github.com/tradebridge/core/internal/httpapi"
+	"github.com/tradebridge/core/internal/rfq"
 )
 
 func main() {
@@ -31,7 +34,19 @@ func main() {
 		AdminJWTSecret:        app.Config.AdminJWTSecret,
 		PlatformAdminEmail:    app.Config.PlatformAdminEmail,
 		PlatformAdminPassword: app.Config.PlatformAdminPassword,
+
+		RFQTTLDays: app.Config.RFQTTLDays,
 	})
+
+	sweepCtx, cancelSweep := context.WithCancel(context.Background())
+	defer cancelSweep()
+	sweeper := rfq.NewSweeper(
+		app.Queries, app.Pool,
+		eventbus.New(app.Queries, app.Redis, app.Logger),
+		app.Logger,
+		time.Duration(app.Config.RFQSweepSeconds)*time.Second,
+	)
+	go sweeper.Run(sweepCtx)
 
 	addr := ":" + app.Config.Port
 	app.Logger.Info().Str("addr", addr).Msg("core api listening")

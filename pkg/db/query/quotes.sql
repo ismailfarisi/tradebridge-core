@@ -34,6 +34,11 @@ RETURNING *;
 UPDATE quotes SET status = 'rejected', updated_at = NOW()
 WHERE rfq_id = $1 AND id <> $2 AND status = 'submitted';
 
+-- name: ListSubmittedQuoteSellersExcept :many
+SELECT id, seller_company_id
+FROM quotes
+WHERE rfq_id = $1 AND id <> $2 AND status = 'submitted';
+
 -- name: CreateQuoteMessage :one
 INSERT INTO quote_messages (quote_id, author, body)
 VALUES ($1, $2, $3)

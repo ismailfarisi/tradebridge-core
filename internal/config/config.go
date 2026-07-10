@@ -35,6 +35,11 @@ type Config struct {
 	AdminJWTSecret        string `mapstructure:"ADMIN_JWT_SECRET"`
 	PlatformAdminEmail    string `mapstructure:"PLATFORM_ADMIN_EMAIL"`
 	PlatformAdminPassword string `mapstructure:"PLATFORM_ADMIN_PASSWORD"`
+
+	// RFQTTLDays is how long an RFQ stays open before the sweeper expires it.
+	RFQTTLDays int `mapstructure:"RFQ_TTL_DAYS"`
+	// RFQSweepSeconds is the expiry-sweeper tick interval (Task C4).
+	RFQSweepSeconds int `mapstructure:"RFQ_SWEEP_SECONDS"`
 }
 
 // Load reads configuration from the environment, falling back to a local
@@ -55,6 +60,8 @@ func Load() (*Config, error) {
 	v.SetDefault("ADMIN_JWT_SECRET", "")
 	v.SetDefault("PLATFORM_ADMIN_EMAIL", "")
 	v.SetDefault("PLATFORM_ADMIN_PASSWORD", "")
+	v.SetDefault("RFQ_TTL_DAYS", 14)
+	v.SetDefault("RFQ_SWEEP_SECONDS", 300)
 
 	v.SetConfigName(".env")
 	v.SetConfigType("env")

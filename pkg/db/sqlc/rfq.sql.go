@@ -8,6 +8,8 @@ package sqlc
 import (
 	"context"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createAgentEvent = `-- name: CreateAgentEvent :one
@@ -41,7 +43,7 @@ func (q *Queries) CreateAgentEvent(ctx context.Context, arg CreateAgentEventPara
 const createRFQ = `-- name: CreateRFQ :one
 INSERT INTO rfqs (buyer_company_id, created_by, title, raw_text)
 VALUES ($1, $2, $3, $4)
-RETURNING id, buyer_company_id, created_by, title, raw_text, requirements, category, status, match_count, created_at, updated_at, messages
+RETURNING id, buyer_company_id, created_by, title, raw_text, requirements, category, status, match_count, created_at, updated_at, messages, expires_at
 `
 
 type CreateRFQParams struct {
@@ -72,6 +74,7 @@ func (q *Queries) CreateRFQ(ctx context.Context, arg CreateRFQParams) (Rfq, erro
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Messages,
+		&i.ExpiresAt,
 	)
 	return i, err
 }
@@ -111,7 +114,7 @@ func (q *Queries) CreateRFQMatch(ctx context.Context, arg CreateRFQMatchParams) 
 }
 
 const getRFQ = `-- name: GetRFQ :one
-SELECT id, buyer_company_id, created_by, title, raw_text, requirements, category, status, match_count, created_at, updated_at, messages FROM rfqs WHERE id = $1
+SELECT id, buyer_company_id, created_by, title, raw_text, requirements, category, status, match_count, created_at, updated_at, messages, expires_at FROM rfqs WHERE id = $1
 `
 
 func (q *Queries) GetRFQ(ctx context.Context, id string) (Rfq, error) {
@@ -130,8 +133,36 @@ func (q *Queries) GetRFQ(ctx context.Context, id string) (Rfq, error) {
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Messages,
+		&i.ExpiresAt,
 	)
 	return i, err
+}
+
+const listExpirableRFQIDs = `-- name: ListExpirableRFQIDs :many
+SELECT id FROM rfqs
+WHERE status IN ('open', 'quoted') AND expires_at IS NOT NULL AND expires_at <= NOW()
+ORDER BY expires_at
+LIMIT $1
+`
+
+func (q *Queries) ListExpirableRFQIDs(ctx context.Context, lim int32) ([]string, error) {
+	rows, err := q.db.Query(ctx, listExpirableRFQIDs, lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listMatchesByRFQ = `-- name: ListMatchesByRFQ :many
@@ -181,7 +212,7 @@ func (q *Queries) ListMatchesByRFQ(ctx context.Context, rfqID string) ([]ListMat
 }
 
 const listRFQsByBuyer = `-- name: ListRFQsByBuyer :many
-SELECT id, buyer_company_id, created_by, title, raw_text, requirements, category, status, match_count, created_at, updated_at, messages FROM rfqs
+SELECT id, buyer_company_id, created_by, title, raw_text, requirements, category, status, match_count, created_at, updated_at, messages, expires_at FROM rfqs
 WHERE buyer_company_id = $1
 ORDER BY created_at DESC
 LIMIT $3 OFFSET $2
@@ -215,6 +246,7 @@ func (q *Queries) ListRFQsByBuyer(ctx context.Context, arg ListRFQsByBuyerParams
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Messages,
+			&i.ExpiresAt,
 		); err != nil {
 			return nil, err
 		}
@@ -232,16 +264,18 @@ SET requirements = $1::jsonb,
     category     = $2,
     match_count  = $3,
     status       = 'open',
+    expires_at   = $4,
     updated_at   = NOW()
-WHERE id = $4
-RETURNING id, buyer_company_id, created_by, title, raw_text, requirements, category, status, match_count, created_at, updated_at, messages
+WHERE id = $5
+RETURNING id, buyer_company_id, created_by, title, raw_text, requirements, category, status, match_count, created_at, updated_at, messages, expires_at
 `
 
 type MarkRFQMatchedParams struct {
-	Requirements []byte `json:"requirements"`
-	Category     string `json:"category"`
-	MatchCount   int32  `json:"match_count"`
-	ID           string `json:"id"`
+	Requirements []byte             `json:"requirements"`
+	Category     string             `json:"category"`
+	MatchCount   int32              `json:"match_count"`
+	ExpiresAt    pgtype.Timestamptz `json:"expires_at"`
+	ID           string             `json:"id"`
 }
 
 func (q *Queries) MarkRFQMatched(ctx context.Context, arg MarkRFQMatchedParams) (Rfq, error) {
@@ -249,6 +283,7 @@ func (q *Queries) MarkRFQMatched(ctx context.Context, arg MarkRFQMatchedParams) 
 		arg.Requirements,
 		arg.Category,
 		arg.MatchCount,
+		arg.ExpiresAt,
 		arg.ID,
 	)
 	var i Rfq
@@ -265,6 +300,7 @@ func (q *Queries) MarkRFQMatched(ctx context.Context, arg MarkRFQMatchedParams) 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Messages,
+		&i.ExpiresAt,
 	)
 	return i, err
 }
@@ -344,7 +380,7 @@ const setRFQStatus = `-- name: SetRFQStatus :one
 UPDATE rfqs
 SET status = $1, updated_at = NOW()
 WHERE id = $2
-RETURNING id, buyer_company_id, created_by, title, raw_text, requirements, category, status, match_count, created_at, updated_at, messages
+RETURNING id, buyer_company_id, created_by, title, raw_text, requirements, category, status, match_count, created_at, updated_at, messages, expires_at
 `
 
 type SetRFQStatusParams struct {
@@ -368,6 +404,7 @@ func (q *Queries) SetRFQStatus(ctx context.Context, arg SetRFQStatusParams) (Rfq
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Messages,
+		&i.ExpiresAt,
 	)
 	return i, err
 }
