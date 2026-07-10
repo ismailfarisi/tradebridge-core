@@ -29,6 +29,8 @@ func (h *Handler) Register(app *fiber.App, guard ...fiber.Handler) {
 	g.Get("/", h.list)
 	g.Get("/:id", h.get)
 	g.Post("/:id/close", h.close)
+
+	app.Post("/v1/rfq-chat", append(append([]fiber.Handler{}, guard...), h.chat)...)
 }
 
 type createReq struct {
@@ -151,6 +153,30 @@ func (h *Handler) get(c *fiber.Ctx) error {
 		"match_count": len(matches),
 		"matches":     matches,
 	})
+}
+
+type chatReq struct {
+	Messages []ChatMessage `json:"messages"`
+}
+
+func (h *Handler) chat(c *fiber.Ctx) error {
+	var req chatReq
+	if err := c.BodyParser(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
+	}
+	if len(req.Messages) == 0 {
+		return fiber.NewError(fiber.StatusBadRequest, "messages required")
+	}
+	res, err := h.svc.Chat(c.Context(), middleware.CompanyID(c), middleware.UserID(c), req.Messages)
+	if err != nil {
+		return err
+	}
+	out := fiber.Map{"done": res.Done, "assistant": res.Assistant}
+	if res.Done && res.RFQ != nil {
+		out["rfq"] = view(*res.RFQ)
+		out["match_count"] = res.MatchCount
+	}
+	return c.JSON(out)
 }
 
 func (h *Handler) close(c *fiber.Ctx) error {

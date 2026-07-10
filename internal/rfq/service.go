@@ -3,6 +3,7 @@ package rfq
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sort"
 	"strings"
 
@@ -39,6 +40,64 @@ func (s *Service) extractorFor(ctx context.Context, companyID string) Extractor 
 		return HeuristicExtractor{}
 	}
 	return BuildExtractor(cfg, s.logger)
+}
+
+// intakeFor resolves the buyer's provider config and builds an intake agent,
+// degrading to the heuristic on resolver error (same policy as extractorFor).
+func (s *Service) intakeFor(ctx context.Context, companyID string) IntakeAgent {
+	cfg, err := s.resolver.ExtractionConfig(ctx, companyID)
+	if err != nil {
+		s.logger.Warn().Err(err).Str("company_id", companyID).Msg("intake config resolve failed; using heuristic")
+		return HeuristicIntake{}
+	}
+	return BuildIntake(cfg, s.logger)
+}
+
+// ChatResult is one RFQ-chat step: either a clarifying question (Done=false) or
+// the created RFQ (Done=true, RFQ populated).
+type ChatResult struct {
+	Done       bool
+	Assistant  string
+	RFQ        *sqlc.Rfq
+	MatchCount int
+}
+
+// Chat runs one intake step. On "create" it reuses CreateAndMatch and persists
+// the full transcript (incl. the confirmation) to rfqs.messages.
+func (s *Service) Chat(ctx context.Context, buyerCompanyID, userID string, msgs []ChatMessage) (ChatResult, error) {
+	dec, err := s.intakeFor(ctx, buyerCompanyID).Decide(ctx, msgs)
+	if err != nil {
+		return ChatResult{}, err
+	}
+	if dec.Action != "create" {
+		return ChatResult{Done: false, Assistant: dec.Message}, nil
+	}
+
+	opened, matches, err := s.CreateAndMatch(ctx, buyerCompanyID, userID, dec.Title, dec.Text)
+	if err != nil {
+		return ChatResult{}, err
+	}
+
+	confirm := chatConfirmation(opened.Title, len(matches))
+	transcript := append(append([]ChatMessage{}, msgs...), ChatMessage{Role: "assistant", Content: confirm})
+	raw, err := json.Marshal(transcript)
+	if err != nil {
+		return ChatResult{}, err
+	}
+	if err := s.q.SetRFQMessages(ctx, sqlc.SetRFQMessagesParams{Messages: raw, ID: opened.ID}); err != nil {
+		return ChatResult{}, err
+	}
+	opened.Messages = raw
+	return ChatResult{Done: true, Assistant: confirm, RFQ: &opened, MatchCount: len(matches)}, nil
+}
+
+// chatConfirmation is the assistant's closing line after posting an RFQ.
+func chatConfirmation(title string, n int) string {
+	plural := "s"
+	if n == 1 {
+		plural = ""
+	}
+	return fmt.Sprintf("Done — I've posted your RFQ %q and matched %d seller%s. Quotes will appear here as sellers respond.", title, n, plural)
 }
 
 // MatchResult is one matched seller, returned to the buyer after creation.

@@ -3,6 +3,7 @@ package integration
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -38,4 +39,55 @@ func TestChat_MessagesRoundTrip(t *testing.T) {
 	got, err := q.GetRFQ(ctx, rfq.ID)
 	require.NoError(t, err)
 	require.JSONEq(t, string(transcript), string(got.Messages))
+}
+
+// TestChat_HeuristicAsksThenCreates walks the no-key heuristic path end to end.
+func TestChat_HeuristicAsksThenCreates(t *testing.T) {
+	api := buildAPI(t)
+
+	st, buyer := doJSON(t, api, "POST", "/v1/auth/register", "", map[string]any{
+		"company_name": "ChatBuyer", "company_type": "buyer",
+		"email": uniqueEmail("cb-"), "password": "supersecret",
+	})
+	require.Equal(t, http.StatusCreated, st)
+	token := buyer["token"].(string)
+
+	// Vague opener → assistant asks (done=false, no rfq).
+	st, r1 := doJSON(t, api, "POST", "/v1/rfq-chat", token, map[string]any{
+		"messages": []map[string]string{{"role": "user", "content": "hi, I want to buy something"}},
+	})
+	require.Equal(t, http.StatusOK, st)
+	require.Equal(t, false, r1["done"])
+	require.NotEmpty(t, r1["assistant"])
+	require.Nil(t, r1["rfq"])
+
+	// Full detail → assistant creates (done=true, rfq present, transcript persisted).
+	st, r2 := doJSON(t, api, "POST", "/v1/rfq-chat", token, map[string]any{
+		"messages": []map[string]string{
+			{"role": "user", "content": "hi, I want to buy something"},
+			{"role": "assistant", "content": r1["assistant"].(string)},
+			{"role": "user", "content": "500 cartons for packaging, deliver to Dubai next month"},
+		},
+	})
+	require.Equal(t, http.StatusOK, st)
+	require.Equal(t, true, r2["done"])
+	rfq := r2["rfq"].(map[string]any)
+	rfqID := rfq["id"].(string)
+	require.NotEmpty(t, rfqID)
+	msgs := rfq["messages"].([]any)
+	require.GreaterOrEqual(t, len(msgs), 3, "transcript persisted incl. assistant confirmation")
+
+	// GET returns the persisted transcript.
+	st, got := doJSON(t, api, "GET", "/v1/rfqs/"+rfqID, token, nil)
+	require.Equal(t, http.StatusOK, st)
+	require.NotEmpty(t, got["rfq"].(map[string]any)["messages"])
+}
+
+// TestChat_RequiresAuth proves the endpoint is behind the tenant guard.
+func TestChat_RequiresAuth(t *testing.T) {
+	api := buildAPI(t)
+	st, _ := doJSON(t, api, "POST", "/v1/rfq-chat", "", map[string]any{
+		"messages": []map[string]string{{"role": "user", "content": "x"}},
+	})
+	require.Equal(t, http.StatusUnauthorized, st)
 }
