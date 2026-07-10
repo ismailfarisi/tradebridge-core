@@ -73,8 +73,10 @@ export type RFQ = {
   category: string;
   status: string;
   match_count: number;
+  messages?: ChatMessage[];
   created_at: string;
 };
+export type ChatMessage = { role: "user" | "assistant"; content: string };
 export type QuoteRow = {
   id: string;
   seller_company_id: string;
@@ -129,6 +131,12 @@ export const acceptQuote = (token: string, quoteId: string) =>
   req<{ order_id: string; total_cents: number }>("POST", `/v1/quotes/${quoteId}/accept`, { token, body: {} });
 export const closeRfq = (token: string, id: string) =>
   req<RFQ>("POST", `/v1/rfqs/${id}/close`, { token, body: {} });
+export const rfqChat = (token: string, messages: ChatMessage[]) =>
+  req<{ done: boolean; assistant: string; rfq?: RFQ; match_count?: number }>(
+    "POST",
+    "/v1/rfq-chat",
+    { token, body: { messages } },
+  );
 
 // --- seller ---
 
