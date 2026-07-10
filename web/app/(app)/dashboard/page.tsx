@@ -21,7 +21,6 @@ export default function Dashboard() {
   if (!me) return null;
   const seller = me.company_type === "seller" || me.company_type === "both";
   const buyer = me.company_type !== "seller";
-  const admin = me.role === "owner" || me.role === "admin";
 
   return (
     <>
@@ -40,9 +39,6 @@ export default function Dashboard() {
         {buyer && <Action href="/chat" title="Post an RFQ" body="Describe what you need in plain language and get ranked quotes." />}
         {seller && <Action href="/seller/catalog" title="Manage catalog" body="Upload products so your agent can quote accurately." />}
         {seller && <Action href="/seller/agent" title="Agent credentials" body="Issue a credential so your seller agent can connect." />}
-        {admin && <Action href="/admin/models" title="Model settings" body="Choose the provider + model that powers reasoning." />}
-        {admin && <Action href="/admin/usage" title="Usage & billing" body="Track requests, tokens and spend across the platform." />}
-        {admin && <Action href="/admin/fraud" title="Fraud detection" body="Review flagged activity and risk signals." />}
       </div>
     </>
   );
