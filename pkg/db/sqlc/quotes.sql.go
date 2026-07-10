@@ -204,6 +204,42 @@ func (q *Queries) ListQuoteMessages(ctx context.Context, quoteID string) ([]Quot
 	return items, nil
 }
 
+const listSubmittedQuoteSellersExcept = `-- name: ListSubmittedQuoteSellersExcept :many
+SELECT id, seller_company_id
+FROM quotes
+WHERE rfq_id = $1 AND id <> $2 AND status = 'submitted'
+`
+
+type ListSubmittedQuoteSellersExceptParams struct {
+	RfqID string `json:"rfq_id"`
+	ID    string `json:"id"`
+}
+
+type ListSubmittedQuoteSellersExceptRow struct {
+	ID              string `json:"id"`
+	SellerCompanyID string `json:"seller_company_id"`
+}
+
+func (q *Queries) ListSubmittedQuoteSellersExcept(ctx context.Context, arg ListSubmittedQuoteSellersExceptParams) ([]ListSubmittedQuoteSellersExceptRow, error) {
+	rows, err := q.db.Query(ctx, listSubmittedQuoteSellersExcept, arg.RfqID, arg.ID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListSubmittedQuoteSellersExceptRow
+	for rows.Next() {
+		var i ListSubmittedQuoteSellersExceptRow
+		if err := rows.Scan(&i.ID, &i.SellerCompanyID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const rankQuotesByRFQ = `-- name: RankQuotesByRFQ :many
 SELECT q.id, q.rfq_id, q.seller_company_id, q.agent_command_id, q.price_cents, q.currency, q.delivery_days, q.notes, q.completeness, q.status, q.created_at, q.updated_at, c.name AS seller_name
 FROM quotes q

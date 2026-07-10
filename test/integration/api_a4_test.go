@@ -126,3 +126,84 @@ func TestA4_FullLoop(t *testing.T) {
 	st, _ = doJSON(t, api, "POST", "/v1/quotes/"+winningQuoteID+"/accept", buyerToken, nil)
 	require.Equal(t, http.StatusConflict, st)
 }
+
+// TestQuotes_AcceptNotifiesLosers verifies accepting one quote writes a
+// durable quote.rejected event for each other submitted seller (in addition
+// to order.created for the winner).
+func TestQuotes_AcceptNotifiesLosers(t *testing.T) {
+	api := buildAPI(t)
+	gw := buildGateway(t)
+	pool := poolOrSkip(t)
+	ctx := context.Background()
+
+	_, sellerACompany, secretA := registerSeller(t, api, "CheapPack2")
+	_, sellerBCompany, secretB := registerSeller(t, api, "PriceyPack2")
+
+	st, buyer := doJSON(t, api, "POST", "/v1/auth/register", "", map[string]any{
+		"company_name": "LoopBuyer2", "company_type": "buyer",
+		"email": uniqueEmail("b4b-"), "password": "supersecret",
+	})
+	require.Equal(t, http.StatusCreated, st)
+	buyerToken := buyer["token"].(string)
+
+	st, created := doJSON(t, api, "POST", "/v1/rfqs", buyerToken, map[string]any{
+		"title": "Cartons", "text": "Need 500 cartons for packaging, deliver to Dubai.",
+	})
+	require.Equal(t, http.StatusCreated, st)
+	rfqID := created["rfq"].(map[string]any)["id"].(string)
+
+	// Both agents submit quotes via the gateway. A is cheaper and will win.
+	st, _ = doJSON(t, gw, "POST", "/agent/v1/commands", secretA, map[string]any{
+		"type": "quote.submit", "idempotency_key": "a1", "rfq_id": rfqID,
+		"payload": map[string]any{"price": 1000, "currency": "USD", "delivery_days": 10, "notes": "in stock"},
+	})
+	require.Equal(t, http.StatusCreated, st)
+	st, _ = doJSON(t, gw, "POST", "/agent/v1/commands", secretB, map[string]any{
+		"type": "quote.submit", "idempotency_key": "b1", "rfq_id": rfqID,
+		"payload": map[string]any{"price": 1500, "currency": "USD", "delivery_days": 7},
+	})
+	require.Equal(t, http.StatusCreated, st)
+
+	// Find the loser's (seller B's) quote id before it gets flipped to rejected.
+	var loserQuoteID string
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT id FROM quotes WHERE rfq_id=$1 AND seller_company_id=$2`, rfqID, sellerBCompany).Scan(&loserQuoteID))
+
+	st, listed := doJSON(t, api, "GET", "/v1/rfqs/"+rfqID+"/quotes", buyerToken, nil)
+	require.Equal(t, http.StatusOK, st)
+	quotes := listed["quotes"].([]any)
+	require.Len(t, quotes, 2)
+	winningQuoteID := quotes[0].(map[string]any)["id"].(string)
+	require.Equal(t, sellerACompany, quotes[0].(map[string]any)["seller_company_id"])
+
+	// Buyer accepts the winning quote.
+	st, accepted := doJSON(t, api, "POST", "/v1/quotes/"+winningQuoteID+"/accept", buyerToken, nil)
+	require.Equal(t, http.StatusCreated, st)
+	orderID := accepted["order_id"].(string)
+
+	// The losing quote is now rejected in the DB.
+	var loseStatus string
+	require.NoError(t, pool.QueryRow(ctx, `SELECT status FROM quotes WHERE id=$1`, loserQuoteID).Scan(&loseStatus))
+	require.Equal(t, "rejected", loseStatus)
+
+	// The winning seller's agent still gets order.created.
+	var orderEvents int
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT count(*) FROM agent_events WHERE company_id=$1 AND type='order.created' AND payload->>'order_id'=$2`,
+		sellerACompany, orderID).Scan(&orderEvents))
+	require.Equal(t, 1, orderEvents, "winning seller's agent receives order.created")
+
+	// The losing seller's agent receives a durable quote.rejected event for its quote.
+	var rejectedEvents int
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT count(*) FROM agent_events WHERE company_id=$1 AND type='quote.rejected' AND payload->>'quote_id'=$2 AND payload->>'reason'='not_selected'`,
+		sellerBCompany, loserQuoteID).Scan(&rejectedEvents))
+	require.Equal(t, 1, rejectedEvents, "losing seller's agent receives a durable quote.rejected event")
+
+	// The winning seller does NOT get a quote.rejected event.
+	var winnerRejected int
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT count(*) FROM agent_events WHERE company_id=$1 AND type='quote.rejected'`,
+		sellerACompany).Scan(&winnerRejected))
+	require.Equal(t, 0, winnerRejected)
+}

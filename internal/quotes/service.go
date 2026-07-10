@@ -116,6 +116,14 @@ type orderCreatedEvent struct {
 	Currency        string `json:"currency"`
 }
 
+type quoteRejectedEvent struct {
+	Type            string `json:"type"`
+	RFQID           string `json:"rfq_id"`
+	QuoteID         string `json:"quote_id"`
+	SellerCompanyID string `json:"seller_company_id"`
+	Reason          string `json:"reason"`
+}
+
 // Accept accepts a quote on behalf of the buyer: it marks the quote accepted,
 // rejects the other quotes on the RFQ, creates the purchase order, closes the
 // RFQ, and notifies the seller's agent — all in one transaction, with the live
@@ -147,6 +155,15 @@ func (s *Service) Accept(ctx context.Context, buyerCompanyID, quoteID string) (s
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	qtx := s.q.WithTx(tx)
+
+	// Capture the still-submitted losing sellers before RejectOtherQuotes flips
+	// their status, so we know exactly who to notify.
+	losers, err := qtx.ListSubmittedQuoteSellersExcept(ctx, sqlc.ListSubmittedQuoteSellersExceptParams{
+		RfqID: quote.RfqID, ID: quoteID,
+	})
+	if err != nil {
+		return sqlc.Order{}, err
+	}
 
 	if _, err := qtx.AcceptQuote(ctx, quoteID); err != nil {
 		return sqlc.Order{}, err
@@ -193,11 +210,39 @@ func (s *Service) Accept(ctx context.Context, buyerCompanyID, quoteID string) (s
 		return sqlc.Order{}, err
 	}
 
+	// Write-always: durable quote.rejected events for each losing seller, same
+	// transaction as order.created above.
+	rejectedEvs := make([]sqlc.AgentEvent, 0, len(losers))
+	for _, l := range losers {
+		rb, err := json.Marshal(quoteRejectedEvent{
+			Type:            "quote.rejected",
+			RFQID:           quote.RfqID,
+			QuoteID:         l.ID,
+			SellerCompanyID: l.SellerCompanyID,
+			Reason:          "not_selected",
+		})
+		if err != nil {
+			return sqlc.Order{}, err
+		}
+		rev, err := qtx.CreateAgentEvent(ctx, sqlc.CreateAgentEventParams{
+			CompanyID: l.SellerCompanyID,
+			Type:      "quote.rejected",
+			Payload:   rb,
+		})
+		if err != nil {
+			return sqlc.Order{}, err
+		}
+		rejectedEvs = append(rejectedEvs, rev)
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return sqlc.Order{}, err
 	}
 
 	// Live publish only after the durable state is committed.
 	s.pub.PublishExisting(ctx, ev)
+	for _, rev := range rejectedEvs {
+		s.pub.PublishExisting(ctx, rev)
+	}
 	return order, nil
 }
