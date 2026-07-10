@@ -46,6 +46,14 @@ type Requirements struct {
 	Keywords []string `json:"keywords"`
 }
 
+// ChatMessage is one turn of the buyer↔assistant RFQ-intake conversation. The
+// frontend holds the running transcript and posts it to /v1/rfq-chat; on RFQ
+// creation the whole transcript is persisted to rfqs.messages.
+type ChatMessage struct {
+	Role    string `json:"role"`    // "user" | "assistant"
+	Content string `json:"content"`
+}
+
 // needles returns the distinct, non-empty search terms used to match sellers:
 // the category first (highest signal), then any keywords.
 func (r Requirements) needles() []string {

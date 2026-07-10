@@ -28,6 +28,11 @@ SET status = sqlc.arg(status), updated_at = NOW()
 WHERE id = sqlc.arg(id)
 RETURNING *;
 
+-- name: SetRFQMessages :exec
+UPDATE rfqs
+SET messages = sqlc.arg(messages)::jsonb, updated_at = NOW()
+WHERE id = sqlc.arg(id);
+
 -- name: CreateRFQMatch :one
 INSERT INTO rfq_matches (rfq_id, seller_company_id, score, reason)
 VALUES ($1, $2, $3, $4)

@@ -38,20 +38,25 @@ type createReq struct {
 
 // rfqView is the JSON shape returned to buyers, with requirements decoded.
 type rfqView struct {
-	ID           string       `json:"id"`
-	Title        string       `json:"title"`
-	RawText      string       `json:"raw_text"`
-	Requirements Requirements `json:"requirements"`
-	Category     string       `json:"category"`
-	Status       string       `json:"status"`
-	MatchCount   int32        `json:"match_count"`
-	CreatedAt    string       `json:"created_at"`
+	ID           string        `json:"id"`
+	Title        string        `json:"title"`
+	RawText      string        `json:"raw_text"`
+	Requirements Requirements  `json:"requirements"`
+	Category     string        `json:"category"`
+	Status       string        `json:"status"`
+	MatchCount   int32         `json:"match_count"`
+	Messages     []ChatMessage `json:"messages,omitempty"`
+	CreatedAt    string        `json:"created_at"`
 }
 
 func view(r sqlc.Rfq) rfqView {
 	var req Requirements
 	if len(r.Requirements) > 0 {
 		_ = json.Unmarshal(r.Requirements, &req)
+	}
+	var msgs []ChatMessage
+	if len(r.Messages) > 0 {
+		_ = json.Unmarshal(r.Messages, &msgs)
 	}
 	return rfqView{
 		ID:           r.ID,
@@ -61,6 +66,7 @@ func view(r sqlc.Rfq) rfqView {
 		Category:     r.Category,
 		Status:       r.Status,
 		MatchCount:   r.MatchCount,
+		Messages:     msgs,
 		CreatedAt:    r.CreatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
 	}
 }

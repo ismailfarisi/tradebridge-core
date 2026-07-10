@@ -127,6 +127,7 @@ type Rfq struct {
 	MatchCount     int32     `json:"match_count"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
+	Messages       []byte    `json:"messages"`
 }
 
 type RfqMatch struct {
