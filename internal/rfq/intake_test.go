@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/rs/zerolog"
 )
 
 func TestHeuristicIntake_AsksForProductThenQuantityThenCreates(t *testing.T) {
@@ -88,5 +90,63 @@ func TestHeuristicIntake_CapsAtMaxTurns(t *testing.T) {
 	}
 	if d.Action != "create" {
 		t.Fatalf("action = %q, want create at turn cap", d.Action)
+	}
+}
+
+type fakeChat struct {
+	reply string
+	err   error
+}
+
+func (f fakeChat) complete(_ context.Context, _ string, _ []ChatMessage) (string, error) {
+	return f.reply, f.err
+}
+
+func newTestLLMIntake(reply string, err error) llmIntake {
+	return llmIntake{chat: fakeChat{reply: reply, err: err}, fallback: HeuristicIntake{}, logger: zerolog.Nop()}
+}
+
+func TestLLMIntake_ParsesAsk(t *testing.T) {
+	d, err := newTestLLMIntake(`{"action":"ask","message":"What's the target price?"}`, nil).
+		Decide(context.Background(), []ChatMessage{{Role: "user", Content: "cartons"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Action != "ask" || d.Message != "What's the target price?" {
+		t.Fatalf("got %+v", d)
+	}
+}
+
+func TestLLMIntake_ParsesCreate(t *testing.T) {
+	d, err := newTestLLMIntake(`{"action":"create","title":"Cartons","rfq_text":"500 cartons to Dubai"}`, nil).
+		Decide(context.Background(), []ChatMessage{{Role: "user", Content: "500 cartons to Dubai"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Action != "create" || d.Title != "Cartons" || d.Text != "500 cartons to Dubai" {
+		t.Fatalf("got %+v", d)
+	}
+}
+
+func TestLLMIntake_FallsBackOnError(t *testing.T) {
+	// Provider error → heuristic decides (product+qty present → create).
+	d, err := newTestLLMIntake("", context.DeadlineExceeded).
+		Decide(context.Background(), []ChatMessage{{Role: "user", Content: "500 cartons for packaging to Dubai"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Action != "create" {
+		t.Fatalf("expected heuristic create on fallback, got %+v", d)
+	}
+}
+
+func TestLLMIntake_FallsBackOnGarbage(t *testing.T) {
+	d, err := newTestLLMIntake("not json at all", nil).
+		Decide(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Action != "ask" { // heuristic asks for product on a vague opener
+		t.Fatalf("expected heuristic ask on garbage, got %+v", d)
 	}
 }

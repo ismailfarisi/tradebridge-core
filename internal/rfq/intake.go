@@ -27,15 +27,20 @@ type IntakeAgent interface {
 }
 
 // BuildIntake picks an intake agent from a resolved config, mirroring
-// BuildExtractor. With no API key it uses the deterministic heuristic, which
-// keeps RFQ chat fully functional with zero external dependencies.
-//
-// LLM intake (anthropic / openai_compatible) is added in a later task; until
-// then every configuration uses the deterministic heuristic intake.
+// BuildExtractor. With no API key it uses the deterministic heuristic.
 func BuildIntake(cfg ProviderConfig, logger zerolog.Logger) IntakeAgent {
-	_ = cfg
-	_ = logger
-	return HeuristicIntake{}
+	switch {
+	case cfg.APIKey == "":
+		return HeuristicIntake{}
+	case cfg.Provider == "openai_compatible":
+		return llmIntake{chat: newOpenAIChat(cfg.BaseURL, cfg.Model, cfg.APIKey, logger), fallback: HeuristicIntake{}, logger: logger}
+	default: // anthropic
+		model := cfg.Model
+		if model == "" {
+			model = "claude-haiku-4-5"
+		}
+		return llmIntake{chat: newAnthropicChat(cfg.APIKey, model, logger), fallback: HeuristicIntake{}, logger: logger}
+	}
 }
 
 // HeuristicIntake decides ask-vs-create with no network calls, reusing the
