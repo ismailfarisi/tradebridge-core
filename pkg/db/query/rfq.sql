@@ -18,6 +18,7 @@ SET requirements = sqlc.arg(requirements)::jsonb,
     category     = sqlc.arg(category),
     match_count  = sqlc.arg(match_count),
     status       = 'open',
+    expires_at   = sqlc.arg(expires_at),
     updated_at   = NOW()
 WHERE id = sqlc.arg(id)
 RETURNING *;

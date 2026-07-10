@@ -45,6 +45,10 @@ type Config struct {
 	AdminJWTSecret        string
 	PlatformAdminEmail    string
 	PlatformAdminPassword string
+
+	// RFQTTLDays is how long a matched RFQ stays open before the sweeper
+	// (Task C4) expires it.
+	RFQTTLDays int
 }
 
 // New builds the Core API with all Phase 1 routes mounted.
@@ -120,7 +124,7 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	}
 	settingsSvc := settings.NewService(q, box, envExtraction)
 
-	rfq.NewHandler(rfq.NewService(q, pub, settingsSvc, cfg.Logger), q).Register(f, guard...)
+	rfq.NewHandler(rfq.NewService(q, pub, settingsSvc, cfg.Logger, cfg.RFQTTLDays), q).Register(f, guard...)
 	quotes.NewHandler(quotes.NewService(q, cfg.Pool, pub), q).Register(f, guard...)
 	orders.NewHandler(q).Register(f, guard...)
 

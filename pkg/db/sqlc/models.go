@@ -135,18 +135,19 @@ type QuoteMessage struct {
 }
 
 type Rfq struct {
-	ID             string    `json:"id"`
-	BuyerCompanyID string    `json:"buyer_company_id"`
-	CreatedBy      string    `json:"created_by"`
-	Title          string    `json:"title"`
-	RawText        string    `json:"raw_text"`
-	Requirements   []byte    `json:"requirements"`
-	Category       string    `json:"category"`
-	Status         string    `json:"status"`
-	MatchCount     int32     `json:"match_count"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
-	Messages       []byte    `json:"messages"`
+	ID             string             `json:"id"`
+	BuyerCompanyID string             `json:"buyer_company_id"`
+	CreatedBy      string             `json:"created_by"`
+	Title          string             `json:"title"`
+	RawText        string             `json:"raw_text"`
+	Requirements   []byte             `json:"requirements"`
+	Category       string             `json:"category"`
+	Status         string             `json:"status"`
+	MatchCount     int32              `json:"match_count"`
+	CreatedAt      time.Time          `json:"created_at"`
+	UpdatedAt      time.Time          `json:"updated_at"`
+	Messages       []byte             `json:"messages"`
+	ExpiresAt      pgtype.Timestamptz `json:"expires_at"`
 }
 
 type RfqMatch struct {

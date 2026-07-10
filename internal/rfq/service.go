@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/rs/zerolog"
 
 	"github.com/tradebridge/core/internal/eventbus"
@@ -24,11 +26,17 @@ type Service struct {
 	pub      *eventbus.Publisher
 	resolver ExtractorResolver
 	logger   zerolog.Logger
+	ttlDays  int
 }
 
-// NewService builds the RFQ service.
-func NewService(q *sqlc.Queries, pub *eventbus.Publisher, resolver ExtractorResolver, logger zerolog.Logger) *Service {
-	return &Service{q: q, pub: pub, resolver: resolver, logger: logger}
+// NewService builds the RFQ service. ttlDays is how long a matched RFQ stays
+// open before the sweeper (Task C4) expires it; non-positive values fall back
+// to a 14-day default.
+func NewService(q *sqlc.Queries, pub *eventbus.Publisher, resolver ExtractorResolver, logger zerolog.Logger, ttlDays int) *Service {
+	if ttlDays <= 0 {
+		ttlDays = 14
+	}
+	return &Service{q: q, pub: pub, resolver: resolver, logger: logger, ttlDays: ttlDays}
 }
 
 // extractorFor resolves the buyer company's extraction config and builds an
@@ -161,16 +169,40 @@ func (s *Service) CreateAndMatch(ctx context.Context, buyerCompanyID, userID, ti
 	if err != nil {
 		return sqlc.Rfq{}, nil, err
 	}
+
+	// Default expiry is TTL days out from creation; a concrete future deadline
+	// parsed from the buyer's free text overrides it (best-effort).
+	expiresAt := rfq.CreatedAt.Add(time.Duration(s.ttlDays) * 24 * time.Hour)
+	if d, ok := parseDeadline(req.Deadline); ok && d.After(time.Now()) {
+		expiresAt = d
+	}
+
 	opened, err := s.q.MarkRFQMatched(ctx, sqlc.MarkRFQMatchedParams{
 		Requirements: reqJSON,
 		Category:     req.Category,
 		MatchCount:   int32(len(matches)),
 		ID:           rfq.ID,
+		ExpiresAt:    pgtype.Timestamptz{Time: expiresAt, Valid: true},
 	})
 	if err != nil {
 		return sqlc.Rfq{}, nil, err
 	}
 	return opened, matches, nil
+}
+
+// parseDeadline best-effort-parses the free-text requirements deadline into a
+// timestamp. Only a concrete future date overrides the TTL-based expiry.
+func parseDeadline(s string) (time.Time, bool) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return time.Time{}, false
+	}
+	for _, layout := range []string{time.RFC3339, "2006-01-02"} {
+		if d, err := time.Parse(layout, s); err == nil {
+			return d, true
+		}
+	}
+	return time.Time{}, false
 }
 
 // findMatches scores sellers by how many requirement needles they hit.

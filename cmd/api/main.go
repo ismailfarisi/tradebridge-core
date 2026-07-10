@@ -31,6 +31,8 @@ func main() {
 		AdminJWTSecret:        app.Config.AdminJWTSecret,
 		PlatformAdminEmail:    app.Config.PlatformAdminEmail,
 		PlatformAdminPassword: app.Config.PlatformAdminPassword,
+
+		RFQTTLDays: app.Config.RFQTTLDays,
 	})
 
 	addr := ":" + app.Config.Port
