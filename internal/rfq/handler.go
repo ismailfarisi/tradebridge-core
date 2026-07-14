@@ -2,6 +2,7 @@ package rfq
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -198,21 +199,33 @@ func (h *Handler) chatStream(c *fiber.Ctx) error {
 
 	c.Set(fiber.HeaderContentType, "text/event-stream")
 	c.Set(fiber.HeaderCacheControl, "no-cache")
+	c.Set(fiber.HeaderConnection, "keep-alive")
 	c.Set("X-Accel-Buffering", "no")
 
-	// The fasthttp ctx outlives this handler and is canceled on disconnect,
-	// so it is the right context for the model call inside the writer.
+	// The fasthttp ctx outlives this handler and its Done() only fires on
+	// server shutdown — it never observes a client disconnect mid-stream.
+	// We derive a cancellable child context and cancel it ourselves the
+	// moment a flush fails, since a failed flush is the only signal we get
+	// that the client is gone; the parent still propagates server shutdown.
 	ctx := c.Context()
 	ctx.SetBodyStreamWriter(fasthttp.StreamWriter(func(w *bufio.Writer) {
+		cctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
 		emit := func(event string, payload any) {
 			data, err := json.Marshal(payload)
 			if err != nil {
+				fmt.Fprintf(w, "event: error\ndata: {\"message\":\"internal encoding error\"}\n\n")
+				_ = w.Flush()
 				return
 			}
 			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, data)
-			_ = w.Flush()
+			if w.Flush() != nil {
+				// Client disconnected; abort the in-flight model call.
+				cancel()
+			}
 		}
-		res, err := h.svc.ChatStream(ctx, companyID, userID, req.Messages, func(text string) {
+		res, err := h.svc.ChatStream(cctx, companyID, userID, req.Messages, func(text string) {
 			emit("delta", fiber.Map{"text": text})
 		})
 		if err != nil {

@@ -95,6 +95,21 @@ func TestLLMIntake_DecideStream_ErrorFallsBackToHeuristic(t *testing.T) {
 	}
 }
 
+func TestLLMIntake_DecideStream_CanceledCtxPropagates(t *testing.T) {
+	l := llmIntake{
+		chat:     chunkedChat{err: errors.New("canceled mid-flight")},
+		fallback: HeuristicIntake{},
+		logger:   zerolog.Nop(),
+		system:   DefaultIntakePrompt,
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := l.DecideStream(ctx, []ChatMessage{{Role: "user", Content: "hi"}}, func(string) {})
+	if err == nil {
+		t.Fatal("want propagated cancellation error, got heuristic fallback")
+	}
+}
+
 func TestLLMIntake_StreamAndNonStreamEquivalent(t *testing.T) {
 	raw := `{"action":"ask","message":"What is the delivery city?"}`
 	l := llmIntake{chat: chunkedChat{text: raw}, fallback: HeuristicIntake{}, logger: zerolog.Nop(), system: DefaultIntakePrompt}

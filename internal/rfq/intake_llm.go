@@ -52,6 +52,11 @@ type llmIntake struct {
 func (l llmIntake) Decide(ctx context.Context, msgs []ChatMessage) (IntakeDecision, error) {
 	raw, err := l.chat.complete(ctx, l.system, msgs)
 	if err != nil {
+		if ctx.Err() != nil {
+			// Caller went away; do not silently substitute a heuristic
+			// decision that could create an RFQ for a departed client.
+			return IntakeDecision{}, ctx.Err()
+		}
 		l.logger.Warn().Err(err).Msg("intake LLM call failed; using heuristic")
 		return l.fallback.Decide(ctx, msgs)
 	}
@@ -64,6 +69,11 @@ func (l llmIntake) DecideStream(ctx context.Context, msgs []ChatMessage, onDelta
 	fs := newFieldStreamer("message", onDelta)
 	raw, err := l.chat.completeStream(ctx, l.system, msgs, fs.Feed)
 	if err != nil {
+		if ctx.Err() != nil {
+			// Caller went away; do not silently substitute a heuristic
+			// decision that could create an RFQ for a departed client.
+			return IntakeDecision{}, ctx.Err()
+		}
 		l.logger.Warn().Err(err).Msg("intake LLM stream failed; using heuristic")
 		return l.fallback.Decide(ctx, msgs)
 	}
