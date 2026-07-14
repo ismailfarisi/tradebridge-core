@@ -3,6 +3,7 @@ module github.com/tradebridge/core
 go 1.26.4
 
 require (
+	github.com/anthropics/anthropic-sdk-go v1.56.0
 	github.com/gofiber/fiber/v2 v2.52.14
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/wire v0.7.0
@@ -18,7 +19,6 @@ require (
 
 require (
 	github.com/andybalholm/brotli v1.2.1 // indirect
-	github.com/anthropics/anthropic-sdk-go v1.56.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.2 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect

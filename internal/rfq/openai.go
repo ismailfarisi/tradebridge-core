@@ -52,6 +52,7 @@ type chatMessage struct {
 type chatRequest struct {
 	Model    string        `json:"model"`
 	Messages []chatMessage `json:"messages"`
+	Stream   bool          `json:"stream,omitempty"`
 }
 
 type chatResponse struct {

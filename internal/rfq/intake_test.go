@@ -102,6 +102,13 @@ func (f fakeChat) complete(_ context.Context, _ string, _ []ChatMessage) (string
 	return f.reply, f.err
 }
 
+func (f fakeChat) completeStream(_ context.Context, _ string, _ []ChatMessage, onDelta func(string)) (string, error) {
+	if f.err == nil && f.reply != "" {
+		onDelta(f.reply)
+	}
+	return f.reply, f.err
+}
+
 func newTestLLMIntake(reply string, err error) llmIntake {
 	return llmIntake{chat: fakeChat{reply: reply, err: err}, fallback: HeuristicIntake{}, logger: zerolog.Nop()}
 }
@@ -158,6 +165,14 @@ func (s spyChat) complete(_ context.Context, system string, _ []ChatMessage) (st
 		s.onComplete(system)
 	}
 	return `{"action":"create","title":"t","rfq_text":"x"}`, nil
+}
+
+func (s spyChat) completeStream(ctx context.Context, system string, _ []ChatMessage, onDelta func(string)) (string, error) {
+	reply, err := s.complete(ctx, system, nil)
+	if err == nil && reply != "" {
+		onDelta(reply)
+	}
+	return reply, err
 }
 
 func TestLLMIntake_UsesConfiguredSystemPrompt(t *testing.T) {
