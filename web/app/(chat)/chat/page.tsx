@@ -3,7 +3,7 @@
 import { useReducer, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useToken } from "@/lib/auth";
-import { rfqChat } from "@/lib/api";
+import { rfqChatStream } from "@/lib/api";
 import { chatReducer, initialChatState } from "@/lib/chat";
 
 export default function NewChat() {
@@ -20,7 +20,7 @@ export default function NewChat() {
     dispatch({ type: "send", content });
     setDraft("");
     try {
-      const res = await rfqChat(token, next);
+      const res = await rfqChatStream(token, next, (text) => dispatch({ type: "delta", text }));
       if (res.done && res.rfq) {
         router.push(`/chat/${res.rfq.id}`);
         return;
@@ -48,7 +48,7 @@ export default function NewChat() {
             {state.messages.map((m, i) => (
               <Bubble key={i} role={m.role} content={m.content} />
             ))}
-            {state.pending && <p className="muted small">…</p>}
+            {state.pending && !state.streaming && <p className="muted small">…</p>}
             {state.error && <p className="err">{state.error}</p>}
           </div>
         )}

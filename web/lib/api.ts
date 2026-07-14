@@ -1,6 +1,8 @@
 // Client for the Core API. Fiber returns JSON on success and plain-text on
 // error, so the request helper handles both.
 
+import { readSSE } from "./sse";
+
 export const CORE_URL =
   process.env.NEXT_PUBLIC_CORE_URL ?? "http://localhost:8080";
 
@@ -129,6 +131,34 @@ export const rfqChat = (token: string, messages: ChatMessage[]) =>
     "/v1/rfq-chat",
     { token, body: { messages } },
   );
+
+export type RfqChatDone = { done: boolean; assistant: string; rfq?: RFQ; match_count?: number };
+
+/** Streaming variant of rfqChat: onDelta receives assistant-text fragments;
+ *  the resolved value is authoritative and replaces the streamed text. */
+export async function rfqChatStream(
+  token: string,
+  messages: ChatMessage[],
+  onDelta: (text: string) => void,
+): Promise<RfqChatDone> {
+  const res = await fetch(`${CORE_URL}/v1/rfq-chat/stream`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    body: JSON.stringify({ messages }),
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
+  let result: RfqChatDone | null = null;
+  let errMsg: string | null = null;
+  await readSSE(res, (event, data) => {
+    if (event === "delta") onDelta((JSON.parse(data) as { text: string }).text);
+    else if (event === "done") result = JSON.parse(data) as RfqChatDone;
+    else if (event === "error") errMsg = (JSON.parse(data) as { message: string }).message;
+  });
+  if (errMsg) throw new Error(errMsg);
+  if (!result) throw new Error("stream ended without a result");
+  return result;
+}
 
 // --- seller ---
 
