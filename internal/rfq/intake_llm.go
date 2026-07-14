@@ -147,6 +147,7 @@ func (a anthropicChat) complete(ctx context.Context, system string, msgs []ChatM
 
 func (a anthropicChat) completeStream(ctx context.Context, system string, msgs []ChatMessage, onDelta func(string)) (string, error) {
 	stream := a.client.Messages.NewStreaming(ctx, a.params(system, msgs))
+	defer stream.Close()
 	var b strings.Builder
 	for stream.Next() {
 		event := stream.Current()
