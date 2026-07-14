@@ -1,11 +1,14 @@
 package rfq
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5"
+	"github.com/valyala/fasthttp"
 
 	"github.com/tradebridge/core/pkg/db/sqlc"
 	"github.com/tradebridge/core/pkg/middleware"
@@ -31,6 +34,7 @@ func (h *Handler) Register(app *fiber.App, guard ...fiber.Handler) {
 	g.Post("/:id/close", h.close)
 
 	app.Post("/v1/rfq-chat", append(append([]fiber.Handler{}, guard...), h.chat)...)
+	app.Post("/v1/rfq-chat/stream", append(append([]fiber.Handler{}, guard...), h.chatStream)...)
 }
 
 type createReq struct {
@@ -177,6 +181,52 @@ func (h *Handler) chat(c *fiber.Ctx) error {
 		out["match_count"] = res.MatchCount
 	}
 	return c.JSON(out)
+}
+
+// chatStream is the SSE variant of chat: assistant text arrives as `delta`
+// events while the model generates, then one `done` event carries the same
+// payload the non-streaming endpoint returns.
+func (h *Handler) chatStream(c *fiber.Ctx) error {
+	var req chatReq
+	if err := c.BodyParser(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
+	}
+	if len(req.Messages) == 0 {
+		return fiber.NewError(fiber.StatusBadRequest, "messages required")
+	}
+	companyID, userID := middleware.CompanyID(c), middleware.UserID(c)
+
+	c.Set(fiber.HeaderContentType, "text/event-stream")
+	c.Set(fiber.HeaderCacheControl, "no-cache")
+	c.Set("X-Accel-Buffering", "no")
+
+	// The fasthttp ctx outlives this handler and is canceled on disconnect,
+	// so it is the right context for the model call inside the writer.
+	ctx := c.Context()
+	ctx.SetBodyStreamWriter(fasthttp.StreamWriter(func(w *bufio.Writer) {
+		emit := func(event string, payload any) {
+			data, err := json.Marshal(payload)
+			if err != nil {
+				return
+			}
+			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, data)
+			_ = w.Flush()
+		}
+		res, err := h.svc.ChatStream(ctx, companyID, userID, req.Messages, func(text string) {
+			emit("delta", fiber.Map{"text": text})
+		})
+		if err != nil {
+			emit("error", fiber.Map{"message": err.Error()})
+			return
+		}
+		out := fiber.Map{"done": res.Done, "assistant": res.Assistant}
+		if res.Done && res.RFQ != nil {
+			out["rfq"] = view(*res.RFQ)
+			out["match_count"] = res.MatchCount
+		}
+		emit("done", out)
+	}))
+	return nil
 }
 
 func (h *Handler) close(c *fiber.Ctx) error {

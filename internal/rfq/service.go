@@ -77,6 +77,33 @@ func (s *Service) Chat(ctx context.Context, buyerCompanyID, userID string, msgs 
 	if err != nil {
 		return ChatResult{}, err
 	}
+	return s.finishChat(ctx, buyerCompanyID, userID, msgs, dec)
+}
+
+// ChatStream is Chat with live assistant-text deltas. Streaming-capable intake
+// agents stream the model's "message" field; others (heuristic) emit their
+// question as a single delta so clients get one uniform shape.
+func (s *Service) ChatStream(ctx context.Context, buyerCompanyID, userID string, msgs []ChatMessage, onDelta func(string)) (ChatResult, error) {
+	agent := s.intakeFor(ctx, buyerCompanyID)
+	var dec IntakeDecision
+	var err error
+	if streamer, ok := agent.(IntakeStreamer); ok {
+		dec, err = streamer.DecideStream(ctx, msgs, onDelta)
+	} else {
+		dec, err = agent.Decide(ctx, msgs)
+		if err == nil && dec.Action != "create" && dec.Message != "" {
+			onDelta(dec.Message)
+		}
+	}
+	if err != nil {
+		return ChatResult{}, err
+	}
+	return s.finishChat(ctx, buyerCompanyID, userID, msgs, dec)
+}
+
+// finishChat turns an intake decision into a ChatResult, creating the RFQ on
+// "create" (shared tail of Chat and ChatStream).
+func (s *Service) finishChat(ctx context.Context, buyerCompanyID, userID string, msgs []ChatMessage, dec IntakeDecision) (ChatResult, error) {
 	if dec.Action != "create" {
 		return ChatResult{Done: false, Assistant: dec.Message}, nil
 	}
