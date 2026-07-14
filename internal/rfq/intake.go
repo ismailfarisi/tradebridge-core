@@ -26,6 +26,13 @@ type IntakeAgent interface {
 	Decide(ctx context.Context, msgs []ChatMessage) (IntakeDecision, error)
 }
 
+// IntakeStreamer is implemented by intake agents that can stream the visible
+// "message" text while deciding. onDelta receives decoded message fragments;
+// "create" decisions produce no deltas (their fields are internal).
+type IntakeStreamer interface {
+	DecideStream(ctx context.Context, msgs []ChatMessage, onDelta func(string)) (IntakeDecision, error)
+}
+
 // BuildIntake picks an intake agent from a resolved config, mirroring
 // BuildExtractor. With no API key it uses the deterministic heuristic.
 func BuildIntake(cfg ProviderConfig, logger zerolog.Logger) IntakeAgent {

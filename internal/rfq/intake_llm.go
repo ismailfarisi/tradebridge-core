@@ -55,6 +55,24 @@ func (l llmIntake) Decide(ctx context.Context, msgs []ChatMessage) (IntakeDecisi
 		l.logger.Warn().Err(err).Msg("intake LLM call failed; using heuristic")
 		return l.fallback.Decide(ctx, msgs)
 	}
+	return l.decisionFromRaw(ctx, raw, msgs)
+}
+
+// DecideStream implements IntakeStreamer: the model's "message" field streams
+// through onDelta while the full response is still validated at the end.
+func (l llmIntake) DecideStream(ctx context.Context, msgs []ChatMessage, onDelta func(string)) (IntakeDecision, error) {
+	fs := newFieldStreamer("message", onDelta)
+	raw, err := l.chat.completeStream(ctx, l.system, msgs, fs.Feed)
+	if err != nil {
+		l.logger.Warn().Err(err).Msg("intake LLM stream failed; using heuristic")
+		return l.fallback.Decide(ctx, msgs)
+	}
+	return l.decisionFromRaw(ctx, raw, msgs)
+}
+
+// decisionFromRaw parses the model reply into a decision, falling back to the
+// heuristic on unparseable output (shared by Decide and DecideStream).
+func (l llmIntake) decisionFromRaw(ctx context.Context, raw string, msgs []ChatMessage) (IntakeDecision, error) {
 	dec, ok := parseDecision(raw)
 	if !ok {
 		l.logger.Warn().Str("raw", raw).Msg("intake LLM returned unparseable JSON; using heuristic")
