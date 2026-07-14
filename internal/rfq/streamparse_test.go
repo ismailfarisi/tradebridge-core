@@ -102,3 +102,24 @@ func TestFieldStreamer_StopsAtClosingQuote(t *testing.T) {
 		t.Fatalf("deltas = %q, want %q", deltas, "hi")
 	}
 }
+
+func TestFieldStreamer_LoneHighSurrogateDoesNotPairLater(t *testing.T) {
+	// An escaped orphan high surrogate, then an escaped ordinary (non-surrogate)
+	// codepoint 0x0041 ('A'), then an escaped orphan low surrogate, then a
+	// plain 'x'. Both orphan surrogates are dropped; the stale high must NOT
+	// pair with the later low.
+	//
+	// Note on this test's input: the fix targets fsUnicode's non-surrogate
+	// branch, so the character between the two surrogate escapes must itself
+	// be a \uXXXX escape (0x0041) to pass through that branch and clear
+	// f.surr. A literal, non-escaped 'A' byte never enters fsUnicode at all,
+	// so it wouldn't exercise the fix — the stale high surrogate would still
+	// (incorrectly) pair with the later low, producing "A"+U+10000+"x" instead
+	// of "Ax". This mirrors the TS sibling test, which also uses an escaped
+	// codepoint rather than a literal 'A'.
+	in := `{"message":"\ud800` + `\` + `u0041\udc00x"}`
+	deltas, _ := feedAll(t, "message", in, 1)
+	if deltas != "Ax" {
+		t.Fatalf("deltas = %q, want %q", deltas, "Ax")
+	}
+}

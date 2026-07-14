@@ -143,6 +143,7 @@ func (f *fieldStreamer) Feed(chunk string) {
 						out = utf8.AppendRune(out, utf16.DecodeRune(f.surr, r))
 						f.surr = 0
 					default:
+						f.surr = 0
 						out = utf8.AppendRune(out, r)
 					}
 				}
