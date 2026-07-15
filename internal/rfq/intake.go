@@ -74,7 +74,7 @@ func (HeuristicIntake) Decide(ctx context.Context, msgs []ChatMessage) (IntakeDe
 		return createDecision(userText), nil
 	}
 
-	req, _ := HeuristicExtractor{}.Extract(ctx, "", userText)
+	req, _ := HeuristicExtractor{}.Extract(ctx, "", userText, nil)
 	// A recognized category is the real "product named" signal. Keywords are any
 	// non-stopword token (almost always present), so they can't gate askProduct.
 	hasProduct := req.Category != ""

@@ -167,7 +167,7 @@ func (s *Service) CreateAndMatch(ctx context.Context, buyerCompanyID, userID, ti
 		return sqlc.Rfq{}, nil, err
 	}
 
-	req, err := s.extractorFor(ctx, buyerCompanyID).Extract(ctx, title, text)
+	req, err := s.extractorFor(ctx, buyerCompanyID).Extract(ctx, title, text, nil)
 	if err != nil {
 		return sqlc.Rfq{}, nil, err
 	}

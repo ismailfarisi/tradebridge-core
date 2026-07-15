@@ -6,11 +6,14 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog"
+
+	"github.com/tradebridge/core/internal/attachments"
 )
 
-// Extractor turns a plain-text RFQ into structured Requirements.
+// Extractor turns a plain-text RFQ (optionally with attachments) into
+// structured Requirements.
 type Extractor interface {
-	Extract(ctx context.Context, title, text string) (Requirements, error)
+	Extract(ctx context.Context, title, text string, atts []attachments.Loaded) (Requirements, error)
 }
 
 // ProviderConfig is a resolved LLM configuration for requirement extraction.
@@ -86,8 +89,9 @@ var stopWords = map[string]struct{}{
 	"deliver": {}, "delivery": {}, "ship": {}, "shipping": {}, "order": {}, "orders": {},
 }
 
-// Extract implements Extractor with no network calls.
-func (HeuristicExtractor) Extract(_ context.Context, title, text string) (Requirements, error) {
+// Extract implements Extractor with no network calls. Attachments are
+// ignored — the heuristic extractor works from text only.
+func (HeuristicExtractor) Extract(_ context.Context, title, text string, _ []attachments.Loaded) (Requirements, error) {
 	body := strings.TrimSpace(title + ". " + text)
 	lower := strings.ToLower(body)
 
