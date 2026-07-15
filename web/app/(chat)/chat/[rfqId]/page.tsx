@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { useToken } from "@/lib/auth";
 import { acceptQuote, getRfq, rfqQuotes, type QuoteRow, type RFQ } from "@/lib/api";
+import { AttachmentView } from "@/components/AttachmentView";
 
 const POLL_MS = 4000;
 
@@ -72,6 +73,11 @@ export default function ChatThread() {
           <div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start" }}>
             <div className="card" style={{ maxWidth: "80%", background: m.role === "user" ? "var(--surface-2)" : "var(--surface)", padding: "0.6rem 0.85rem" }}>
               {m.content}
+              {m.attachments?.map((a) => (
+                <div key={a.id} style={{ marginTop: "0.35rem" }}>
+                  <AttachmentView meta={a} token={token ?? ""} />
+                </div>
+              ))}
             </div>
           </div>
         ))}
