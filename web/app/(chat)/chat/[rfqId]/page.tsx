@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useToken } from "@/lib/auth";
 import { acceptQuote, getRfq, rfqQuotes, type QuoteRow, type RFQ } from "@/lib/api";
 import { AttachmentView } from "@/components/AttachmentView";
+import { QuoteThread } from "@/components/QuoteThread";
 
 const POLL_MS = 4000;
 
@@ -16,6 +17,7 @@ export default function ChatThread() {
   const [msg, setMsg] = useState<string | null>(null);
   const [msgKind, setMsgKind] = useState<"ok" | "err">("ok");
   const [busy, setBusy] = useState<string | null>(null);
+  const [openThread, setOpenThread] = useState<string | null>(null);
   const closedRef = useRef(false);
 
   useEffect(() => {
@@ -92,21 +94,29 @@ export default function ChatThread() {
           ) : (
             <div className="col" style={{ gap: "0.5rem", marginTop: "0.6rem" }}>
               {quotes.map((q, i) => (
-                <div key={q.id} className="row" style={{ justifyContent: "space-between", alignItems: "center", borderTop: i ? "1px solid var(--border)" : "none", paddingTop: i ? "0.5rem" : 0 }}>
-                  <div style={{ minWidth: 0 }}>
-                    <strong>{q.currency} {(q.price_cents / 100).toFixed(2)}</strong>
-                    <span className="muted small"> · {q.seller_name ?? q.seller_company_id.slice(0, 8)} · {q.delivery_days != null ? `${q.delivery_days}d` : "—"}</span>
-                    {q.notes && <div className="muted small">{q.notes}</div>}
+                <div key={q.id} style={{ borderTop: i ? "1px solid var(--border)" : "none", paddingTop: i ? "0.5rem" : 0 }}>
+                  <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ minWidth: 0 }}>
+                      <strong>{q.currency} {(q.price_cents / 100).toFixed(2)}</strong>
+                      <span className="muted small"> · {q.seller_name ?? q.seller_company_id.slice(0, 8)} · {q.delivery_days != null ? `${q.delivery_days}d` : "—"}</span>
+                      {q.notes && <div className="muted small">{q.notes}</div>}
+                    </div>
+                    <div className="row" style={{ gap: "0.4rem", alignItems: "center" }}>
+                      <button className="btn btn-ghost btn-sm" onClick={() => setOpenThread(openThread === q.id ? null : q.id)}>
+                        💬 Messages
+                      </button>
+                      {q.status === "accepted" ? (
+                        <span className="badge badge-success">accepted</span>
+                      ) : q.status === "rejected" ? (
+                        <span className="badge">rejected</span>
+                      ) : !closed ? (
+                        <button className="btn btn-sm btn-primary" disabled={busy === q.id} onClick={() => accept(q.id)}>
+                          {busy === q.id ? "…" : "Accept"}
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
-                  {q.status === "accepted" ? (
-                    <span className="badge badge-success">accepted</span>
-                  ) : q.status === "rejected" ? (
-                    <span className="badge">rejected</span>
-                  ) : !closed ? (
-                    <button className="btn btn-sm btn-primary" disabled={busy === q.id} onClick={() => accept(q.id)}>
-                      {busy === q.id ? "…" : "Accept"}
-                    </button>
-                  ) : null}
+                  {openThread === q.id && token && <QuoteThread quoteId={q.id} token={token} />}
                 </div>
               ))}
             </div>
