@@ -28,4 +28,16 @@ describe("chatReducer", () => {
     expect(s.error).toBe("Couldn't reach Core");
     expect(s.messages).toHaveLength(1);
   });
+
+  it("send action carries attachments onto the user message", () => {
+    const s = chatReducer(initialChatState, {
+      type: "send",
+      content: "here",
+      attachmentIds: ["a1"],
+      attachments: [{ id: "a1", filename: "x.png", mime: "image/png", size_bytes: 5 }],
+    });
+    const last = s.messages.at(-1)!;
+    expect(last.attachment_ids).toEqual(["a1"]);
+    expect(last.attachments?.[0]?.filename).toBe("x.png");
+  });
 });

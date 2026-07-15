@@ -78,7 +78,25 @@ export type RFQ = {
   messages?: ChatMessage[];
   created_at: string;
 };
-export type ChatMessage = { role: "user" | "assistant"; content: string };
+export type AttachmentMeta = {
+  id: string;
+  filename: string;
+  mime: string;
+  size_bytes: number;
+};
+export type ChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+  attachment_ids?: string[];
+  attachments?: AttachmentMeta[];
+};
+export type QuoteMessage = {
+  id: string;
+  author: "buyer" | "seller";
+  body: string;
+  attachments: AttachmentMeta[] | null;
+  created_at: string;
+};
 export type QuoteRow = {
   id: string;
   seller_company_id: string;
@@ -123,6 +141,40 @@ export const rfqQuotes = (token: string, id: string) =>
   req<{ quotes: QuoteRow[]; count: number }>("GET", `/v1/rfqs/${id}/quotes`, { token });
 export const acceptQuote = (token: string, quoteId: string) =>
   req<{ order_id: string; total_cents: number }>("POST", `/v1/quotes/${quoteId}/accept`, { token, body: {} });
+
+// Multipart upload — bypasses req() because that wrapper is JSON-only.
+export async function uploadAttachment(token: string, file: File): Promise<AttachmentMeta> {
+  const form = new FormData();
+  form.append("file", file, file.name);
+  const res = await fetch(`${CORE_URL}/v1/attachments`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}` },
+    body: form,
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error((await res.text()) || `upload failed (${res.status})`);
+  return res.json();
+}
+
+// Downloads need the auth header, so <img src> can't hit the URL directly —
+// fetch a Blob and object-URL it in the component.
+export async function fetchAttachmentBlob(token: string, id: string): Promise<Blob> {
+  const res = await fetch(`${CORE_URL}/v1/attachments/${id}`, {
+    headers: { authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`attachment fetch failed (${res.status})`);
+  return res.blob();
+}
+
+export const quoteMessages = (token: string, quoteId: string) =>
+  req<{ messages: QuoteMessage[]; count: number }>("GET", `/v1/quotes/${quoteId}/messages`, { token });
+
+export const postQuoteMessage = (token: string, quoteId: string, body: string, attachmentIds: string[]) =>
+  req<QuoteMessage>("POST", `/v1/quotes/${quoteId}/messages`, {
+    token,
+    body: { body, attachment_ids: attachmentIds },
+  });
 export const closeRfq = (token: string, id: string) =>
   req<RFQ>("POST", `/v1/rfqs/${id}/close`, { token, body: {} });
 export const rfqChat = (token: string, messages: ChatMessage[]) =>
