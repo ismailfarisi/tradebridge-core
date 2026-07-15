@@ -10,9 +10,12 @@ import (
 	"math"
 	"strings"
 
+	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/rs/zerolog"
 
+	"github.com/tradebridge/core/internal/attachments"
 	"github.com/tradebridge/core/internal/eventbus"
 	"github.com/tradebridge/core/internal/rfq"
 	"github.com/tradebridge/core/pkg/db/sqlc"
@@ -95,14 +98,77 @@ func Record(ctx context.Context, q *sqlc.Queries, rfqID, sellerCompanyID, comman
 
 // Service serves buyer-facing ranking and acceptance.
 type Service struct {
-	q    *sqlc.Queries
-	pool *pgxpool.Pool
-	pub  *eventbus.Publisher
+	q      *sqlc.Queries
+	pool   *pgxpool.Pool
+	pub    *eventbus.Publisher
+	loader *attachments.Loader
+	logger zerolog.Logger
 }
 
 // NewService builds the quotes service.
-func NewService(q *sqlc.Queries, pool *pgxpool.Pool, pub *eventbus.Publisher) *Service {
-	return &Service{q: q, pool: pool, pub: pub}
+func NewService(q *sqlc.Queries, pool *pgxpool.Pool, pub *eventbus.Publisher, loader *attachments.Loader, logger zerolog.Logger) *Service {
+	return &Service{q: q, pool: pool, pub: pub, loader: loader, logger: logger}
+}
+
+// QuoteMessageEvent is the agent event emitted when a buyer posts in a quote
+// thread, closing the clarification loop (the agent asked via
+// clarification.request; this is how it hears the answer).
+type QuoteMessageEvent struct {
+	Type        string             `json:"type"`
+	RFQID       string             `json:"rfq_id"`
+	QuoteID     string             `json:"quote_id"`
+	Author      string             `json:"author"`
+	Body        string             `json:"body"`
+	Attachments []attachments.Meta `json:"attachments,omitempty"`
+}
+
+// AddMessage appends a thread message (with optional attachments) and, when
+// the author is the buyer, emits a quote.message event to the seller's agent.
+// Event emission is best-effort: the message row is the source of truth.
+func (s *Service) AddMessage(ctx context.Context, q sqlc.Quote, authorCompanyID, body string, attachmentIDs []string) (sqlc.QuoteMessage, error) {
+	author := "buyer"
+	if q.SellerCompanyID == authorCompanyID {
+		author = "seller"
+	}
+	var metas []attachments.Meta
+	if len(attachmentIDs) > 0 {
+		if s.loader == nil {
+			return sqlc.QuoteMessage{}, fiber.NewError(fiber.StatusBadRequest, "attachments not supported")
+		}
+		var err error
+		metas, err = s.loader.MetasOwned(ctx, attachmentIDs, authorCompanyID)
+		if err != nil {
+			return sqlc.QuoteMessage{}, err
+		}
+	}
+	var attsJSON []byte
+	if len(metas) > 0 {
+		attsJSON, _ = json.Marshal(metas)
+	}
+	msg, err := s.q.CreateQuoteMessage(ctx, sqlc.CreateQuoteMessageParams{
+		QuoteID: q.ID, Author: author, Body: body, Attachments: attsJSON,
+	})
+	if err != nil {
+		return msg, err
+	}
+	if len(attachmentIDs) > 0 {
+		if err := s.q.SetAttachmentsRFQ(ctx, sqlc.SetAttachmentsRFQParams{
+			RfqID: &q.RfqID, Ids: attachmentIDs, CompanyID: authorCompanyID,
+		}); err != nil {
+			s.logger.Warn().Err(err).Str("quote_id", q.ID).Msg("failed to stamp attachments")
+		}
+	}
+	if author == "buyer" {
+		ev := QuoteMessageEvent{
+			Type: "quote.message", RFQID: q.RfqID, QuoteID: q.ID,
+			Author: author, Body: body, Attachments: metas,
+		}
+		b, _ := json.Marshal(ev)
+		if err := s.pub.Publish(ctx, q.SellerCompanyID, "quote.message", b); err != nil {
+			s.logger.Warn().Err(err).Str("quote_id", q.ID).Msg("quote.message publish failed")
+		}
+	}
+	return msg, nil
 }
 
 type orderCreatedEvent struct {
