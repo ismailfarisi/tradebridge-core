@@ -20,7 +20,7 @@ func buildGateway(t *testing.T) *fiber.App {
 	t.Helper()
 	pool := poolOrSkip(t)
 	f := fiber.New()
-	gateway.NewHandler(sqlc.New(pool), nil, zerolog.Nop()).Register(f)
+	gateway.NewHandler(sqlc.New(pool), nil, nil, zerolog.Nop()).Register(f)
 	return f
 }
 
