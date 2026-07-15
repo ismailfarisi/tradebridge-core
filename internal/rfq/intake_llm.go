@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -241,7 +243,8 @@ func (o openAIChat) complete(ctx context.Context, system string, msgs []ChatMess
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return "", &httpStatusError{code: resp.StatusCode}
+		snip, _ := io.ReadAll(io.LimitReader(resp.Body, 300))
+		return "", &httpStatusError{code: resp.StatusCode, snippet: strings.TrimSpace(string(snip))}
 	}
 	var out chatResponse
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil || len(out.Choices) == 0 {
@@ -289,7 +292,8 @@ func (o openAIChat) completeStream(ctx context.Context, system string, msgs []Ch
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return "", &httpStatusError{code: resp.StatusCode}
+		snip, _ := io.ReadAll(io.LimitReader(resp.Body, 300))
+		return "", &httpStatusError{code: resp.StatusCode, snippet: strings.TrimSpace(string(snip))}
 	}
 
 	scanner := bufio.NewScanner(resp.Body)
@@ -319,7 +323,16 @@ func (o openAIChat) completeStream(ctx context.Context, system string, msgs []Ch
 	return full.String(), nil
 }
 
-// httpStatusError carries a non-200 status so llmIntake falls back to heuristic.
-type httpStatusError struct{ code int }
+// httpStatusError carries a non-200 status (and a short response snippet) so
+// llmIntake falls back to heuristic AND the reason is legible in logs/UI.
+type httpStatusError struct {
+	code    int
+	snippet string
+}
 
-func (e *httpStatusError) Error() string { return "openai chat non-200 status" }
+func (e *httpStatusError) Error() string {
+	if e.snippet != "" {
+		return fmt.Sprintf("openai chat %d: %s", e.code, e.snippet)
+	}
+	return fmt.Sprintf("openai chat non-200 status %d", e.code)
+}
