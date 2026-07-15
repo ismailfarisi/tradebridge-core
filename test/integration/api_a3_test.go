@@ -10,18 +10,37 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tradebridge/core/internal/attachments"
 	"github.com/tradebridge/core/internal/gateway"
 	"github.com/tradebridge/core/pkg/db/sqlc"
 )
 
 // buildGateway wires the real Agent Gateway against the test database. Redis is
 // nil, so live pub/sub is disabled but replay + commands + acks work fully.
+// The attachment store is a real on-disk store rooted at a fresh temp dir so
+// GET /agent/v1/attachments/:id can be exercised end-to-end.
 func buildGateway(t *testing.T) *fiber.App {
 	t.Helper()
 	pool := poolOrSkip(t)
+	store, err := attachments.NewStore(t.TempDir())
+	require.NoError(t, err)
 	f := fiber.New()
-	gateway.NewHandler(sqlc.New(pool), nil, nil, zerolog.Nop()).Register(f)
+	gateway.NewHandler(sqlc.New(pool), nil, store, zerolog.Nop()).Register(f)
 	return f
+}
+
+// buildGatewayWithStore is like buildGateway but returns the store too, so
+// callers can seed attachment bytes directly (bypassing the buyer-facing
+// upload API, which would otherwise write to a different temp dir).
+func buildGatewayWithStore(t *testing.T) (*fiber.App, *sqlc.Queries, *attachments.Store) {
+	t.Helper()
+	pool := poolOrSkip(t)
+	store, err := attachments.NewStore(t.TempDir())
+	require.NoError(t, err)
+	q := sqlc.New(pool)
+	f := fiber.New()
+	gateway.NewHandler(q, nil, store, zerolog.Nop()).Register(f)
+	return f, q, store
 }
 
 // TestA3_CommandsAcksAndAuth exercises the gateway protocol: an agent
