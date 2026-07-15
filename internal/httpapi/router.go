@@ -14,6 +14,7 @@ import (
 
 	"github.com/tradebridge/core/internal/admin"
 	"github.com/tradebridge/core/internal/agent"
+	"github.com/tradebridge/core/internal/attachments"
 	"github.com/tradebridge/core/internal/catalog"
 	"github.com/tradebridge/core/internal/eventbus"
 	"github.com/tradebridge/core/internal/identity"
@@ -49,11 +50,14 @@ type Config struct {
 	// RFQTTLDays is how long a matched RFQ stays open before the sweeper
 	// (Task C4) expires it.
 	RFQTTLDays int
+
+	// AttachmentsDir is where RFQ attachment bytes are stored on disk.
+	AttachmentsDir string
 }
 
 // New builds the Core API with all Phase 1 routes mounted.
 func New(q *sqlc.Queries, cfg Config) *fiber.App {
-	f := fiber.New(fiber.Config{AppName: "tradebridge-core-api"})
+	f := fiber.New(fiber.Config{AppName: "tradebridge-core-api", BodyLimit: 12 * 1024 * 1024})
 	f.Use(middleware.RequestLogger(cfg.Logger))
 
 	// The frontend runs on a different origin than the API; allow it explicitly.
@@ -105,6 +109,19 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 
 	pub := eventbus.New(q, cfg.Redis, cfg.Logger)
 
+	// Attachments: bytes on local disk, metadata in Postgres. Constructed
+	// once here; attLoader is exposed to later tasks' rfq/quotes services.
+	attDir, err := attachments.ResolveDir(cfg.AttachmentsDir)
+	if err != nil {
+		panic(err)
+	}
+	attStore, err := attachments.NewStore(attDir)
+	if err != nil {
+		panic(err)
+	}
+	attLoader := attachments.NewLoader(q, attStore)
+	attachments.NewHandler(q, attStore).Register(f, guard...)
+
 	// Settings hold the global (platform-wide) provider config; the encryption
 	// key falls back to the JWT secret when a dedicated one isn't configured.
 	// Built here (outside the admin block) because rfq needs settingsSvc as its
@@ -124,8 +141,8 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	}
 	settingsSvc := settings.NewService(q, box, envExtraction)
 
-	rfq.NewHandler(rfq.NewService(q, pub, settingsSvc, cfg.Logger, cfg.RFQTTLDays), q).Register(f, guard...)
-	quotes.NewHandler(quotes.NewService(q, cfg.Pool, pub), q).Register(f, guard...)
+	rfq.NewHandler(rfq.NewService(q, pub, settingsSvc, attLoader, cfg.Logger, cfg.RFQTTLDays), q).Register(f, guard...)
+	quotes.NewHandler(quotes.NewService(q, cfg.Pool, pub, attLoader, cfg.Logger), q).Register(f, guard...)
 	orders.NewHandler(q).Register(f, guard...)
 
 	// Platform superadmin realm: a separate credential store and JWT secret

@@ -13,6 +13,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 
+	"github.com/tradebridge/core/internal/attachments"
 	"github.com/tradebridge/core/internal/identity"
 	"github.com/tradebridge/core/pkg/db/sqlc"
 )
@@ -21,12 +22,13 @@ import (
 type Handler struct {
 	q      *sqlc.Queries
 	redis  *redis.Client // may be nil; live pub/sub is then disabled (replay still works)
+	store  *attachments.Store
 	logger zerolog.Logger
 }
 
 // NewHandler builds the gateway handler.
-func NewHandler(q *sqlc.Queries, rdb *redis.Client, logger zerolog.Logger) *Handler {
-	return &Handler{q: q, redis: rdb, logger: logger}
+func NewHandler(q *sqlc.Queries, rdb *redis.Client, store *attachments.Store, logger zerolog.Logger) *Handler {
+	return &Handler{q: q, redis: rdb, store: store, logger: logger}
 }
 
 // Register mounts the gateway routes.
@@ -35,6 +37,7 @@ func (h *Handler) Register(app *fiber.App) {
 	app.Post("/agent/v1/commands", h.command)
 	app.Post("/agent/v1/events/:seq/ack", h.ack)
 	app.Post("/agent/v1/heartbeat", h.heartbeat)
+	app.Get("/agent/v1/attachments/:id", h.attachment)
 }
 
 // authedAgent identifies the connected agent after credential verification.

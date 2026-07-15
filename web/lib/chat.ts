@@ -1,4 +1,4 @@
-import type { ChatMessage } from "./api";
+import type { AttachmentMeta, ChatMessage } from "./api";
 
 export type ChatState = {
   messages: ChatMessage[];
@@ -9,7 +9,7 @@ export type ChatState = {
 };
 
 export type ChatAction =
-  | { type: "send"; content: string }
+  | { type: "send"; content: string; attachmentIds?: string[]; attachments?: AttachmentMeta[] }
   | { type: "delta"; text: string }
   | { type: "reply"; assistant: string; rfqId?: string }
   | { type: "error"; error: string }
@@ -28,7 +28,16 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
     case "send":
       return {
         ...state,
-        messages: [...state.messages, { role: "user", content: action.content }],
+        messages: [
+          ...state.messages,
+          {
+            role: "user",
+            content: action.content,
+            ...(action.attachmentIds?.length
+              ? { attachment_ids: action.attachmentIds, attachments: action.attachments }
+              : {}),
+          },
+        ],
         pending: true,
         streaming: false,
         error: null,

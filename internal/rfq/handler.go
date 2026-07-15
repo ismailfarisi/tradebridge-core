@@ -93,6 +93,7 @@ func (h *Handler) create(c *fiber.Ctx) error {
 		middleware.UserID(c),
 		req.Title,
 		req.Text,
+		nil,
 	)
 	if err != nil {
 		return err

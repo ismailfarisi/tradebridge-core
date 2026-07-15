@@ -3,8 +3,10 @@
 import { useReducer, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useToken } from "@/lib/auth";
-import { rfqChatStream } from "@/lib/api";
+import { rfqChatStream, type AttachmentMeta } from "@/lib/api";
 import { chatReducer, initialChatState } from "@/lib/chat";
+import { Composer } from "@/components/Composer";
+import { AttachmentView } from "@/components/AttachmentView";
 
 export default function NewChat() {
   const token = useToken();
@@ -12,12 +14,19 @@ export default function NewChat() {
   const [state, dispatch] = useReducer(chatReducer, initialChatState);
   const [draft, setDraft] = useState("");
 
-  const send = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const send = async (attachments: AttachmentMeta[]) => {
     const content = draft.trim();
-    if (!content || !token || state.pending) return;
-    const next = [...state.messages, { role: "user" as const, content }];
-    dispatch({ type: "send", content });
+    if ((!content && attachments.length === 0) || !token || state.pending) return;
+    const ids = attachments.map((a) => a.id);
+    const next = [
+      ...state.messages,
+      {
+        role: "user" as const,
+        content,
+        ...(ids.length ? { attachment_ids: ids, attachments } : {}),
+      },
+    ];
+    dispatch({ type: "send", content, attachmentIds: ids, attachments });
     setDraft("");
     try {
       const res = await rfqChatStream(token, next, (text) => dispatch({ type: "delta", text }));
@@ -46,19 +55,29 @@ export default function NewChat() {
         ) : (
           <div className="col" style={{ gap: "0.75rem" }}>
             {state.messages.map((m, i) => (
-              <Bubble key={i} role={m.role} content={m.content} />
+              <Bubble key={i} role={m.role} content={m.content} attachments={m.attachments} token={token} />
             ))}
             {state.pending && !state.streaming && <p className="muted small">…</p>}
             {state.error && <p className="err">{state.error}</p>}
           </div>
         )}
       </div>
-      <Composer draft={draft} setDraft={setDraft} onSubmit={send} disabled={state.pending} />
+      <Composer draft={draft} setDraft={setDraft} onSend={send} disabled={state.pending} token={token ?? ""} />
     </div>
   );
 }
 
-function Bubble({ role, content }: { role: string; content: string }) {
+function Bubble({
+  role,
+  content,
+  attachments,
+  token,
+}: {
+  role: string;
+  content: string;
+  attachments?: AttachmentMeta[];
+  token: string | null;
+}) {
   const mine = role === "user";
   return (
     <div style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start" }}>
@@ -71,40 +90,12 @@ function Bubble({ role, content }: { role: string; content: string }) {
         }}
       >
         {content}
+        {attachments?.map((a) => (
+          <div key={a.id} style={{ marginTop: "0.35rem" }}>
+            <AttachmentView meta={a} token={token ?? ""} />
+          </div>
+        ))}
       </div>
     </div>
-  );
-}
-
-export function Composer({
-  draft,
-  setDraft,
-  onSubmit,
-  disabled,
-}: {
-  draft: string;
-  setDraft: (v: string) => void;
-  onSubmit: (e: React.FormEvent) => void;
-  disabled: boolean;
-}) {
-  return (
-    <form
-      onSubmit={onSubmit}
-      style={{ borderTop: "1px solid var(--border)", padding: "0.9rem 1.5rem" }}
-    >
-      <div className="row" style={{ gap: "0.6rem", maxWidth: 760, margin: "0 auto" }}>
-        <input
-          className="input"
-          style={{ flex: 1 }}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder="Describe what you need…"
-          autoFocus
-        />
-        <button className="btn btn-primary" disabled={disabled || !draft.trim()}>
-          Send
-        </button>
-      </div>
-    </form>
   );
 }

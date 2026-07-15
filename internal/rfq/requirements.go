@@ -3,7 +3,11 @@
 // durable `rfq.matched` event to each matched seller's agent.
 package rfq
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/tradebridge/core/internal/attachments"
+)
 
 // RFQ lifecycle states.
 const (
@@ -48,12 +52,16 @@ type Requirements struct {
 	Keywords []string `json:"keywords"`
 }
 
-// ChatMessage is one turn of the buyer↔assistant RFQ-intake conversation. The
-// frontend holds the running transcript and posts it to /v1/rfq-chat; on RFQ
-// creation the whole transcript is persisted to rfqs.messages.
+// ChatMessage is one turn of the buyer intake conversation. AttachmentIDs
+// come from the client; Attachments (metadata) are hydrated server-side and
+// persisted in rfqs.messages; Loaded (bytes) exists only in memory for the
+// LLM call and is never serialized.
 type ChatMessage struct {
-	Role    string `json:"role"`    // "user" | "assistant"
-	Content string `json:"content"`
+	Role          string               `json:"role"` // "user" | "assistant"
+	Content       string               `json:"content"`
+	AttachmentIDs []string             `json:"attachment_ids,omitempty"`
+	Attachments   []attachments.Meta   `json:"attachments,omitempty"`
+	Loaded        []attachments.Loaded `json:"-"`
 }
 
 // needles returns the distinct, non-empty search terms used to match sellers:

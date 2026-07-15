@@ -26,9 +26,10 @@ func buildAPI(t *testing.T) *fiber.App {
 	t.Helper()
 	pool := poolOrSkip(t)
 	return httpapi.New(sqlc.New(pool), httpapi.Config{
-		JWTSecret: "test-secret",
-		Logger:    zerolog.Nop(),
-		Pool:      pool,
+		JWTSecret:      "test-secret",
+		Logger:         zerolog.Nop(),
+		Pool:           pool,
+		AttachmentsDir: t.TempDir(),
 	})
 }
 

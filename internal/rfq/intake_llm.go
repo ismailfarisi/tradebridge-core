@@ -149,7 +149,7 @@ func (a anthropicChat) params(system string, msgs []ChatMessage) anthropic.Messa
 		if m.Role == "assistant" {
 			params.Messages = append(params.Messages, anthropic.NewAssistantMessage(anthropic.NewTextBlock(m.Content)))
 		} else {
-			params.Messages = append(params.Messages, anthropic.NewUserMessage(anthropic.NewTextBlock(m.Content)))
+			params.Messages = append(params.Messages, anthropic.NewUserMessage(userContent(m.Content, m.Loaded)...))
 		}
 	}
 	// Anthropic requires the first message to be a user turn.
@@ -217,10 +217,13 @@ func (o openAIChat) complete(ctx context.Context, system string, msgs []ChatMess
 	payload := chatRequest{Model: o.model, Messages: []chatMessage{{Role: "system", Content: system}}}
 	for _, m := range msgs {
 		role := "user"
+		content := m.Content
 		if m.Role == "assistant" {
 			role = "assistant"
+		} else {
+			content = attachmentNote(m.Content, m.Loaded)
 		}
-		payload.Messages = append(payload.Messages, chatMessage{Role: role, Content: m.Content})
+		payload.Messages = append(payload.Messages, chatMessage{Role: role, Content: content})
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -261,10 +264,13 @@ func (o openAIChat) completeStream(ctx context.Context, system string, msgs []Ch
 	payload := chatRequest{Model: o.model, Stream: true, Messages: []chatMessage{{Role: "system", Content: system}}}
 	for _, m := range msgs {
 		role := "user"
+		content := m.Content
 		if m.Role == "assistant" {
 			role = "assistant"
+		} else {
+			content = attachmentNote(m.Content, m.Loaded)
 		}
-		payload.Messages = append(payload.Messages, chatMessage{Role: role, Content: m.Content})
+		payload.Messages = append(payload.Messages, chatMessage{Role: role, Content: content})
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {

@@ -1,11 +1,14 @@
 package quotes
 
 import (
+	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/tradebridge/core/internal/attachments"
 	"github.com/tradebridge/core/pkg/db/sqlc"
 	"github.com/tradebridge/core/pkg/middleware"
 )
@@ -129,7 +132,30 @@ func (h *Handler) accept(c *fiber.Ctx) error {
 }
 
 type messageReq struct {
-	Body string `json:"body"`
+	Body          string   `json:"body"`
+	AttachmentIDs []string `json:"attachment_ids"`
+}
+
+// quoteMessageView renders a quote_messages row for the API, decoding the
+// JSONB attachments column into a real JSON array — sqlc types it as []byte,
+// which encoding/json would otherwise marshal as a base64 string.
+type quoteMessageView struct {
+	ID          string          `json:"id"`
+	QuoteID     string          `json:"quote_id"`
+	Author      string          `json:"author"`
+	Body        string          `json:"body"`
+	Attachments json.RawMessage `json:"attachments"`
+	CreatedAt   time.Time       `json:"created_at"`
+}
+
+func messageView(m sqlc.QuoteMessage) quoteMessageView {
+	v := quoteMessageView{
+		ID: m.ID, QuoteID: m.QuoteID, Author: m.Author, Body: m.Body, CreatedAt: m.CreatedAt,
+	}
+	if len(m.Attachments) > 0 {
+		v.Attachments = json.RawMessage(m.Attachments)
+	}
+	return v
 }
 
 func (h *Handler) addMessage(c *fiber.Ctx) error {
@@ -138,20 +164,17 @@ func (h *Handler) addMessage(c *fiber.Ctx) error {
 		return err
 	}
 	var req messageReq
-	if err := c.BodyParser(&req); err != nil || req.Body == "" {
-		return fiber.NewError(fiber.StatusBadRequest, "body required")
+	if err := c.BodyParser(&req); err != nil || (req.Body == "" && len(req.AttachmentIDs) == 0) {
+		return fiber.NewError(fiber.StatusBadRequest, "body or attachments required")
 	}
-	author := "buyer"
-	if q.SellerCompanyID == middleware.CompanyID(c) {
-		author = "seller"
+	if len(req.AttachmentIDs) > attachments.MaxPerMessage {
+		return fiber.NewError(fiber.StatusBadRequest, "too many attachments (max 5 per message)")
 	}
-	msg, err := h.q.CreateQuoteMessage(c.Context(), sqlc.CreateQuoteMessageParams{
-		QuoteID: q.ID, Author: author, Body: req.Body,
-	})
+	msg, err := h.svc.AddMessage(c.Context(), q, middleware.CompanyID(c), req.Body, req.AttachmentIDs)
 	if err != nil {
 		return err
 	}
-	return c.Status(fiber.StatusCreated).JSON(msg)
+	return c.Status(fiber.StatusCreated).JSON(messageView(msg))
 }
 
 func (h *Handler) listMessages(c *fiber.Ctx) error {
@@ -163,5 +186,9 @@ func (h *Handler) listMessages(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	return c.JSON(fiber.Map{"messages": msgs, "count": len(msgs)})
+	views := make([]quoteMessageView, len(msgs))
+	for i, m := range msgs {
+		views[i] = messageView(m)
+	}
+	return c.JSON(fiber.Map{"messages": views, "count": len(views)})
 }

@@ -9,6 +9,8 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/rs/zerolog"
+
+	"github.com/tradebridge/core/internal/attachments"
 )
 
 // claudeExtractor extracts requirements with Claude Haiku, falling back to the
@@ -44,20 +46,19 @@ Respond with ONLY a JSON object, no prose, matching exactly this shape:
 - keywords: 3-8 lowercase terms a supplier directory could be searched by.
 Use empty string or empty array when a field is absent. Do not invent values.`
 
-func (e *claudeExtractor) Extract(ctx context.Context, title, text string) (Requirements, error) {
+func (e *claudeExtractor) Extract(ctx context.Context, title, text string, atts []attachments.Loaded) (Requirements, error) {
 	msg, err := e.client.Messages.New(ctx, anthropic.MessageNewParams{
 		Model:     e.model,
 		MaxTokens: 1024,
 		System:    []anthropic.TextBlockParam{{Text: e.system}},
 		Messages: []anthropic.MessageParam{
-			anthropic.NewUserMessage(anthropic.NewTextBlock(
-				fmt.Sprintf("Title: %s\n\nRFQ:\n%s", title, text),
-			)),
+			anthropic.NewUserMessage(userContent(
+				fmt.Sprintf("Title: %s\n\nRFQ:\n%s", title, text), atts)...),
 		},
 	})
 	if err != nil {
 		e.logger.Warn().Err(err).Msg("claude extraction failed; using heuristic fallback")
-		return e.fallback.Extract(ctx, title, text)
+		return e.fallback.Extract(ctx, title, text, atts)
 	}
 
 	var raw strings.Builder
@@ -70,7 +71,7 @@ func (e *claudeExtractor) Extract(ctx context.Context, title, text string) (Requ
 	req, ok := parseRequirements(raw.String())
 	if !ok {
 		e.logger.Warn().Str("raw", raw.String()).Msg("claude returned unparseable JSON; using heuristic fallback")
-		return e.fallback.Extract(ctx, title, text)
+		return e.fallback.Extract(ctx, title, text, atts)
 	}
 	return req, nil
 }

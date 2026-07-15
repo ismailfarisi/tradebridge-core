@@ -35,7 +35,7 @@ func TestCanTransition(t *testing.T) {
 func TestHeuristicExtract(t *testing.T) {
 	req, err := HeuristicExtractor{}.Extract(context.Background(),
 		"Cartons needed",
-		"We need 500 cartons for packaging our products, deliver to Dubai by next month.")
+		"We need 500 cartons for packaging our products, deliver to Dubai by next month.", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -7,6 +7,7 @@ package main
 import (
 	"github.com/gofiber/fiber/v2"
 
+	"github.com/tradebridge/core/internal/attachments"
 	"github.com/tradebridge/core/internal/di"
 	"github.com/tradebridge/core/internal/gateway"
 )
@@ -25,7 +26,16 @@ func main() {
 		return c.JSON(fiber.Map{"status": "ok"})
 	})
 
-	gateway.NewHandler(app.Queries, app.Redis, app.Logger).Register(f)
+	attDir, err := attachments.ResolveDir(app.Config.AttachmentsDir)
+	if err != nil {
+		panic(err)
+	}
+	store, err := attachments.NewStore(attDir)
+	if err != nil {
+		panic(err)
+	}
+
+	gateway.NewHandler(app.Queries, app.Redis, store, app.Logger).Register(f)
 
 	addr := ":" + app.Config.GatewayPort
 	log.Info().Str("addr", addr).Msg("agent gateway listening")
