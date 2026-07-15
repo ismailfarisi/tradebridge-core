@@ -14,8 +14,13 @@ export function AttachmentView({ meta, token }: { meta: AttachmentMeta; token: s
     let alive = true;
     fetchAttachmentBlob(token, meta.id)
       .then((blob) => {
-        obj = URL.createObjectURL(blob);
-        if (alive) setUrl(obj);
+        const o = URL.createObjectURL(blob);
+        if (!alive) {
+          URL.revokeObjectURL(o);
+          return;
+        }
+        obj = o;
+        setUrl(o);
       })
       .catch(() => alive && setErr(true));
     return () => {

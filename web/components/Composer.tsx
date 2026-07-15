@@ -22,6 +22,7 @@ export function Composer({
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const uploadedRef = useRef(new Map<File, AttachmentMeta>());
 
   const pick = (list: FileList | null) => {
     if (!list) return;
@@ -50,8 +51,18 @@ export function Composer({
     setUploading(true);
     try {
       const metas: AttachmentMeta[] = [];
-      for (const f of files) metas.push(await uploadAttachment(token, f));
+      for (const f of files) {
+        const cached = uploadedRef.current.get(f);
+        if (cached) {
+          metas.push(cached);
+          continue;
+        }
+        const meta = await uploadAttachment(token, f);
+        uploadedRef.current.set(f, meta);
+        metas.push(meta);
+      }
       setFiles([]);
+      uploadedRef.current.clear();
       await onSend(metas);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed — retry");
@@ -72,7 +83,10 @@ export function Composer({
                   type="button"
                   className="btn btn-ghost btn-sm"
                   aria-label={`remove ${f.name}`}
-                  onClick={() => setFiles(files.filter((_, j) => j !== i))}
+                  onClick={() => {
+                    uploadedRef.current.delete(f);
+                    setFiles(files.filter((_, j) => j !== i));
+                  }}
                 >
                   ✕
                 </button>
