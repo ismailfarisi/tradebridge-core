@@ -40,6 +40,10 @@ type Config struct {
 	RFQTTLDays int `mapstructure:"RFQ_TTL_DAYS"`
 	// RFQSweepSeconds is the expiry-sweeper tick interval (Task C4).
 	RFQSweepSeconds int `mapstructure:"RFQ_SWEEP_SECONDS"`
+
+	// AttachmentsDir is where RFQ attachment bytes are stored on disk.
+	// Empty means ~/tradebridge-data/attachments.
+	AttachmentsDir string `mapstructure:"ATTACHMENTS_DIR"`
 }
 
 // Load reads configuration from the environment, falling back to a local
@@ -62,6 +66,7 @@ func Load() (*Config, error) {
 	v.SetDefault("PLATFORM_ADMIN_PASSWORD", "")
 	v.SetDefault("RFQ_TTL_DAYS", 14)
 	v.SetDefault("RFQ_SWEEP_SECONDS", 300)
+	v.SetDefault("ATTACHMENTS_DIR", "")
 
 	v.SetConfigName(".env")
 	v.SetConfigType("env")

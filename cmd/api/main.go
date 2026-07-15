@@ -36,6 +36,8 @@ func main() {
 		PlatformAdminPassword: app.Config.PlatformAdminPassword,
 
 		RFQTTLDays: app.Config.RFQTTLDays,
+
+		AttachmentsDir: app.Config.AttachmentsDir,
 	})
 
 	sweepCtx, cancelSweep := context.WithCancel(context.Background())
