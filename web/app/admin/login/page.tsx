@@ -31,8 +31,8 @@ export default function AdminLogin() {
         <strong style={{ fontSize: "1.15rem" }}>TradeBridge · Platform Admin</strong>
         <h1 style={{ fontSize: "1.3rem", margin: "1rem 0 1.25rem" }}>Admin sign in</h1>
         <form className="col" onSubmit={submit}>
-          <div className="field"><label>Email</label><input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></div>
-          <div className="field"><label>Password</label><input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required /></div>
+          <div className="field"><label htmlFor="admin-email">Email</label><input id="admin-email" name="email" className="input" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required /></div>
+          <div className="field"><label htmlFor="admin-password">Password</label><input id="admin-password" name="password" className="input" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></div>
           {err && <p className="err">{err}</p>}
           <button className="btn btn-primary" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
         </form>
