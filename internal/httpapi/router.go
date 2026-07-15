@@ -121,7 +121,6 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	}
 	attLoader := attachments.NewLoader(q, attStore)
 	attachments.NewHandler(q, attStore).Register(f, guard...)
-	_ = attLoader // consumed by rfq/quotes services in Tasks 6–7
 
 	// Settings hold the global (platform-wide) provider config; the encryption
 	// key falls back to the JWT secret when a dedicated one isn't configured.
@@ -142,7 +141,7 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	}
 	settingsSvc := settings.NewService(q, box, envExtraction)
 
-	rfq.NewHandler(rfq.NewService(q, pub, settingsSvc, cfg.Logger, cfg.RFQTTLDays), q).Register(f, guard...)
+	rfq.NewHandler(rfq.NewService(q, pub, settingsSvc, attLoader, cfg.Logger, cfg.RFQTTLDays), q).Register(f, guard...)
 	quotes.NewHandler(quotes.NewService(q, cfg.Pool, pub), q).Register(f, guard...)
 	orders.NewHandler(q).Register(f, guard...)
 

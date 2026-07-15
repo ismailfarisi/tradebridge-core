@@ -8,9 +8,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/rs/zerolog"
 
+	"github.com/tradebridge/core/internal/attachments"
 	"github.com/tradebridge/core/internal/eventbus"
 	"github.com/tradebridge/core/pkg/db/sqlc"
 )
@@ -25,18 +27,47 @@ type Service struct {
 	q        *sqlc.Queries
 	pub      *eventbus.Publisher
 	resolver ExtractorResolver
+	loader   *attachments.Loader
 	logger   zerolog.Logger
 	ttlDays  int
 }
 
 // NewService builds the RFQ service. ttlDays is how long a matched RFQ stays
 // open before the sweeper (Task C4) expires it; non-positive values fall back
-// to a 14-day default.
-func NewService(q *sqlc.Queries, pub *eventbus.Publisher, resolver ExtractorResolver, logger zerolog.Logger, ttlDays int) *Service {
+// to a 14-day default. loader may be nil (unit tests) — attachment hydration
+// is then skipped entirely.
+func NewService(q *sqlc.Queries, pub *eventbus.Publisher, resolver ExtractorResolver, loader *attachments.Loader, logger zerolog.Logger, ttlDays int) *Service {
 	if ttlDays <= 0 {
 		ttlDays = 14
 	}
-	return &Service{q: q, pub: pub, resolver: resolver, logger: logger, ttlDays: ttlDays}
+	return &Service{q: q, pub: pub, resolver: resolver, loader: loader, logger: logger, ttlDays: ttlDays}
+}
+
+// hydrateAttachments resolves each message's AttachmentIDs into metadata +
+// bytes, enforcing ownership and the per-message cap. No-op without a loader
+// (unit tests) or without attachment IDs.
+func (s *Service) hydrateAttachments(ctx context.Context, companyID string, msgs []ChatMessage) error {
+	if s.loader == nil {
+		return nil
+	}
+	for i := range msgs {
+		if len(msgs[i].AttachmentIDs) == 0 {
+			continue
+		}
+		if len(msgs[i].AttachmentIDs) > attachments.MaxPerMessage {
+			return fiber.NewError(fiber.StatusBadRequest, "too many attachments (max 5 per message)")
+		}
+		loaded, err := s.loader.LoadOwned(ctx, msgs[i].AttachmentIDs, companyID)
+		if err != nil {
+			return err
+		}
+		msgs[i].Loaded = loaded
+		msgs[i].Attachments = make([]attachments.Meta, len(loaded))
+		for j, l := range loaded {
+			msgs[i].Attachments[j] = l.Meta
+		}
+	}
+	return nil
 }
 
 // extractorFor resolves the buyer company's extraction config and builds an
@@ -73,6 +104,9 @@ type ChatResult struct {
 // Chat runs one intake step. On "create" it reuses CreateAndMatch and persists
 // the full transcript (incl. the confirmation) to rfqs.messages.
 func (s *Service) Chat(ctx context.Context, buyerCompanyID, userID string, msgs []ChatMessage) (ChatResult, error) {
+	if err := s.hydrateAttachments(ctx, buyerCompanyID, msgs); err != nil {
+		return ChatResult{}, err
+	}
 	dec, err := s.intakeFor(ctx, buyerCompanyID).Decide(ctx, msgs)
 	if err != nil {
 		return ChatResult{}, err
@@ -84,6 +118,9 @@ func (s *Service) Chat(ctx context.Context, buyerCompanyID, userID string, msgs 
 // agents stream the model's "message" field; others (heuristic) emit their
 // question as a single delta so clients get one uniform shape.
 func (s *Service) ChatStream(ctx context.Context, buyerCompanyID, userID string, msgs []ChatMessage, onDelta func(string)) (ChatResult, error) {
+	if err := s.hydrateAttachments(ctx, buyerCompanyID, msgs); err != nil {
+		return ChatResult{}, err
+	}
 	agent := s.intakeFor(ctx, buyerCompanyID)
 	var dec IntakeDecision
 	var err error
@@ -108,7 +145,11 @@ func (s *Service) finishChat(ctx context.Context, buyerCompanyID, userID string,
 		return ChatResult{Done: false, Assistant: dec.Message}, nil
 	}
 
-	opened, matches, err := s.CreateAndMatch(ctx, buyerCompanyID, userID, dec.Title, dec.Text)
+	var atts []attachments.Loaded
+	for _, m := range msgs {
+		atts = append(atts, m.Loaded...)
+	}
+	opened, matches, err := s.CreateAndMatch(ctx, buyerCompanyID, userID, dec.Title, dec.Text, atts)
 	if err != nil {
 		return ChatResult{}, err
 	}
@@ -145,18 +186,21 @@ type MatchResult struct {
 
 // matchedEvent is the `rfq.matched` payload delivered to a seller's agent.
 type matchedEvent struct {
-	Type           string       `json:"type"`
-	RFQID          string       `json:"rfq_id"`
-	Title          string       `json:"title"`
-	BuyerCompanyID string       `json:"buyer_company_id"`
-	Requirements   Requirements `json:"requirements"`
-	Score          float64      `json:"score"`
-	Reason         string       `json:"reason"`
+	Type           string             `json:"type"`
+	RFQID          string             `json:"rfq_id"`
+	Title          string             `json:"title"`
+	BuyerCompanyID string             `json:"buyer_company_id"`
+	Requirements   Requirements       `json:"requirements"`
+	Score          float64            `json:"score"`
+	Reason         string             `json:"reason"`
+	Attachments    []attachments.Meta `json:"attachments,omitempty"`
 }
 
 // CreateAndMatch runs the full pipeline for a new RFQ and returns the opened
-// RFQ plus the sellers it matched.
-func (s *Service) CreateAndMatch(ctx context.Context, buyerCompanyID, userID, title, text string) (sqlc.Rfq, []MatchResult, error) {
+// RFQ plus the sellers it matched. atts are the attachments (if any) that
+// were part of the buyer's chat transcript; they get attributed to the new
+// RFQ and threaded into every rfq.matched event.
+func (s *Service) CreateAndMatch(ctx context.Context, buyerCompanyID, userID, title, text string, atts []attachments.Loaded) (sqlc.Rfq, []MatchResult, error) {
 	rfq, err := s.q.CreateRFQ(ctx, sqlc.CreateRFQParams{
 		BuyerCompanyID: buyerCompanyID,
 		CreatedBy:      userID,
@@ -167,9 +211,26 @@ func (s *Service) CreateAndMatch(ctx context.Context, buyerCompanyID, userID, ti
 		return sqlc.Rfq{}, nil, err
 	}
 
-	req, err := s.extractorFor(ctx, buyerCompanyID).Extract(ctx, title, text, nil)
+	req, err := s.extractorFor(ctx, buyerCompanyID).Extract(ctx, title, text, atts)
 	if err != nil {
 		return sqlc.Rfq{}, nil, err
+	}
+
+	if len(atts) > 0 {
+		ids := make([]string, len(atts))
+		for i, a := range atts {
+			ids[i] = a.ID
+		}
+		if err := s.q.SetAttachmentsRFQ(ctx, sqlc.SetAttachmentsRFQParams{
+			RfqID: &rfq.ID, Ids: ids, CompanyID: buyerCompanyID,
+		}); err != nil {
+			s.logger.Warn().Err(err).Str("rfq_id", rfq.ID).Msg("failed to stamp attachments")
+		}
+	}
+
+	metas := make([]attachments.Meta, len(atts))
+	for i, a := range atts {
+		metas[i] = a.Meta
 	}
 
 	matches, err := s.findMatches(ctx, buyerCompanyID, req)
@@ -187,7 +248,7 @@ func (s *Service) CreateAndMatch(ctx context.Context, buyerCompanyID, userID, ti
 		}); err != nil {
 			return sqlc.Rfq{}, nil, err
 		}
-		if err := s.broadcast(ctx, rfq, req, m); err != nil {
+		if err := s.broadcast(ctx, rfq, req, m, metas); err != nil {
 			return sqlc.Rfq{}, nil, err
 		}
 	}
@@ -289,7 +350,7 @@ func (s *Service) findMatches(ctx context.Context, buyerCompanyID string, req Re
 
 // broadcast writes the event to agent_events (durable) BEFORE publishing it to
 // Redis (best-effort) — the write-always pattern the Gateway relies on (A3).
-func (s *Service) broadcast(ctx context.Context, rfq sqlc.Rfq, req Requirements, m MatchResult) error {
+func (s *Service) broadcast(ctx context.Context, rfq sqlc.Rfq, req Requirements, m MatchResult, atts []attachments.Meta) error {
 	payload := matchedEvent{
 		Type:           "rfq.matched",
 		RFQID:          rfq.ID,
@@ -298,6 +359,7 @@ func (s *Service) broadcast(ctx context.Context, rfq sqlc.Rfq, req Requirements,
 		Requirements:   req,
 		Score:          m.Score,
 		Reason:         m.Reason,
+		Attachments:    atts,
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
