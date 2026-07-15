@@ -90,19 +90,24 @@ Decision: **in-memory recent window**, resets on restart.
   - Inject into `settings.NewService(...)` so the admin routes can read it.
   - Both services import `rfq` already (no new import cycle: `rfq` imports neither).
 
-- **Recording sites:**
+- **Recording sites (intake only — see scope note):**
   - `intake_llm.go`: in `llmIntake.Decide` / `DecideStream`, call
     `health.RecordFallback(err)` on the non-200/stream-error → heuristic path, and
     in `decisionFromRaw` on the unparseable-JSON → heuristic path; call
     `health.RecordSuccess()` when a valid decision is produced from the model.
-  - The extractor's equivalent LLM path: `RecordFallback` on its non-200 fallback,
-    `RecordSuccess` on a parsed extraction.
-  - **Not recorded:** the pure-heuristic agents returned when `APIKey == ""`
-    (BuildIntake/BuildExtractor short-circuit before constructing the LLM adapter).
-    That "not configured" state is already conveyed by `has_key: false` — the
-    banner is strictly for *configured-but-failing*.
+    `llmIntake` is provider-agnostic (wraps the `llmChat` seam), so this single set
+    of sites covers both the anthropic and openai-compatible providers.
+  - **Not recorded:** the pure-heuristic agent returned when `APIKey == ""`
+    (`BuildIntake` short-circuits before constructing the LLM adapter). That "not
+    configured" state is already conveyed by `has_key: false` — the banner is
+    strictly for *configured-but-failing*.
   - The `ctx.Err()` (caller-went-away) branches do **not** record — a departed
     client is not a provider failure.
+  - **Scope note:** health tracking is intake-only. Extraction uses the *same*
+    saved provider config, so intake degradation implies extraction degradation;
+    "Test connection" independently proves the config. Wiring the tracker into the
+    two separate extractor adapters (`openai.go`, `claude.go`) would add churn for
+    no additional operator signal — deliberately omitted (YAGNI).
 
 - **Route:** `GET /admin/v1/settings/health` under the admin guard →
   `settings.Service.Health()` which returns `health.Snapshot()` as JSON:
@@ -154,13 +159,14 @@ Admin page ── POST /admin/v1/settings/test  ─▶ TestConnection ─▶ Pin
 ## Files Touched
 
 - `internal/rfq/health.go` (new) + `internal/rfq/health_test.go` (new)
+- `internal/rfq/ping.go` (new) + `internal/rfq/ping_test.go` (new) — `PingProvider`
 - `internal/rfq/intake_llm.go` (record sites; `httpStatusError` carries code+snippet)
-- `internal/rfq/intake.go` + `internal/rfq/extractor.go` (`BuildIntake`/`BuildExtractor`
-  gain a `*HealthTracker` param; extractor record sites)
-- `internal/rfq/service.go` (hold + pass the tracker)
+- `internal/rfq/intake.go` (`BuildIntake` gains a `*HealthTracker` param)
+- `internal/rfq/service.go` (hold + pass the tracker to `BuildIntake`)
 - `internal/settings/service.go` (hold tracker; `TestConnection`, `Health`)
 - `internal/settings/handler.go` (`POST /test`, `GET /health` routes)
 - `internal/httpapi/router.go` (create tracker, inject into both services)
 - `web/lib/admin.ts` (`testAdminSettings`, `getAdminHealth`, types)
 - `web/app/admin/page.tsx` (Test button + result; health poll + banner)
-- Callers of `BuildIntake`/`BuildExtractor` in existing tests updated for the new param.
+- Callers of `BuildIntake` in existing tests updated for the new param.
+- `BuildExtractor` is unchanged (extraction is not health-tracked — see scope note).
