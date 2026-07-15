@@ -27,7 +27,7 @@ func serviceOrSkip(t *testing.T) (*Service, *sqlc.Queries) {
 	box, err := cryptobox.New("test-enc-secret")
 	require.NoError(t, err)
 	env := rfq.ProviderConfig{Provider: "anthropic", Model: "claude-haiku-4-5", APIKey: "env-key"}
-	return NewService(q, box, env), q
+	return NewService(q, box, env, nil), q
 }
 
 func TestExtractionConfigFallsBackToEnv(t *testing.T) {

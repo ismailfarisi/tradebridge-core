@@ -140,7 +140,7 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 		envExtraction.Provider = "anthropic"
 	}
 	llmHealth := rfq.NewHealthTracker(20)
-	settingsSvc := settings.NewService(q, box, envExtraction)
+	settingsSvc := settings.NewService(q, box, envExtraction, llmHealth)
 
 	rfq.NewHandler(rfq.NewService(q, pub, settingsSvc, attLoader, cfg.Logger, cfg.RFQTTLDays, llmHealth), q).Register(f, guard...)
 	quotes.NewHandler(quotes.NewService(q, cfg.Pool, pub, attLoader, cfg.Logger), q).Register(f, guard...)

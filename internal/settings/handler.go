@@ -19,6 +19,8 @@ func (h *Handler) Register(app *fiber.App, guard ...fiber.Handler) {
 	g := app.Group("/admin/v1/settings", guard...)
 	g.Get("/", h.get)
 	g.Put("/", h.update)
+	g.Post("/test", h.test)
+	g.Get("/health", h.health)
 }
 
 func (h *Handler) get(c *fiber.Ctx) error {
@@ -42,4 +44,16 @@ func (h *Handler) update(c *fiber.Ctx) error {
 		return err
 	}
 	return c.JSON(view)
+}
+
+func (h *Handler) test(c *fiber.Ctx) error {
+	res, err := h.svc.TestConnection(c.Context())
+	if err != nil {
+		return err
+	}
+	return c.JSON(res)
+}
+
+func (h *Handler) health(c *fiber.Ctx) error {
+	return c.JSON(h.svc.Health())
 }
