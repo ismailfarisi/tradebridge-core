@@ -8,8 +8,10 @@ package settings
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/rs/zerolog"
 
 	"github.com/tradebridge/core/internal/rfq"
 	"github.com/tradebridge/core/pkg/cryptobox"
@@ -19,14 +21,15 @@ import (
 // Service resolves and updates the global platform settings. It implements
 // rfq.ExtractorResolver.
 type Service struct {
-	q   *sqlc.Queries
-	box *cryptobox.Box
-	env rfq.ProviderConfig // process-env fallback
+	q      *sqlc.Queries
+	box    *cryptobox.Box
+	env    rfq.ProviderConfig // process-env fallback
+	health *rfq.HealthTracker
 }
 
 // NewService builds the settings service with the env-default extraction config.
-func NewService(q *sqlc.Queries, box *cryptobox.Box, env rfq.ProviderConfig) *Service {
-	return &Service{q: q, box: box, env: env}
+func NewService(q *sqlc.Queries, box *cryptobox.Box, env rfq.ProviderConfig, health *rfq.HealthTracker) *Service {
+	return &Service{q: q, box: box, env: env, health: health}
 }
 
 // ExtractionView is the non-secret projection returned to the UI.
@@ -182,4 +185,39 @@ func mask(secret string) string {
 		return secret
 	}
 	return secret[len(secret)-4:]
+}
+
+// TestResult is the outcome of a one-shot provider connectivity check.
+type TestResult struct {
+	Ok        bool   `json:"ok"`
+	Model     string `json:"model"`
+	LatencyMs int64  `json:"latency_ms"`
+	Error     string `json:"error"`
+}
+
+// toTestResult maps a ping outcome into the API shape (pure; unit-tested).
+func toTestResult(model string, latency time.Duration, perr error) TestResult {
+	r := TestResult{Model: model, LatencyMs: latency.Milliseconds()}
+	if perr != nil {
+		r.Error = perr.Error()
+		return r
+	}
+	r.Ok = true
+	return r
+}
+
+// TestConnection runs one real call against the SAVED provider config.
+func (s *Service) TestConnection(ctx context.Context) (TestResult, error) {
+	cfg, err := s.ExtractionConfig(ctx, "")
+	if err != nil {
+		return TestResult{}, err
+	}
+	start := time.Now()
+	perr := rfq.PingProvider(ctx, cfg, zerolog.Nop())
+	return toTestResult(cfg.Model, time.Since(start), perr), nil
+}
+
+// Health returns the current intake-fallback health snapshot.
+func (s *Service) Health() rfq.HealthSnapshot {
+	return s.health.Snapshot()
 }

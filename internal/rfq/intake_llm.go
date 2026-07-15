@@ -5,6 +5,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -47,6 +50,7 @@ type llmIntake struct {
 	fallback IntakeAgent
 	logger   zerolog.Logger
 	system   string
+	health   *HealthTracker
 }
 
 func (l llmIntake) Decide(ctx context.Context, msgs []ChatMessage) (IntakeDecision, error) {
@@ -58,6 +62,7 @@ func (l llmIntake) Decide(ctx context.Context, msgs []ChatMessage) (IntakeDecisi
 			return IntakeDecision{}, ctx.Err()
 		}
 		l.logger.Warn().Err(err).Msg("intake LLM call failed; using heuristic")
+		l.health.RecordFallback(err)
 		return l.fallback.Decide(ctx, msgs)
 	}
 	return l.decisionFromRaw(ctx, raw, msgs)
@@ -75,6 +80,7 @@ func (l llmIntake) DecideStream(ctx context.Context, msgs []ChatMessage, onDelta
 			return IntakeDecision{}, ctx.Err()
 		}
 		l.logger.Warn().Err(err).Msg("intake LLM stream failed; using heuristic")
+		l.health.RecordFallback(err)
 		return l.fallback.Decide(ctx, msgs)
 	}
 	return l.decisionFromRaw(ctx, raw, msgs)
@@ -86,9 +92,11 @@ func (l llmIntake) decisionFromRaw(ctx context.Context, raw string, msgs []ChatM
 	dec, ok := parseDecision(raw)
 	if !ok {
 		l.logger.Warn().Str("raw", raw).Msg("intake LLM returned unparseable JSON; using heuristic")
+		l.health.RecordFallback(errors.New("model returned unparseable JSON"))
 		return l.fallback.Decide(ctx, msgs)
 	}
 	if dec.Action == "create" {
+		l.health.RecordSuccess()
 		title := strings.TrimSpace(dec.Title)
 		text := strings.TrimSpace(dec.RFQText)
 		if text == "" {
@@ -102,8 +110,10 @@ func (l llmIntake) decisionFromRaw(ctx context.Context, raw string, msgs []ChatM
 	// Any non-create decision is treated as ask; empty question → heuristic.
 	q := strings.TrimSpace(dec.Message)
 	if q == "" {
+		l.health.RecordFallback(errors.New("model returned empty question"))
 		return l.fallback.Decide(ctx, msgs)
 	}
+	l.health.RecordSuccess()
 	return IntakeDecision{Action: "ask", Message: q}, nil
 }
 
@@ -241,7 +251,8 @@ func (o openAIChat) complete(ctx context.Context, system string, msgs []ChatMess
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return "", &httpStatusError{code: resp.StatusCode}
+		snip, _ := io.ReadAll(io.LimitReader(resp.Body, 300))
+		return "", &httpStatusError{code: resp.StatusCode, snippet: strings.TrimSpace(string(snip))}
 	}
 	var out chatResponse
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil || len(out.Choices) == 0 {
@@ -289,7 +300,8 @@ func (o openAIChat) completeStream(ctx context.Context, system string, msgs []Ch
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return "", &httpStatusError{code: resp.StatusCode}
+		snip, _ := io.ReadAll(io.LimitReader(resp.Body, 300))
+		return "", &httpStatusError{code: resp.StatusCode, snippet: strings.TrimSpace(string(snip))}
 	}
 
 	scanner := bufio.NewScanner(resp.Body)
@@ -319,7 +331,16 @@ func (o openAIChat) completeStream(ctx context.Context, system string, msgs []Ch
 	return full.String(), nil
 }
 
-// httpStatusError carries a non-200 status so llmIntake falls back to heuristic.
-type httpStatusError struct{ code int }
+// httpStatusError carries a non-200 status (and a short response snippet) so
+// llmIntake falls back to heuristic AND the reason is legible in logs/UI.
+type httpStatusError struct {
+	code    int
+	snippet string
+}
 
-func (e *httpStatusError) Error() string { return "openai chat non-200 status" }
+func (e *httpStatusError) Error() string {
+	if e.snippet != "" {
+		return fmt.Sprintf("openai chat %d: %s", e.code, e.snippet)
+	}
+	return fmt.Sprintf("openai chat non-200 status %d", e.code)
+}

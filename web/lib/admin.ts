@@ -44,6 +44,15 @@ export type AdminSettingsInput = {
   extraction_system_prompt: string; intake_system_prompt: string;
 };
 
+export type TestResult = { ok: boolean; model: string; latency_ms: number; error: string };
+export type LlmHealth = {
+  window: number;
+  recent_fallbacks: number;
+  last_error: string;
+  last_fallback_at: string | null;
+  degraded: boolean;
+};
+
 export const adminLogin = (email: string, password: string) =>
   req<{ token: string }>("POST", "/admin/v1/login", { body: { email, password } });
 export const adminMe = (token: string) =>
@@ -52,3 +61,7 @@ export const getAdminSettings = (token: string) =>
   req<AdminSettings>("GET", "/admin/v1/settings/", { token });
 export const updateAdminSettings = (token: string, body: AdminSettingsInput) =>
   req<AdminSettings>("PUT", "/admin/v1/settings/", { token, body });
+export const testAdminSettings = (token: string) =>
+  req<TestResult>("POST", "/admin/v1/settings/test", { token });
+export const getAdminHealth = (token: string) =>
+  req<LlmHealth>("GET", "/admin/v1/settings/health", { token });

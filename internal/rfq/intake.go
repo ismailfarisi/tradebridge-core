@@ -35,7 +35,7 @@ type IntakeStreamer interface {
 
 // BuildIntake picks an intake agent from a resolved config, mirroring
 // BuildExtractor. With no API key it uses the deterministic heuristic.
-func BuildIntake(cfg ProviderConfig, logger zerolog.Logger) IntakeAgent {
+func BuildIntake(cfg ProviderConfig, logger zerolog.Logger, health *HealthTracker) IntakeAgent {
 	prompt := cfg.IntakePrompt
 	if prompt == "" {
 		prompt = DefaultIntakePrompt
@@ -44,13 +44,13 @@ func BuildIntake(cfg ProviderConfig, logger zerolog.Logger) IntakeAgent {
 	case cfg.APIKey == "":
 		return HeuristicIntake{}
 	case cfg.Provider == "openai_compatible":
-		return llmIntake{chat: newOpenAIChat(cfg.BaseURL, cfg.Model, cfg.APIKey, logger), fallback: HeuristicIntake{}, logger: logger, system: prompt}
+		return llmIntake{chat: newOpenAIChat(cfg.BaseURL, cfg.Model, cfg.APIKey, logger), fallback: HeuristicIntake{}, logger: logger, system: prompt, health: health}
 	default: // anthropic
 		model := cfg.Model
 		if model == "" {
 			model = "claude-haiku-4-5"
 		}
-		return llmIntake{chat: newAnthropicChat(cfg.APIKey, model, logger), fallback: HeuristicIntake{}, logger: logger, system: prompt}
+		return llmIntake{chat: newAnthropicChat(cfg.APIKey, model, logger), fallback: HeuristicIntake{}, logger: logger, system: prompt, health: health}
 	}
 }
 

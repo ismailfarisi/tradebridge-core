@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import AdminShell from "@/components/AdminShell";
-import { getAdminSettings, updateAdminSettings, useAdminToken, type AdminSettings } from "@/lib/admin";
+import { getAdminSettings, updateAdminSettings, testAdminSettings, getAdminHealth, useAdminToken, type AdminSettings, type TestResult, type LlmHealth } from "@/lib/admin";
 
 export default function AdminSettingsPage() {
   return (
@@ -25,6 +25,9 @@ function SettingsForm() {
   const [msg, setMsg] = useState<string | null>(null);
   const [msgKind, setMsgKind] = useState<"ok" | "err">("ok");
   const [busy, setBusy] = useState(false);
+  const [health, setHealth] = useState<LlmHealth | null>(null);
+  const [test, setTest] = useState<TestResult | null>(null);
+  const [testing, setTesting] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -37,6 +40,23 @@ function SettingsForm() {
       setInPrompt(v.intake_system_prompt);
     }).catch((e) => { setMsg(e.message); setMsgKind("err"); });
   }, [token]);
+
+  useEffect(() => {
+    if (!token) return;
+    let alive = true;
+    const tick = () => getAdminHealth(token).then((h) => { if (alive) setHealth(h); }).catch(() => {});
+    tick();
+    const id = setInterval(tick, 30000);
+    return () => { alive = false; clearInterval(id); };
+  }, [token]);
+
+  const runTest = async () => {
+    if (!token) return;
+    setTesting(true); setTest(null);
+    try { setTest(await testAdminSettings(token)); }
+    catch (e) { setTest({ ok: false, model: "", latency_ms: 0, error: e instanceof Error ? e.message : "test failed" }); }
+    finally { setTesting(false); getAdminHealth(token).then(setHealth).catch(() => {}); }
+  };
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,6 +80,14 @@ function SettingsForm() {
 
   return (
     <form className="col" onSubmit={save} style={{ gap: "1.5rem" }}>
+      {health?.degraded && (
+        <div className="err" style={{ marginBottom: "1rem", padding: "0.75rem 1rem", borderRadius: 8 }}>
+          ⚠️ <strong>AI is in scripted fallback mode.</strong> Recent model calls failed
+          ({health.recent_fallbacks} of the last {health.window}).{" "}
+          {health.last_error ? <>Last error: <code>{health.last_error}</code>.</> : null}{" "}
+          Check the model settings below and use <strong>Test connection</strong>.
+        </div>
+      )}
       <div className="card">
         <h2>Model settings (global)</h2>
         <p className="muted small">Provider + model that power RFQ extraction and chat intake for every company.</p>
@@ -102,7 +130,15 @@ function SettingsForm() {
       </div>
 
       {msg && <p className={msgKind}>{msg}</p>}
-      <div><button className="btn btn-primary" disabled={busy}>{busy ? "Saving…" : "Save"}</button></div>
+      <div className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
+        <button className="btn btn-primary" disabled={busy}>{busy ? "Saving…" : "Save"}</button>
+        <button type="button" className="btn btn-ghost" disabled={testing || busy} onClick={runTest}>
+          {testing ? "Testing…" : "Test connection"}
+        </button>
+        {test && (test.ok
+          ? <span className="ok small">✅ Connected — {test.model} ({test.latency_ms} ms)</span>
+          : <span className="err small">❌ {test.error}</span>)}
+      </div>
     </form>
   );
 }
