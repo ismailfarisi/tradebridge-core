@@ -30,17 +30,19 @@ type Service struct {
 	loader   *attachments.Loader
 	logger   zerolog.Logger
 	ttlDays  int
+	health   *HealthTracker
 }
 
 // NewService builds the RFQ service. ttlDays is how long a matched RFQ stays
 // open before the sweeper (Task C4) expires it; non-positive values fall back
 // to a 14-day default. loader may be nil (unit tests) — attachment hydration
-// is then skipped entirely.
-func NewService(q *sqlc.Queries, pub *eventbus.Publisher, resolver ExtractorResolver, loader *attachments.Loader, logger zerolog.Logger, ttlDays int) *Service {
+// is then skipped entirely. health may be nil — intake outcome recording is
+// then a no-op.
+func NewService(q *sqlc.Queries, pub *eventbus.Publisher, resolver ExtractorResolver, loader *attachments.Loader, logger zerolog.Logger, ttlDays int, health *HealthTracker) *Service {
 	if ttlDays <= 0 {
 		ttlDays = 14
 	}
-	return &Service{q: q, pub: pub, resolver: resolver, loader: loader, logger: logger, ttlDays: ttlDays}
+	return &Service{q: q, pub: pub, resolver: resolver, loader: loader, logger: logger, ttlDays: ttlDays, health: health}
 }
 
 // hydrateAttachments resolves each message's AttachmentIDs into metadata +
@@ -89,7 +91,7 @@ func (s *Service) intakeFor(ctx context.Context, companyID string) IntakeAgent {
 		s.logger.Warn().Err(err).Str("company_id", companyID).Msg("intake config resolve failed; using heuristic")
 		return HeuristicIntake{}
 	}
-	return BuildIntake(cfg, s.logger)
+	return BuildIntake(cfg, s.logger, s.health)
 }
 
 // ChatResult is one RFQ-chat step: either a clarifying question (Done=false) or

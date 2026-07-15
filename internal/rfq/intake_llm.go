@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -49,6 +50,7 @@ type llmIntake struct {
 	fallback IntakeAgent
 	logger   zerolog.Logger
 	system   string
+	health   *HealthTracker
 }
 
 func (l llmIntake) Decide(ctx context.Context, msgs []ChatMessage) (IntakeDecision, error) {
@@ -60,6 +62,7 @@ func (l llmIntake) Decide(ctx context.Context, msgs []ChatMessage) (IntakeDecisi
 			return IntakeDecision{}, ctx.Err()
 		}
 		l.logger.Warn().Err(err).Msg("intake LLM call failed; using heuristic")
+		l.health.RecordFallback(err)
 		return l.fallback.Decide(ctx, msgs)
 	}
 	return l.decisionFromRaw(ctx, raw, msgs)
@@ -77,6 +80,7 @@ func (l llmIntake) DecideStream(ctx context.Context, msgs []ChatMessage, onDelta
 			return IntakeDecision{}, ctx.Err()
 		}
 		l.logger.Warn().Err(err).Msg("intake LLM stream failed; using heuristic")
+		l.health.RecordFallback(err)
 		return l.fallback.Decide(ctx, msgs)
 	}
 	return l.decisionFromRaw(ctx, raw, msgs)
@@ -88,9 +92,11 @@ func (l llmIntake) decisionFromRaw(ctx context.Context, raw string, msgs []ChatM
 	dec, ok := parseDecision(raw)
 	if !ok {
 		l.logger.Warn().Str("raw", raw).Msg("intake LLM returned unparseable JSON; using heuristic")
+		l.health.RecordFallback(errors.New("model returned unparseable JSON"))
 		return l.fallback.Decide(ctx, msgs)
 	}
 	if dec.Action == "create" {
+		l.health.RecordSuccess()
 		title := strings.TrimSpace(dec.Title)
 		text := strings.TrimSpace(dec.RFQText)
 		if text == "" {
@@ -104,8 +110,10 @@ func (l llmIntake) decisionFromRaw(ctx context.Context, raw string, msgs []ChatM
 	// Any non-create decision is treated as ask; empty question → heuristic.
 	q := strings.TrimSpace(dec.Message)
 	if q == "" {
+		l.health.RecordFallback(errors.New("model returned empty question"))
 		return l.fallback.Decide(ctx, msgs)
 	}
+	l.health.RecordSuccess()
 	return IntakeDecision{Action: "ask", Message: q}, nil
 }
 

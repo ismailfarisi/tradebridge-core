@@ -186,14 +186,14 @@ func TestLLMIntake_UsesConfiguredSystemPrompt(t *testing.T) {
 }
 
 func TestBuildIntake_FallsBackToDefaultPrompt(t *testing.T) {
-	li, ok := BuildIntake(ProviderConfig{Provider: "anthropic", APIKey: "k"}, zerolog.Nop()).(llmIntake)
+	li, ok := BuildIntake(ProviderConfig{Provider: "anthropic", APIKey: "k"}, zerolog.Nop(), nil).(llmIntake)
 	if !ok {
 		t.Fatal("expected an llmIntake for a keyed anthropic config")
 	}
 	if li.system != DefaultIntakePrompt {
 		t.Fatalf("blank IntakePrompt should fall back to DefaultIntakePrompt")
 	}
-	li2, _ := BuildIntake(ProviderConfig{Provider: "anthropic", APIKey: "k", IntakePrompt: "X"}, zerolog.Nop()).(llmIntake)
+	li2, _ := BuildIntake(ProviderConfig{Provider: "anthropic", APIKey: "k", IntakePrompt: "X"}, zerolog.Nop(), nil).(llmIntake)
 	if li2.system != "X" {
 		t.Fatalf("IntakePrompt should be used when set")
 	}
