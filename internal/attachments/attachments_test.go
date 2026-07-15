@@ -44,6 +44,43 @@ func TestStoreRoundTrip(t *testing.T) {
 	}
 }
 
+func TestContentDisposition(t *testing.T) {
+	cases := []struct {
+		name     string
+		filename string
+		want     string
+	}{
+		{
+			name:     "plain name",
+			filename: "invoice.pdf",
+			want:     `inline; filename="invoice.pdf"; filename*=UTF-8''invoice.pdf`,
+		},
+		{
+			name:     "name with double quote",
+			filename: `weird"name.pdf`,
+			want:     `inline; filename="weird\"name.pdf"; filename*=UTF-8''weird%22name.pdf`,
+		},
+		{
+			name:     "name with backslash",
+			filename: `weird\name.pdf`,
+			want:     `inline; filename="weird\\name.pdf"; filename*=UTF-8''weird%5Cname.pdf`,
+		},
+		{
+			name:     "unicode name",
+			filename: "café résumé.pdf",
+			want:     `inline; filename="café résumé.pdf"; filename*=UTF-8''caf%C3%A9%20r%C3%A9sum%C3%A9.pdf`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ContentDisposition(tc.filename)
+			if got != tc.want {
+				t.Fatalf("ContentDisposition(%q) = %q, want %q", tc.filename, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestResolveDir(t *testing.T) {
 	if d, err := ResolveDir("/x/y"); err != nil || d != "/x/y" {
 		t.Fatalf("configured dir: %q, %v", d, err)

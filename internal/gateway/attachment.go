@@ -6,6 +6,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/tradebridge/core/internal/attachments"
 	"github.com/tradebridge/core/pkg/db/sqlc"
 )
 
@@ -38,6 +39,6 @@ func (h *Handler) attachment(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusNotFound, "attachment data missing")
 	}
 	c.Set(fiber.HeaderContentType, row.Mime)
-	c.Set(fiber.HeaderContentDisposition, `inline; filename="`+row.Filename+`"`)
+	c.Set(fiber.HeaderContentDisposition, attachments.ContentDisposition(row.Filename))
 	return c.Send(data)
 }

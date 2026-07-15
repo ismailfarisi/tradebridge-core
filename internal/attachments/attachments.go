@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -60,6 +61,14 @@ func Sniff(data []byte) string {
 }
 
 func Allowed(mime string) bool { return allowed[mime] }
+
+// ContentDisposition renders a safe inline Content-Disposition for a
+// user-supplied filename: quotes/backslashes escaped in the quoted-string
+// form, plus an RFC 5987 filename* fallback for non-ASCII.
+func ContentDisposition(filename string) string {
+	q := strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(filename)
+	return `inline; filename="` + q + `"; filename*=UTF-8''` + url.PathEscape(filename)
+}
 
 // ResolveDir returns the configured dir, or ~/tradebridge-data/attachments.
 func ResolveDir(configured string) (string, error) {

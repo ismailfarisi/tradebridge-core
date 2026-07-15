@@ -102,6 +102,6 @@ func (h *Handler) download(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusNotFound, "attachment data missing")
 	}
 	c.Set(fiber.HeaderContentType, row.Mime)
-	c.Set(fiber.HeaderContentDisposition, `inline; filename="`+row.Filename+`"`)
+	c.Set(fiber.HeaderContentDisposition, ContentDisposition(row.Filename))
 	return c.Send(data)
 }
