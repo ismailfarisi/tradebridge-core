@@ -135,7 +135,7 @@ func (h *Handler) threadClarification(ctx context.Context, rfqID, sellerCompanyI
 		return
 	}
 	if _, err := h.q.CreateQuoteMessage(ctx, sqlc.CreateQuoteMessageParams{
-		QuoteID: q.ID, Author: "seller", Body: body.Message,
+		QuoteID: q.ID, Author: "seller", Body: body.Message, Attachments: nil,
 	}); err != nil {
 		h.logger.Warn().Err(err).Str("quote_id", q.ID).Msg("failed to thread clarification")
 	}

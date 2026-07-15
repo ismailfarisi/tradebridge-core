@@ -43,6 +43,17 @@ type AgentEvent struct {
 	AckedAt     pgtype.Timestamptz `json:"acked_at"`
 }
 
+type Attachment struct {
+	ID        string    `json:"id"`
+	CompanyID string    `json:"company_id"`
+	RfqID     *string   `json:"rfq_id"`
+	Filename  string    `json:"filename"`
+	Mime      string    `json:"mime"`
+	SizeBytes int64     `json:"size_bytes"`
+	Sha256    string    `json:"sha256"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type AuditLog struct {
 	ID        string    `json:"id"`
 	CompanyID string    `json:"company_id"`
@@ -127,11 +138,12 @@ type Quote struct {
 }
 
 type QuoteMessage struct {
-	ID        string    `json:"id"`
-	QuoteID   string    `json:"quote_id"`
-	Author    string    `json:"author"`
-	Body      string    `json:"body"`
-	CreatedAt time.Time `json:"created_at"`
+	ID          string    `json:"id"`
+	QuoteID     string    `json:"quote_id"`
+	Author      string    `json:"author"`
+	Body        string    `json:"body"`
+	CreatedAt   time.Time `json:"created_at"`
+	Attachments []byte    `json:"attachments"`
 }
 
 type Rfq struct {

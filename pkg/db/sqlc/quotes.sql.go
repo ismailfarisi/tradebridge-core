@@ -76,19 +76,25 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order
 }
 
 const createQuoteMessage = `-- name: CreateQuoteMessage :one
-INSERT INTO quote_messages (quote_id, author, body)
-VALUES ($1, $2, $3)
-RETURNING id, quote_id, author, body, created_at
+INSERT INTO quote_messages (quote_id, author, body, attachments)
+VALUES ($1, $2, $3, $4)
+RETURNING id, quote_id, author, body, created_at, attachments
 `
 
 type CreateQuoteMessageParams struct {
-	QuoteID string `json:"quote_id"`
-	Author  string `json:"author"`
-	Body    string `json:"body"`
+	QuoteID     string `json:"quote_id"`
+	Author      string `json:"author"`
+	Body        string `json:"body"`
+	Attachments []byte `json:"attachments"`
 }
 
 func (q *Queries) CreateQuoteMessage(ctx context.Context, arg CreateQuoteMessageParams) (QuoteMessage, error) {
-	row := q.db.QueryRow(ctx, createQuoteMessage, arg.QuoteID, arg.Author, arg.Body)
+	row := q.db.QueryRow(ctx, createQuoteMessage,
+		arg.QuoteID,
+		arg.Author,
+		arg.Body,
+		arg.Attachments,
+	)
 	var i QuoteMessage
 	err := row.Scan(
 		&i.ID,
@@ -96,6 +102,7 @@ func (q *Queries) CreateQuoteMessage(ctx context.Context, arg CreateQuoteMessage
 		&i.Author,
 		&i.Body,
 		&i.CreatedAt,
+		&i.Attachments,
 	)
 	return i, err
 }
@@ -175,7 +182,7 @@ func (q *Queries) GetQuoteBySeller(ctx context.Context, arg GetQuoteBySellerPara
 }
 
 const listQuoteMessages = `-- name: ListQuoteMessages :many
-SELECT id, quote_id, author, body, created_at FROM quote_messages WHERE quote_id = $1 ORDER BY created_at
+SELECT id, quote_id, author, body, created_at, attachments FROM quote_messages WHERE quote_id = $1 ORDER BY created_at
 `
 
 func (q *Queries) ListQuoteMessages(ctx context.Context, quoteID string) ([]QuoteMessage, error) {
@@ -193,6 +200,7 @@ func (q *Queries) ListQuoteMessages(ctx context.Context, quoteID string) ([]Quot
 			&i.Author,
 			&i.Body,
 			&i.CreatedAt,
+			&i.Attachments,
 		); err != nil {
 			return nil, err
 		}

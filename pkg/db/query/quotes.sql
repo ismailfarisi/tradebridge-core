@@ -40,8 +40,8 @@ FROM quotes
 WHERE rfq_id = $1 AND id <> $2 AND status = 'submitted';
 
 -- name: CreateQuoteMessage :one
-INSERT INTO quote_messages (quote_id, author, body)
-VALUES ($1, $2, $3)
+INSERT INTO quote_messages (quote_id, author, body, attachments)
+VALUES ($1, $2, $3, $4)
 RETURNING *;
 
 -- name: ListQuoteMessages :many
