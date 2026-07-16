@@ -52,7 +52,7 @@ export function markAllNotificationsRead(token: string): Promise<void> {
 }
 
 export function resendVerification(token: string): Promise<void> {
-  return call<void>("POST", `/v1/auth/resend-verification`, { token });
+  return call<void>("POST", `/v1/users/resend-verification`, { token });
 }
 
 // Consumes the EMAIL verification token (public route, no auth header).

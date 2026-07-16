@@ -5,13 +5,11 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/tradebridge/core/pkg/db/sqlc"
 )
 
 func TestMe_ReportsEmailVerified(t *testing.T) {
 	app := buildAPI(t)
 	pool := poolOrSkip(t)
-	q := sqlc.New(pool)
 
 	_, reg := doJSON(t, app, "POST", "/v1/auth/register", "", map[string]any{
 		"company_name": "MeCo", "company_type": "buyer",
@@ -27,7 +25,6 @@ func TestMe_ReportsEmailVerified(t *testing.T) {
 
 	// After verifying, /v1/me flips to true.
 	verifyUser(t, pool, userID)
-	_ = q
 	status, me = doJSON(t, app, "GET", "/v1/me", token, nil)
 	require.Equal(t, http.StatusOK, status)
 	require.Equal(t, true, me["email_verified"])
