@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/tradebridge/core/internal/notify"
 	"github.com/tradebridge/core/internal/quotes"
 	"github.com/tradebridge/core/internal/rfq"
 	"github.com/tradebridge/core/pkg/db/sqlc"
@@ -109,6 +111,19 @@ func (h *Handler) command(c *fiber.Ctx) error {
 			return err
 		}
 		h.maybeQuote(c.Context(), *rfqID)
+		if h.notifier != nil {
+			if r, err := h.q.GetRFQ(c.Context(), *rfqID); err == nil {
+				n, _ := h.q.CountSubmittedQuotesByRFQ(c.Context(), *rfqID)
+				h.notifier.NotifyCompany(c.Context(), r.BuyerCompanyID, notify.Event{
+					Type:     notify.TypeQuoteSubmitted,
+					Title:    quoteCountTitle(n),
+					Body:     "Open your RFQ to compare quotes.",
+					Data:     map[string]any{"rfq_id": r.ID},
+					CTALabel: "Compare quotes",
+					CTAPath:  "/rfqs/" + r.ID,
+				})
+			}
+		}
 	case "clarification.request":
 		if rfqID != nil {
 			h.threadClarification(c.Context(), *rfqID, agent.CompanyID, payload)
@@ -153,6 +168,16 @@ func (h *Handler) maybeQuote(ctx context.Context, rfqID string) {
 			h.logger.Warn().Err(err).Str("rfq_id", rfqID).Msg("failed to advance rfq to quoted")
 		}
 	}
+}
+
+// quoteCountTitle renders the buyer-facing notification title for a
+// quote.submitted event, singular for the first quote and pluralized with
+// the running count thereafter.
+func quoteCountTitle(n int64) string {
+	if n <= 1 {
+		return "A supplier quoted your RFQ"
+	}
+	return fmt.Sprintf("%d suppliers quoted your RFQ", n)
 }
 
 // audit writes one append-only audit row. A logging failure must not fail the
