@@ -14,6 +14,7 @@ import (
 
 	"github.com/tradebridge/core/internal/attachments"
 	"github.com/tradebridge/core/internal/eventbus"
+	"github.com/tradebridge/core/internal/notify"
 	"github.com/tradebridge/core/pkg/db/sqlc"
 )
 
@@ -31,18 +32,20 @@ type Service struct {
 	logger   zerolog.Logger
 	ttlDays  int
 	health   *HealthTracker
+	notifier *notify.Notifier
 }
 
 // NewService builds the RFQ service. ttlDays is how long a matched RFQ stays
 // open before the sweeper (Task C4) expires it; non-positive values fall back
 // to a 14-day default. loader may be nil (unit tests) — attachment hydration
 // is then skipped entirely. health may be nil — intake outcome recording is
-// then a no-op.
-func NewService(q *sqlc.Queries, pub *eventbus.Publisher, resolver ExtractorResolver, loader *attachments.Loader, logger zerolog.Logger, ttlDays int, health *HealthTracker) *Service {
+// then a no-op. notifier may be nil (unit tests) — matched-seller
+// notifications are then skipped entirely.
+func NewService(q *sqlc.Queries, pub *eventbus.Publisher, resolver ExtractorResolver, loader *attachments.Loader, logger zerolog.Logger, ttlDays int, health *HealthTracker, notifier *notify.Notifier) *Service {
 	if ttlDays <= 0 {
 		ttlDays = 14
 	}
-	return &Service{q: q, pub: pub, resolver: resolver, loader: loader, logger: logger, ttlDays: ttlDays, health: health}
+	return &Service{q: q, pub: pub, resolver: resolver, loader: loader, logger: logger, ttlDays: ttlDays, health: health, notifier: notifier}
 }
 
 // hydrateAttachments resolves each message's AttachmentIDs into metadata +
@@ -367,5 +370,18 @@ func (s *Service) broadcast(ctx context.Context, rfq sqlc.Rfq, req Requirements,
 	if err != nil {
 		return err
 	}
-	return s.pub.Publish(ctx, m.SellerCompanyID, "rfq.matched", body)
+	if err := s.pub.Publish(ctx, m.SellerCompanyID, "rfq.matched", body); err != nil {
+		return err
+	}
+	if s.notifier != nil {
+		s.notifier.NotifyCompany(ctx, m.SellerCompanyID, notify.Event{
+			Type:     notify.TypeRFQMatched,
+			Title:    "New RFQ matched: " + rfq.Title,
+			Body:     "A buyer's request matches your catalog. Open it to quote.",
+			Data:     map[string]any{"rfq_id": rfq.ID},
+			CTALabel: "View RFQ",
+			CTAPath:  "/rfqs/" + rfq.ID,
+		})
+	}
+	return nil
 }

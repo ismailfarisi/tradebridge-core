@@ -159,7 +159,7 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	llmHealth := rfq.NewHealthTracker(20)
 	settingsSvc := settings.NewService(q, box, envExtraction, llmHealth)
 
-	rfq.NewHandler(rfq.NewService(q, pub, settingsSvc, attLoader, cfg.Logger, cfg.RFQTTLDays, llmHealth), q).Register(f, middleware.RequireVerified(q), guard...)
+	rfq.NewHandler(rfq.NewService(q, pub, settingsSvc, attLoader, cfg.Logger, cfg.RFQTTLDays, llmHealth, notifier), q).Register(f, middleware.RequireVerified(q), guard...)
 	quotes.NewHandler(quotes.NewService(q, cfg.Pool, pub, attLoader, cfg.Logger), q).Register(f, guard...)
 	orders.NewHandler(q).Register(f, guard...)
 

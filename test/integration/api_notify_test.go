@@ -161,3 +161,32 @@ func TestNotify_ListAndMarkRead(t *testing.T) {
 	status, list = doJSON(t, app, "GET", "/v1/notifications", token, nil)
 	require.Equal(t, float64(0), list["unread"])
 }
+
+// TestNotify_RFQMatchedNotifiesSeller exercises the real RFQ pipeline end to
+// end: when a buyer's RFQ matches a seller's catalog, the matched seller's
+// user gets an in-app rfq.matched notification (Task 7 wiring of Notifier
+// into rfq.Service at the rfq.matched broadcast site).
+func TestNotify_RFQMatchedNotifiesSeller(t *testing.T) {
+	app := buildAPI(t)
+	pool := poolOrSkip(t)
+	q := sqlc.New(pool)
+	_, _, sellerUserID := seedSellerWithCatalog(t, app, "packaging")
+	buyerToken, _ := seedVerifiedBuyer(t, app, pool, "buyer-rm-")
+
+	st, _ := doJSON(t, app, "POST", "/v1/rfqs", buyerToken, map[string]any{
+		"title": "Cartons needed",
+		"text":  "We need 500 cartons for packaging our products, deliver to Dubai by next month.",
+	})
+	require.Equal(t, http.StatusCreated, st)
+
+	require.Eventually(t, func() bool {
+		c, _ := q.CountUnreadNotifications(context.Background(), sellerUserID)
+		return c >= 1
+	}, 3*time.Second, 25*time.Millisecond)
+
+	// Assert the notification TYPE is rfq.matched (not just any row).
+	rows, err := q.ListNotificationsByUser(context.Background(), sqlc.ListNotificationsByUserParams{UserID: sellerUserID, Limit: 1, Offset: 0})
+	require.NoError(t, err)
+	require.NotEmpty(t, rows)
+	require.Equal(t, "rfq.matched", rows[0].Type)
+}
