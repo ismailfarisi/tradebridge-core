@@ -71,7 +71,7 @@ func (q *Queries) GetActiveSubscription(ctx context.Context, companyID string) (
 }
 
 const getCompanyByStripeCustomer = `-- name: GetCompanyByStripeCustomer :one
-SELECT id, name, type, created_at, stripe_customer_id FROM companies WHERE stripe_customer_id = $1
+SELECT id, name, type, created_at, stripe_customer_id, verification_status, verified_domain, verified_at FROM companies WHERE stripe_customer_id = $1
 `
 
 func (q *Queries) GetCompanyByStripeCustomer(ctx context.Context, stripeCustomerID *string) (Company, error) {
@@ -83,6 +83,9 @@ func (q *Queries) GetCompanyByStripeCustomer(ctx context.Context, stripeCustomer
 		&i.Type,
 		&i.CreatedAt,
 		&i.StripeCustomerID,
+		&i.VerificationStatus,
+		&i.VerifiedDomain,
+		&i.VerifiedAt,
 	)
 	return i, err
 }

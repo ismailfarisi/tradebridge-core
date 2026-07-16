@@ -310,18 +310,20 @@ SELECT sp.company_id, c.name AS company_name, sp.categories, sp.description, sp.
 FROM supplier_profiles sp
 JOIN companies c ON c.id = sp.company_id
 WHERE sp.company_id <> $1
+  AND (NOT $2::boolean OR c.verification_status = 'verified')
   AND (
     EXISTS (
         SELECT 1 FROM unnest(sp.categories) cat
-        WHERE cat ILIKE '%' || $2::text || '%'
+        WHERE cat ILIKE '%' || $3::text || '%'
     )
-    OR sp.description ILIKE '%' || $2::text || '%'
+    OR sp.description ILIKE '%' || $3::text || '%'
   )
-LIMIT $3
+LIMIT $4
 `
 
 type MatchSuppliersParams struct {
 	ExcludeCompany string `json:"exclude_company"`
+	VerifiedOnly   bool   `json:"verified_only"`
 	Needle         string `json:"needle"`
 	Lim            int32  `json:"lim"`
 }
@@ -335,7 +337,12 @@ type MatchSuppliersRow struct {
 }
 
 func (q *Queries) MatchSuppliers(ctx context.Context, arg MatchSuppliersParams) ([]MatchSuppliersRow, error) {
-	rows, err := q.db.Query(ctx, matchSuppliers, arg.ExcludeCompany, arg.Needle, arg.Lim)
+	rows, err := q.db.Query(ctx, matchSuppliers,
+		arg.ExcludeCompany,
+		arg.VerifiedOnly,
+		arg.Needle,
+		arg.Lim,
+	)
 	if err != nil {
 		return nil, err
 	}

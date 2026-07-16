@@ -53,6 +53,7 @@ SELECT sp.company_id, c.name AS company_name, sp.categories, sp.description, sp.
 FROM supplier_profiles sp
 JOIN companies c ON c.id = sp.company_id
 WHERE sp.company_id <> sqlc.arg(exclude_company)
+  AND (NOT sqlc.arg(verified_only)::boolean OR c.verification_status = 'verified')
   AND (
     EXISTS (
         SELECT 1 FROM unnest(sp.categories) cat

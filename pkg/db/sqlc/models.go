@@ -76,11 +76,14 @@ type CatalogSummary struct {
 }
 
 type Company struct {
-	ID               string    `json:"id"`
-	Name             string    `json:"name"`
-	Type             string    `json:"type"`
-	CreatedAt        time.Time `json:"created_at"`
-	StripeCustomerID *string   `json:"stripe_customer_id"`
+	ID                 string             `json:"id"`
+	Name               string             `json:"name"`
+	Type               string             `json:"type"`
+	CreatedAt          time.Time          `json:"created_at"`
+	StripeCustomerID   *string            `json:"stripe_customer_id"`
+	VerificationStatus string             `json:"verification_status"`
+	VerifiedDomain     *string            `json:"verified_domain"`
+	VerifiedAt         pgtype.Timestamptz `json:"verified_at"`
 }
 
 type CompanySetting struct {
@@ -91,6 +94,18 @@ type CompanySetting struct {
 	ExtractionApiKeyEnc   []byte    `json:"extraction_api_key_enc"`
 	ExtractionApiKeyLast4 string    `json:"extraction_api_key_last4"`
 	UpdatedAt             time.Time `json:"updated_at"`
+}
+
+type DomainVerification struct {
+	ID            string             `json:"id"`
+	CompanyID     string             `json:"company_id"`
+	Domain        string             `json:"domain"`
+	Token         string             `json:"token"`
+	Status        string             `json:"status"`
+	Attempts      int32              `json:"attempts"`
+	LastCheckedAt pgtype.Timestamptz `json:"last_checked_at"`
+	CreatedAt     time.Time          `json:"created_at"`
+	VerifiedAt    pgtype.Timestamptz `json:"verified_at"`
 }
 
 type EmailVerification struct {

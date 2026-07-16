@@ -4,6 +4,7 @@ package config
 
 import (
 	"strings"
+	"time"
 
 	"github.com/spf13/viper"
 )
@@ -81,6 +82,11 @@ type Config struct {
 	// BillingDevMode allows the unsigned StubBilling webhook — DEV/TEST ONLY.
 	// Never set in prod.
 	BillingDevMode bool `mapstructure:"BILLING_DEV_MODE"`
+
+	// VerifyRequiredForMatch gates the RFQ match pool to verified sellers only.
+	VerifyRequiredForMatch bool `mapstructure:"VERIFY_REQUIRED_FOR_MATCH"`
+	// VerifyDNSTimeout bounds each DNS-TXT lookup during domain verification.
+	VerifyDNSTimeout time.Duration `mapstructure:"VERIFY_DNS_TIMEOUT"`
 }
 
 // Load reads configuration from the environment, falling back to a local
@@ -121,6 +127,9 @@ func Load() (*Config, error) {
 	v.SetDefault("STRIPE_PRICE_BUSINESS_MONTH", "")
 	v.SetDefault("STRIPE_PRICE_BUSINESS_YEAR", "")
 	v.SetDefault("BILLING_DEV_MODE", false)
+
+	v.SetDefault("VERIFY_REQUIRED_FOR_MATCH", false)
+	v.SetDefault("VERIFY_DNS_TIMEOUT", "5s")
 
 	v.SetConfigName(".env")
 	v.SetConfigType("env")

@@ -22,7 +22,7 @@ func (heuristicResolver) ExtractionConfig(context.Context, string) (ProviderConf
 
 func TestChatStreamHandler_HeuristicAskSSE(t *testing.T) {
 	app := fiber.New()
-	svc := NewService(nil, nil, heuristicResolver{}, nil, zerolog.Nop(), 0, nil, nil)
+	svc := NewService(nil, nil, heuristicResolver{}, nil, zerolog.Nop(), 0, nil, nil, false)
 	NewHandler(svc, nil, entitlements.NewService(nil, zerolog.Nop())).Register(app, func(c *fiber.Ctx) error { return c.Next() })
 
 	req := httptest.NewRequest("POST", "/v1/rfq-chat/stream",
@@ -57,7 +57,7 @@ func TestChatStreamHandler_HeuristicAskSSE(t *testing.T) {
 
 func TestChatStreamHandler_EmptyMessages400(t *testing.T) {
 	app := fiber.New()
-	svc := NewService(nil, nil, heuristicResolver{}, nil, zerolog.Nop(), 0, nil, nil)
+	svc := NewService(nil, nil, heuristicResolver{}, nil, zerolog.Nop(), 0, nil, nil, false)
 	NewHandler(svc, nil, entitlements.NewService(nil, zerolog.Nop())).Register(app, func(c *fiber.Ctx) error { return c.Next() })
 
 	req := httptest.NewRequest("POST", "/v1/rfq-chat/stream", strings.NewReader(`{"messages":[]}`))
