@@ -19,6 +19,7 @@ function BillingInner() {
     if (!token) return;
     let active = true;
     let tries = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const load = () => {
       getBillingSummary(token)
         .then((s) => {
@@ -27,13 +28,13 @@ function BillingInner() {
           // After returning from Checkout, the webhook may lag; poll a few times.
           if (justChecked && s.plan === "free" && tries < 5) {
             tries += 1;
-            setTimeout(load, 2000);
+            timer = setTimeout(load, 2000);
           }
         })
         .catch((e) => active && setErr(e instanceof Error ? e.message : "failed"));
     };
     load();
-    return () => { active = false; };
+    return () => { active = false; if (timer) clearTimeout(timer); };
   }, [token, justChecked]);
 
   const portal = async () => {

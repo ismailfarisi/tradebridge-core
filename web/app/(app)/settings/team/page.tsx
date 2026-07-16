@@ -20,6 +20,7 @@ export default function TeamPage() {
   const [ok, setOk] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [paywall, setPaywall] = useState<PaywallError | null>(null);
+  const [upgrading, setUpgrading] = useState(false);
 
   const refresh = () => {
     if (!token) return;
@@ -51,10 +52,12 @@ export default function TeamPage() {
   const upgrade = async () => {
     if (!token || !paywall) return;
     const plan = paywall.planRequired === "business" ? "business" : "pro";
+    setUpgrading(true);
     try {
       window.location.href = await startCheckout(token, plan, "month");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "checkout failed");
+      setUpgrading(false);
       setPaywall(null);
     }
   };
@@ -101,6 +104,7 @@ export default function TeamPage() {
           planRequired={paywall.planRequired}
           onClose={() => setPaywall(null)}
           onUpgrade={upgrade}
+          busy={upgrading}
         />
       )}
     </>
