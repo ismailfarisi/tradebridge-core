@@ -19,7 +19,7 @@ SELECT * FROM quotes WHERE id = $1;
 SELECT * FROM quotes WHERE rfq_id = $1 AND seller_company_id = $2;
 
 -- name: RankQuotesByRFQ :many
-SELECT q.*, c.name AS seller_name
+SELECT q.*, c.name AS seller_name, c.verification_status
 FROM quotes q
 JOIN companies c ON c.id = q.seller_company_id
 WHERE q.rfq_id = $1

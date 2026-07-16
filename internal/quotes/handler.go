@@ -35,17 +35,18 @@ func (h *Handler) Register(app *fiber.App, guard ...fiber.Handler) {
 }
 
 type quoteView struct {
-	ID           string  `json:"id"`
-	RFQID        string  `json:"rfq_id"`
-	SellerID     string  `json:"seller_company_id"`
-	SellerName   string  `json:"seller_name,omitempty"`
-	PriceCents   int64   `json:"price_cents"`
-	Currency     string  `json:"currency"`
-	DeliveryDays *int32  `json:"delivery_days"`
-	Notes        string  `json:"notes"`
-	Completeness float64 `json:"completeness"`
-	Status       string  `json:"status"`
-	Rank         int     `json:"rank,omitempty"`
+	ID                       string  `json:"id"`
+	RFQID                    string  `json:"rfq_id"`
+	SellerID                 string  `json:"seller_company_id"`
+	SellerName               string  `json:"seller_name,omitempty"`
+	SellerVerificationStatus string  `json:"seller_verification_status,omitempty"`
+	PriceCents               int64   `json:"price_cents"`
+	Currency                 string  `json:"currency"`
+	DeliveryDays             *int32  `json:"delivery_days"`
+	Notes                    string  `json:"notes"`
+	Completeness             float64 `json:"completeness"`
+	Status                   string  `json:"status"`
+	Rank                     int     `json:"rank,omitempty"`
 }
 
 // listForRFQ returns the buyer's ranked quotes for one RFQ.
@@ -67,7 +68,8 @@ func (h *Handler) listForRFQ(c *fiber.Ctx) error {
 	for i, q := range rows {
 		out[i] = quoteView{
 			ID: q.ID, RFQID: q.RfqID, SellerID: q.SellerCompanyID, SellerName: q.SellerName,
-			PriceCents: q.PriceCents, Currency: q.Currency, DeliveryDays: q.DeliveryDays,
+			SellerVerificationStatus: q.VerificationStatus,
+			PriceCents:               q.PriceCents, Currency: q.Currency, DeliveryDays: q.DeliveryDays,
 			Notes: q.Notes, Completeness: q.Completeness, Status: q.Status, Rank: i + 1,
 		}
 	}
