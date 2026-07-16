@@ -5,6 +5,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { logout, useMe } from "@/lib/auth";
 import type { Me } from "@/lib/api";
+import NotificationBell from "@/components/NotificationBell";
+import VerifyEmailBanner from "@/components/VerifyEmailBanner";
 
 type NavItem = { href: string; label: string; show: (me: Me) => boolean };
 
@@ -125,16 +127,20 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <span className="badge badge-info">{me.company_type ?? "company"}</span>
             <span className="badge">{me.role}</span>
           </div>
-          <button
-            className="btn btn-sm btn-ghost"
-            onClick={() => {
-              logout();
-              router.replace("/login");
-            }}
-          >
-            Sign out
-          </button>
+          <div className="row" style={{ gap: "0.6rem" }}>
+            {token && <NotificationBell token={token} />}
+            <button
+              className="btn btn-sm btn-ghost"
+              onClick={() => {
+                logout();
+                router.replace("/login");
+              }}
+            >
+              Sign out
+            </button>
+          </div>
         </header>
+        {token && <VerifyEmailBanner token={token} emailVerified={me.email_verified} />}
         <main style={{ padding: "1.75rem", maxWidth: 1000, width: "100%" }}>{children}</main>
       </div>
     </div>

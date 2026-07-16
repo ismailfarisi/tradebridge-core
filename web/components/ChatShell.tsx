@@ -6,6 +6,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { logout, useMe } from "@/lib/auth";
 import { listRfqs, type Me, type RFQ } from "@/lib/api";
 import { useCoreHealth } from "@/lib/health";
+import NotificationBell from "@/components/NotificationBell";
+import VerifyEmailBanner from "@/components/VerifyEmailBanner";
 
 const isSeller = (m: Me) => m.company_type === "seller" || m.company_type === "both";
 
@@ -122,8 +124,10 @@ export default function ChatShell({ children }: { children: React.ReactNode }) {
           <div className="row" style={{ gap: "0.6rem", alignItems: "center" }}>
             <StatusDot online={online} />
             <span className="badge badge-info">{me.company_type ?? "buyer"}</span>
+            {token && <NotificationBell token={token} />}
           </div>
         </header>
+        {token && <VerifyEmailBanner token={token} emailVerified={me.email_verified} />}
         <main style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>{children}</main>
       </div>
     </div>
