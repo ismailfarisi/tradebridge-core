@@ -38,6 +38,12 @@ WHERE id = @company_id;
 -- name: SyncSupplierVerified :exec
 UPDATE supplier_profiles SET verified = @verified, updated_at = NOW() WHERE company_id = @company_id;
 
+-- name: FailCompanyVerifiedDomains :exec
+-- Used on admin revoke/unverify: demote the company's verified challenge(s) so a
+-- stale row can't let Check report verified for a domain the company no longer holds.
+UPDATE domain_verifications SET status = 'failed'
+WHERE company_id = @company_id AND status = 'verified';
+
 -- name: GetCompanyVerification :one
 SELECT id, verification_status, verified_domain, verified_at FROM companies WHERE id = @id;
 

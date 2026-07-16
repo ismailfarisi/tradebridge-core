@@ -11,6 +11,18 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const failCompanyVerifiedDomains = `-- name: FailCompanyVerifiedDomains :exec
+UPDATE domain_verifications SET status = 'failed'
+WHERE company_id = $1 AND status = 'verified'
+`
+
+// Used on admin revoke/unverify: demote the company's verified challenge(s) so a
+// stale row can't let Check report verified for a domain the company no longer holds.
+func (q *Queries) FailCompanyVerifiedDomains(ctx context.Context, companyID string) error {
+	_, err := q.db.Exec(ctx, failCompanyVerifiedDomains, companyID)
+	return err
+}
+
 const getCompanyVerification = `-- name: GetCompanyVerification :one
 SELECT id, verification_status, verified_domain, verified_at FROM companies WHERE id = $1
 `

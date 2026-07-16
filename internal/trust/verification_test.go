@@ -82,6 +82,57 @@ func TestCheckMissThenMatch(t *testing.T) {
 	require.Equal(t, "check-co.example", *got.VerifiedDomain)
 }
 
+func TestCheckDomainTaken(t *testing.T) {
+	res := &fakeResolver{records: map[string][]string{}}
+	svc := newSvc(t, res)
+	q, pool := testQueriesOrSkip(t)
+	a := makeCompany(t, q, "taken-a")
+	b := makeCompany(t, q, "taken-b")
+	const domain = "taken-shared.example"
+	releaseDomain(t, pool, domain)
+	t.Cleanup(func() { releaseDomain(t, pool, domain) })
+
+	chA, err := svc.Claim(context.Background(), a, domain)
+	require.NoError(t, err)
+	chB, err := svc.Claim(context.Background(), b, domain)
+	require.NoError(t, err)
+	// Both companies' tokens are published; A wins the unique index, B collides.
+	res.records[chA.RecordName] = []string{chA.RecordValue, chB.RecordValue}
+
+	rA, err := svc.Check(context.Background(), a, domain)
+	require.NoError(t, err)
+	require.True(t, rA.Verified)
+
+	_, err = svc.Check(context.Background(), b, domain)
+	require.ErrorIs(t, err, ErrDomainTaken, "second company verifying same domain → 409 domain_taken, not 500")
+}
+
+func TestSetStatusRevokeResetsChallenge(t *testing.T) {
+	res := &fakeResolver{records: map[string][]string{}}
+	svc := newSvc(t, res)
+	q, pool := testQueriesOrSkip(t)
+	cid := makeCompany(t, q, "revoke-reset-co")
+	const domain = "revoke-reset.example"
+	releaseDomain(t, pool, domain)
+	t.Cleanup(func() { releaseDomain(t, pool, domain) })
+
+	ch, err := svc.Claim(context.Background(), cid, domain)
+	require.NoError(t, err)
+	res.records[ch.RecordName] = []string{ch.RecordValue}
+	r, err := svc.Check(context.Background(), cid, domain)
+	require.NoError(t, err)
+	require.True(t, r.Verified)
+
+	// Admin revokes. The domain is freed and the challenge demoted, so a
+	// subsequent Check must NOT report verified from the stale row.
+	require.NoError(t, svc.SetStatus(context.Background(), cid, "rejected", "abuse"))
+	res.records = map[string][]string{} // domain reassigned away; TXT no longer present
+	r, err = svc.Check(context.Background(), cid, domain)
+	require.NoError(t, err)
+	require.False(t, r.Verified, "revoked company cannot re-report verified from a stale challenge row")
+	require.Equal(t, "pending", r.Status)
+}
+
 func TestCheckWithoutClaim(t *testing.T) {
 	svc := newSvc(t, &fakeResolver{})
 	q, _ := testQueriesOrSkip(t)

@@ -168,11 +168,11 @@ func (s *Service) Check(ctx context.Context, companyID, rawDomain string) (Resul
 	} else if err != nil {
 		return Result{}, err
 	}
-	_ = s.q.TouchDomainVerificationAttempt(ctx, dv.ID)
-
 	if dv.Status == "verified" {
 		return Result{Status: "verified", Verified: true}, nil
 	}
+	// Count the attempt only when we actually perform a lookup.
+	_ = s.q.TouchDomainVerificationAttempt(ctx, dv.ID)
 
 	records, lookupErr := s.res.LookupTXT(ctx, recordHost+domain)
 	if lookupErr != nil {
@@ -248,6 +248,14 @@ func (s *Service) SetStatus(ctx context.Context, companyID, status, reason strin
 		CompanyID: companyID, Verified: status == "verified",
 	}); err != nil {
 		return err
+	}
+	// On revoke/unverify, demote any verified challenge so a stale
+	// domain_verifications row can't let Check report verified for a domain the
+	// company no longer holds (e.g. after the domain is reassigned).
+	if status != "verified" {
+		if err := qtx.FailCompanyVerifiedDomains(ctx, companyID); err != nil {
+			return err
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return err
