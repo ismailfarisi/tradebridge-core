@@ -45,6 +45,13 @@ func main() {
 
 		AgentCredTTLDays:         app.Config.AgentCredTTLDays,
 		AgentCredRotateGraceDays: app.Config.AgentCredRotateGraceDays,
+
+		StripeSecretKey:          app.Config.StripeSecretKey,
+		StripeWebhookSecret:      app.Config.StripeWebhookSecret,
+		StripePriceProMonth:      app.Config.StripePriceProMonth,
+		StripePriceProYear:       app.Config.StripePriceProYear,
+		StripePriceBusinessMonth: app.Config.StripePriceBusinessMonth,
+		StripePriceBusinessYear:  app.Config.StripePriceBusinessYear,
 	})
 
 	sweepCtx, cancelSweep := context.WithCancel(context.Background())

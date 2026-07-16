@@ -2,6 +2,7 @@ package integration
 
 import (
 	"context"
+	"net/http"
 	"testing"
 
 	"github.com/rs/zerolog"
@@ -50,4 +51,56 @@ func TestBillingService_ApplyEventDrivesPlanAndIsIdempotent(t *testing.T) {
 	}))
 	require.Equal(t, "free", ent.PlanCode(ctx, co.ID))
 	require.False(t, ent.For(ctx, co.ID).AgentAutonomy)
+}
+
+func TestBillingHTTP_CheckoutWebhookUnlocksPro(t *testing.T) {
+	app := buildAPI(t)
+
+	st, reg := doJSON(t, app, "POST", "/v1/auth/register", "", map[string]any{
+		"company_name": "HttpPayCo", "company_type": "both",
+		"email": uniqueEmail("pay-"), "password": "supersecret",
+	})
+	require.Equal(t, http.StatusCreated, st)
+	token := reg["token"].(string)
+	companyID := reg["company_id"].(string)
+
+	// Free before.
+	st, sum := doJSON(t, app, "GET", "/v1/billing/summary", token, nil)
+	require.Equal(t, http.StatusOK, st)
+	require.Equal(t, "free", sum["plan"])
+
+	// Checkout returns a URL (stub) and stores the Stripe customer id.
+	st, co := doJSON(t, app, "POST", "/v1/billing/checkout", token, map[string]any{"plan": "pro", "interval": "month"})
+	require.Equal(t, http.StatusOK, st)
+	require.Contains(t, co["url"].(string), "stub")
+
+	// Stripe confirms via webhook (stub parses the normalized envelope directly).
+	st, _ = doJSON(t, app, "POST", "/v1/billing/webhook", "", map[string]any{
+		"id": "evt_http_" + companyID, "type": "checkout.session.completed",
+		"company_id": companyID, "customer_id": "cus_stub_" + companyID,
+		"subscription_id": "sub_http", "plan": "pro", "interval": "month", "status": "active",
+	})
+	require.Equal(t, http.StatusOK, st)
+
+	// Now Pro: autonomy unlocked, rfq limit 100.
+	st, sum = doJSON(t, app, "GET", "/v1/billing/summary", token, nil)
+	require.Equal(t, http.StatusOK, st)
+	require.Equal(t, "pro", sum["plan"])
+	ent := sum["entitlements"].(map[string]any)
+	require.Equal(t, true, ent["agent_autonomy"])
+	require.Equal(t, float64(100), ent["rfq_monthly_limit"])
+
+	// Portal deep-link works once a customer exists.
+	st, portal := doJSON(t, app, "POST", "/v1/billing/portal", token, nil)
+	require.Equal(t, http.StatusOK, st)
+	require.Contains(t, portal["url"].(string), "stub")
+
+	// Cancellation downgrades to Free.
+	st, _ = doJSON(t, app, "POST", "/v1/billing/webhook", "", map[string]any{
+		"id": "evt_cancel_http_" + companyID, "type": "customer.subscription.deleted",
+		"company_id": companyID, "customer_id": "cus_stub_" + companyID, "status": "canceled",
+	})
+	require.Equal(t, http.StatusOK, st)
+	st, sum = doJSON(t, app, "GET", "/v1/billing/summary", token, nil)
+	require.Equal(t, "free", sum["plan"])
 }
