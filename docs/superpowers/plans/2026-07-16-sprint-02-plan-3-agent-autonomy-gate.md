@@ -10,6 +10,11 @@
 
 **Repos:** Task 1 = `tradebridge-core` (branch `sprint-02-plan3-agent-gate`). Tasks 2–3 = `tradebridge-agent` (branch `sprint-02-plan3-agent-gate`). Each repo merges locally at the end; never push.
 
+> **Deferred follow-ups (whole-branch review — all Minor, none block merge; contract confirmed exact match, no fail-open):**
+> - Core: the gateway entitlements handler calls `For()`+`PlanCode()` separately → up to 2× `GetActiveSubscription`/request (low-traffic, agent caches 60s). Resolve once if optimizing.
+> - Agent: add a regression test for a truthy-but-non-boolean `agent_autonomy` (`"true"`/`1`/`null`) — the `typeof` guard already fails closed on these; the test locks it.
+> - Agent: `fetchEntitlements`'s `fetch` has no timeout (a hanging Core stalls quote processing — never fails *open*; matches existing `commands.ts`/`heartbeat` pattern). Add a timeout as a hardening follow-up.
+
 ## Global Constraints
 
 - **Fail closed:** the agent must auto-send ONLY when Core affirmatively returns `agent_autonomy: true`. Any error, non-200, malformed body, unreachable Core, or missing field ⇒ treat as NOT entitled ⇒ queue for review. Never fail open.
