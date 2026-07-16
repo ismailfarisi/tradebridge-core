@@ -249,6 +249,8 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	reports := trust.NewReportsHandler(q)
 	reports.Register(f, append(append([]fiber.Handler{}, guard...), middleware.RequireVerified(q), rlReport)...)
 
+	trust.NewBlocksHandler(q).Register(f, guard...)
+
 	// Platform superadmin realm: a separate credential store and JWT secret
 	// from company auth. Fail-closed — routes are not mounted at all when no
 	// secret is configured, rather than mounting with a guessable default.
