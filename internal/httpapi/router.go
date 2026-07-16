@@ -130,9 +130,9 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	notifier := notify.New(q, sender, cfg.AppBaseURL, cfg.Logger)
 	entSvc := entitlements.NewService(q, cfg.Logger)
 
-	identity.NewHandler(q, tokens, notifier).Register(f, guard...)
+	identity.NewHandler(q, tokens, notifier, entSvc).Register(f, guard...)
 	suppliers.NewHandler(q).Register(f, guard...)
-	catalog.NewHandler(q).Register(f, guard...)
+	catalog.NewHandler(q, entSvc).Register(f, guard...)
 	agent.NewHandler(q, agent.Config{TTLDays: cfg.AgentCredTTLDays, GraceDays: cfg.AgentCredRotateGraceDays}).Register(f, guard...)
 
 	notify.NewHandler(q).Register(f, guard...)
@@ -171,7 +171,7 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	llmHealth := rfq.NewHealthTracker(20)
 	settingsSvc := settings.NewService(q, box, envExtraction, llmHealth)
 
-	rfq.NewHandler(rfq.NewService(q, pub, settingsSvc, attLoader, cfg.Logger, cfg.RFQTTLDays, llmHealth, notifier), q).Register(f, middleware.RequireVerified(q), guard...)
+	rfq.NewHandler(rfq.NewService(q, pub, settingsSvc, attLoader, cfg.Logger, cfg.RFQTTLDays, llmHealth, notifier), q, entSvc).Register(f, middleware.RequireVerified(q), guard...)
 	quotes.NewHandler(quotes.NewService(q, cfg.Pool, pub, attLoader, cfg.Logger, notifier), q).Register(f, guard...)
 	orders.NewHandler(q).Register(f, guard...)
 

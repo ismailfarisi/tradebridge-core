@@ -8,18 +8,20 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/tradebridge/core/internal/entitlements"
 	"github.com/tradebridge/core/pkg/db/sqlc"
 	"github.com/tradebridge/core/pkg/middleware"
 )
 
 // Handler serves catalog CRUD + search routes.
 type Handler struct {
-	q *sqlc.Queries
+	q   *sqlc.Queries
+	ent *entitlements.Service
 }
 
 // NewHandler builds the catalog handler over the query layer.
-func NewHandler(q *sqlc.Queries) *Handler {
-	return &Handler{q: q}
+func NewHandler(q *sqlc.Queries, ent *entitlements.Service) *Handler {
+	return &Handler{q: q, ent: ent}
 }
 
 // Register mounts the catalog routes under the given tenant guard.
@@ -46,6 +48,9 @@ func (h *Handler) create(c *fiber.Ctx) error {
 	}
 	if req.Name == "" || req.Category == "" {
 		return fiber.NewError(fiber.StatusBadRequest, "name and category required")
+	}
+	if err := h.ent.CheckCatalogQuota(c.Context(), middleware.CompanyID(c)); err != nil {
+		return entitlements.Fail(c, err)
 	}
 	item, err := h.q.CreateCatalogSummary(c.Context(), sqlc.CreateCatalogSummaryParams{
 		CompanyID: middleware.CompanyID(c),
