@@ -68,6 +68,7 @@ func TestGatewayAttachment_MatchedAgentGetsBytes_UnmatchedGets404(t *testing.T) 
 	require.Equal(t, http.StatusCreated, st)
 	buyerToken := buyer["token"].(string)
 	buyerCompanyID := buyer["company_id"].(string)
+	require.NoError(t, q.MarkUserEmailVerified(ctx, buyer["user_id"].(string)))
 
 	st, created := doJSON(t, api, "POST", "/v1/rfqs", buyerToken, map[string]any{
 		"title": "Cartons", "text": "Need 500 cartons for packaging, deliver to Dubai.",

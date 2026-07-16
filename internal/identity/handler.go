@@ -1,6 +1,7 @@
 package identity
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -9,19 +10,21 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/tradebridge/core/internal/notify"
 	"github.com/tradebridge/core/pkg/db/sqlc"
 	"github.com/tradebridge/core/pkg/middleware"
 )
 
 // Handler wires the identity endpoints to the query layer + token service.
 type Handler struct {
-	q      *sqlc.Queries
-	tokens *TokenService
+	q        *sqlc.Queries
+	tokens   *TokenService
+	notifier *notify.Notifier
 }
 
 // NewHandler builds the identity handler over the query layer + token service.
-func NewHandler(q *sqlc.Queries, tokens *TokenService) *Handler {
-	return &Handler{q: q, tokens: tokens}
+func NewHandler(q *sqlc.Queries, tokens *TokenService, notifier *notify.Notifier) *Handler {
+	return &Handler{q: q, tokens: tokens, notifier: notifier}
 }
 
 // Register mounts the auth + user routes. Public routes go on the root group;
@@ -31,10 +34,12 @@ func (h *Handler) Register(app *fiber.App, guard ...fiber.Handler) {
 	auth.Post("/register", h.register)
 	auth.Post("/login", h.login)
 	auth.Post("/accept-invite", h.acceptInvite)
+	auth.Post("/verify-email", h.verifyEmail)
 
 	users := app.Group("/v1/users", guard...)
 	users.Get("/", h.listUsers)
 	users.Post("/invite", middleware.RequireRole("owner", "admin"), h.invite)
+	users.Post("/resend-verification", h.resendVerification)
 }
 
 type registerReq struct {
@@ -94,6 +99,8 @@ func (h *Handler) register(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
+
+	h.sendVerification(ctx, user)
 
 	return h.issue(c, fiber.StatusCreated, user)
 }
@@ -239,4 +246,61 @@ func randomToken() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
+}
+
+func (h *Handler) sendVerification(ctx context.Context, u sqlc.User) {
+	if h.notifier == nil {
+		return
+	}
+	token, err := randomToken()
+	if err != nil {
+		return
+	}
+	if _, err := h.q.CreateEmailVerification(ctx, sqlc.CreateEmailVerificationParams{
+		UserID: u.ID, Token: token, ExpiresAt: time.Now().Add(48 * time.Hour),
+	}); err != nil {
+		return
+	}
+	subject, html, text := notify.RenderVerificationEmail(h.notifier.BaseURL(), token)
+	h.notifier.SendTransactional(u.Email, subject, html, text)
+}
+
+type verifyEmailReq struct {
+	Token string `json:"token"`
+}
+
+func (h *Handler) verifyEmail(c *fiber.Ctx) error {
+	var req verifyEmailReq
+	if err := c.BodyParser(&req); err != nil || req.Token == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "token required")
+	}
+	ctx := c.Context()
+	ev, err := h.q.GetEmailVerificationByToken(ctx, req.Token)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return fiber.NewError(fiber.StatusNotFound, "invalid or expired token")
+	} else if err != nil {
+		return err
+	}
+	if ev.ConsumedAt.Valid || time.Now().After(ev.ExpiresAt) {
+		return fiber.NewError(fiber.StatusBadRequest, "token already used or expired")
+	}
+	if err := h.q.ConsumeEmailVerification(ctx, ev.ID); err != nil {
+		return err
+	}
+	if err := h.q.MarkUserEmailVerified(ctx, ev.UserID); err != nil {
+		return err
+	}
+	return c.JSON(fiber.Map{"verified": true})
+}
+
+func (h *Handler) resendVerification(c *fiber.Ctx) error {
+	u, err := h.q.GetUserByID(c.Context(), middleware.UserID(c))
+	if err != nil {
+		return err
+	}
+	if u.EmailVerifiedAt.Valid {
+		return c.JSON(fiber.Map{"verified": true})
+	}
+	h.sendVerification(c.Context(), u)
+	return c.JSON(fiber.Map{"sent": true})
 }

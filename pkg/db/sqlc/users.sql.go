@@ -12,7 +12,7 @@ import (
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (company_id, email, role)
 VALUES ($1, $2, $3)
-RETURNING id, company_id, email, role, created_at, password_hash
+RETURNING id, company_id, email, role, created_at, password_hash, email_verified_at
 `
 
 type CreateUserParams struct {
@@ -31,6 +31,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.Role,
 		&i.CreatedAt,
 		&i.PasswordHash,
+		&i.EmailVerifiedAt,
 	)
 	return i, err
 }
@@ -38,7 +39,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 const createUserWithPassword = `-- name: CreateUserWithPassword :one
 INSERT INTO users (company_id, email, role, password_hash)
 VALUES ($1, $2, $3, $4)
-RETURNING id, company_id, email, role, created_at, password_hash
+RETURNING id, company_id, email, role, created_at, password_hash, email_verified_at
 `
 
 type CreateUserWithPasswordParams struct {
@@ -63,12 +64,13 @@ func (q *Queries) CreateUserWithPassword(ctx context.Context, arg CreateUserWith
 		&i.Role,
 		&i.CreatedAt,
 		&i.PasswordHash,
+		&i.EmailVerifiedAt,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, company_id, email, role, created_at, password_hash FROM users
+SELECT id, company_id, email, role, created_at, password_hash, email_verified_at FROM users
 WHERE email = $1
 `
 
@@ -82,12 +84,13 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.Role,
 		&i.CreatedAt,
 		&i.PasswordHash,
+		&i.EmailVerifiedAt,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, company_id, email, role, created_at, password_hash FROM users
+SELECT id, company_id, email, role, created_at, password_hash, email_verified_at FROM users
 WHERE id = $1
 `
 
@@ -101,12 +104,13 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
 		&i.Role,
 		&i.CreatedAt,
 		&i.PasswordHash,
+		&i.EmailVerifiedAt,
 	)
 	return i, err
 }
 
 const listUsersByCompany = `-- name: ListUsersByCompany :many
-SELECT id, company_id, email, role, created_at, password_hash FROM users
+SELECT id, company_id, email, role, created_at, password_hash, email_verified_at FROM users
 WHERE company_id = $1
 ORDER BY created_at
 `
@@ -127,6 +131,7 @@ func (q *Queries) ListUsersByCompany(ctx context.Context, companyID string) ([]U
 			&i.Role,
 			&i.CreatedAt,
 			&i.PasswordHash,
+			&i.EmailVerifiedAt,
 		); err != nil {
 			return nil, err
 		}

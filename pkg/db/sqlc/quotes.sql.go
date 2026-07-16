@@ -36,6 +36,17 @@ func (q *Queries) AcceptQuote(ctx context.Context, id string) (Quote, error) {
 	return i, err
 }
 
+const countSubmittedQuotesByRFQ = `-- name: CountSubmittedQuotesByRFQ :one
+SELECT COUNT(*) FROM quotes WHERE rfq_id = $1 AND status = 'submitted'
+`
+
+func (q *Queries) CountSubmittedQuotesByRFQ(ctx context.Context, rfqID string) (int64, error) {
+	row := q.db.QueryRow(ctx, countSubmittedQuotesByRFQ, rfqID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createOrder = `-- name: CreateOrder :one
 INSERT INTO orders (rfq_id, quote_id, buyer_company_id, seller_company_id, total_cents, currency)
 VALUES ($1, $2, $3, $4, $5, $6)

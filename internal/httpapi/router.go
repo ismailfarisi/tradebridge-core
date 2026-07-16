@@ -18,11 +18,13 @@ import (
 	"github.com/tradebridge/core/internal/catalog"
 	"github.com/tradebridge/core/internal/eventbus"
 	"github.com/tradebridge/core/internal/identity"
+	"github.com/tradebridge/core/internal/notify"
 	"github.com/tradebridge/core/internal/orders"
 	"github.com/tradebridge/core/internal/quotes"
 	"github.com/tradebridge/core/internal/rfq"
 	"github.com/tradebridge/core/internal/settings"
 	"github.com/tradebridge/core/internal/suppliers"
+	"github.com/tradebridge/core/internal/waitlist"
 	"github.com/tradebridge/core/pkg/cryptobox"
 	"github.com/tradebridge/core/pkg/db/sqlc"
 	"github.com/tradebridge/core/pkg/middleware"
@@ -41,6 +43,12 @@ type Config struct {
 	AnthropicModel  string
 	SettingsEncKey  string
 	CORSOrigins     string
+
+	// ResendAPIKey, EmailFrom, AppBaseURL configure the notify package's
+	// transactional email sender and link-building base URL.
+	ResendAPIKey string
+	EmailFrom    string
+	AppBaseURL   string
 
 	// Platform superadmin realm (separate from company auth).
 	AdminJWTSecret        string
@@ -80,6 +88,9 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 		return c.JSON(fiber.Map{"status": "ok"})
 	})
 
+	// Waitlist: PUBLIC, pre-signup capture — no tenant guard.
+	waitlist.NewHandler(q).Register(f)
+
 	// Tenant guard chain, applied per-group (never as a broad "/v1" prefix) so
 	// public /v1/auth/* routes stay open.
 	guard := []fiber.Handler{
@@ -107,12 +118,17 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	}
 	tokens := identity.NewTokenService(cfg.JWTSecret, ttl)
 
-	identity.NewHandler(q, tokens).Register(f, guard...)
+	pub := eventbus.New(q, cfg.Redis, cfg.Logger)
+
+	sender := notify.NewSender(cfg.ResendAPIKey, cfg.EmailFrom, cfg.Logger)
+	notifier := notify.New(q, sender, cfg.AppBaseURL, cfg.Logger)
+
+	identity.NewHandler(q, tokens, notifier).Register(f, guard...)
 	suppliers.NewHandler(q).Register(f, guard...)
 	catalog.NewHandler(q).Register(f, guard...)
 	agent.NewHandler(q, agent.Config{TTLDays: cfg.AgentCredTTLDays, GraceDays: cfg.AgentCredRotateGraceDays}).Register(f, guard...)
 
-	pub := eventbus.New(q, cfg.Redis, cfg.Logger)
+	notify.NewHandler(q).Register(f, guard...)
 
 	// Attachments: bytes on local disk, metadata in Postgres. Constructed
 	// once here; attLoader is exposed to later tasks' rfq/quotes services.
@@ -147,8 +163,8 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	llmHealth := rfq.NewHealthTracker(20)
 	settingsSvc := settings.NewService(q, box, envExtraction, llmHealth)
 
-	rfq.NewHandler(rfq.NewService(q, pub, settingsSvc, attLoader, cfg.Logger, cfg.RFQTTLDays, llmHealth), q).Register(f, guard...)
-	quotes.NewHandler(quotes.NewService(q, cfg.Pool, pub, attLoader, cfg.Logger), q).Register(f, guard...)
+	rfq.NewHandler(rfq.NewService(q, pub, settingsSvc, attLoader, cfg.Logger, cfg.RFQTTLDays, llmHealth, notifier), q).Register(f, middleware.RequireVerified(q), guard...)
+	quotes.NewHandler(quotes.NewService(q, cfg.Pool, pub, attLoader, cfg.Logger, notifier), q).Register(f, guard...)
 	orders.NewHandler(q).Register(f, guard...)
 
 	// Platform superadmin realm: a separate credential store and JWT secret

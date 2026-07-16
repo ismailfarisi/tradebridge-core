@@ -92,6 +92,35 @@ type CompanySetting struct {
 	UpdatedAt             time.Time `json:"updated_at"`
 }
 
+type EmailVerification struct {
+	ID         string             `json:"id"`
+	UserID     string             `json:"user_id"`
+	Token      string             `json:"token"`
+	ExpiresAt  time.Time          `json:"expires_at"`
+	ConsumedAt pgtype.Timestamptz `json:"consumed_at"`
+	CreatedAt  time.Time          `json:"created_at"`
+}
+
+type Notification struct {
+	ID        string             `json:"id"`
+	UserID    string             `json:"user_id"`
+	CompanyID string             `json:"company_id"`
+	Type      string             `json:"type"`
+	Title     string             `json:"title"`
+	Body      string             `json:"body"`
+	Data      []byte             `json:"data"`
+	ReadAt    pgtype.Timestamptz `json:"read_at"`
+	CreatedAt time.Time          `json:"created_at"`
+}
+
+type NotificationPreference struct {
+	UserID    string    `json:"user_id"`
+	EventType string    `json:"event_type"`
+	Email     bool      `json:"email"`
+	InApp     bool      `json:"in_app"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 type Order struct {
 	ID              string    `json:"id"`
 	RfqID           string    `json:"rfq_id"`
@@ -184,12 +213,13 @@ type SupplierProfile struct {
 }
 
 type User struct {
-	ID           string    `json:"id"`
-	CompanyID    string    `json:"company_id"`
-	Email        string    `json:"email"`
-	Role         string    `json:"role"`
-	CreatedAt    time.Time `json:"created_at"`
-	PasswordHash *string   `json:"password_hash"`
+	ID              string             `json:"id"`
+	CompanyID       string             `json:"company_id"`
+	Email           string             `json:"email"`
+	Role            string             `json:"role"`
+	CreatedAt       time.Time          `json:"created_at"`
+	PasswordHash    *string            `json:"password_hash"`
+	EmailVerifiedAt pgtype.Timestamptz `json:"email_verified_at"`
 }
 
 type UserInvite struct {
@@ -202,4 +232,11 @@ type UserInvite struct {
 	ExpiresAt  time.Time          `json:"expires_at"`
 	AcceptedAt pgtype.Timestamptz `json:"accepted_at"`
 	CreatedAt  time.Time          `json:"created_at"`
+}
+
+type WaitlistSignup struct {
+	ID        string    `json:"id"`
+	Email     string    `json:"email"`
+	Source    *string   `json:"source"`
+	CreatedAt time.Time `json:"created_at"`
 }

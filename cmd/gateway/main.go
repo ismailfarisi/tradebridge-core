@@ -10,6 +10,7 @@ import (
 	"github.com/tradebridge/core/internal/attachments"
 	"github.com/tradebridge/core/internal/di"
 	"github.com/tradebridge/core/internal/gateway"
+	"github.com/tradebridge/core/internal/notify"
 )
 
 func main() {
@@ -35,11 +36,14 @@ func main() {
 		panic(err)
 	}
 
+	sender := notify.NewSender(app.Config.ResendAPIKey, app.Config.EmailFrom, app.Logger)
+	notifier := notify.New(app.Queries, sender, app.Config.AppBaseURL, app.Logger)
+
 	gateway.NewHandler(app.Queries, app.Redis, store, app.Logger, gateway.RateLimitConfig{
 		PerMin:            app.Config.AgentRLPerMin,
 		AuthfailMax:       app.Config.AgentAuthfailMax,
 		AuthfailWindowSec: app.Config.AgentAuthfailWindowSec,
-	}).Register(f)
+	}, notifier).Register(f)
 
 	addr := ":" + app.Config.GatewayPort
 	log.Info().Str("addr", addr).Msg("agent gateway listening")

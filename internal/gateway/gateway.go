@@ -17,6 +17,7 @@ import (
 
 	"github.com/tradebridge/core/internal/attachments"
 	"github.com/tradebridge/core/internal/identity"
+	"github.com/tradebridge/core/internal/notify"
 	"github.com/tradebridge/core/pkg/db/sqlc"
 )
 
@@ -29,15 +30,17 @@ type RateLimitConfig struct {
 
 // Handler serves the agent-facing gateway routes.
 type Handler struct {
-	q      *sqlc.Queries
-	redis  *redis.Client // may be nil; live pub/sub is then disabled (replay still works)
-	store  *attachments.Store
-	logger zerolog.Logger
-	rl     *rateLimiter
+	q        *sqlc.Queries
+	redis    *redis.Client // may be nil; live pub/sub is then disabled (replay still works)
+	store    *attachments.Store
+	logger   zerolog.Logger
+	rl       *rateLimiter
+	notifier *notify.Notifier // may be nil; notifications are then skipped
 }
 
-// NewHandler builds the gateway handler.
-func NewHandler(q *sqlc.Queries, rdb *redis.Client, store *attachments.Store, logger zerolog.Logger, rlc RateLimitConfig) *Handler {
+// NewHandler builds the gateway handler. notifier may be nil, in which case
+// domain events (e.g. quote.submitted) do not notify anyone.
+func NewHandler(q *sqlc.Queries, rdb *redis.Client, store *attachments.Store, logger zerolog.Logger, rlc RateLimitConfig, notifier *notify.Notifier) *Handler {
 	var c counter
 	if rdb != nil {
 		c = redisCounter{rdb: rdb}
@@ -51,7 +54,7 @@ func NewHandler(q *sqlc.Queries, rdb *redis.Client, store *attachments.Store, lo
 		failWin: time.Duration(rlc.AuthfailWindowSec) * time.Second,
 		logger:  logger,
 	}
-	return &Handler{q: q, redis: rdb, store: store, logger: logger, rl: rl}
+	return &Handler{q: q, redis: rdb, store: store, logger: logger, rl: rl, notifier: notifier}
 }
 
 // Register mounts the gateway routes.

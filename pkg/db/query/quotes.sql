@@ -54,3 +54,6 @@ RETURNING *;
 
 -- name: GetOrder :one
 SELECT * FROM orders WHERE id = $1;
+
+-- name: CountSubmittedQuotesByRFQ :one
+SELECT COUNT(*) FROM quotes WHERE rfq_id = $1 AND status = 'submitted';

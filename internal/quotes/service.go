@@ -17,6 +17,7 @@ import (
 
 	"github.com/tradebridge/core/internal/attachments"
 	"github.com/tradebridge/core/internal/eventbus"
+	"github.com/tradebridge/core/internal/notify"
 	"github.com/tradebridge/core/internal/rfq"
 	"github.com/tradebridge/core/pkg/db/sqlc"
 )
@@ -98,16 +99,17 @@ func Record(ctx context.Context, q *sqlc.Queries, rfqID, sellerCompanyID, comman
 
 // Service serves buyer-facing ranking and acceptance.
 type Service struct {
-	q      *sqlc.Queries
-	pool   *pgxpool.Pool
-	pub    *eventbus.Publisher
-	loader *attachments.Loader
-	logger zerolog.Logger
+	q        *sqlc.Queries
+	pool     *pgxpool.Pool
+	pub      *eventbus.Publisher
+	loader   *attachments.Loader
+	logger   zerolog.Logger
+	notifier *notify.Notifier
 }
 
 // NewService builds the quotes service.
-func NewService(q *sqlc.Queries, pool *pgxpool.Pool, pub *eventbus.Publisher, loader *attachments.Loader, logger zerolog.Logger) *Service {
-	return &Service{q: q, pool: pool, pub: pub, loader: loader, logger: logger}
+func NewService(q *sqlc.Queries, pool *pgxpool.Pool, pub *eventbus.Publisher, loader *attachments.Loader, logger zerolog.Logger, notifier *notify.Notifier) *Service {
+	return &Service{q: q, pool: pool, pub: pub, loader: loader, logger: logger, notifier: notifier}
 }
 
 // QuoteMessageEvent is the agent event emitted when a buyer posts in a quote
@@ -309,6 +311,19 @@ func (s *Service) Accept(ctx context.Context, buyerCompanyID, quoteID string) (s
 	s.pub.PublishExisting(ctx, ev)
 	for _, rev := range rejectedEvs {
 		s.pub.PublishExisting(ctx, rev)
+	}
+
+	if s.notifier != nil {
+		nev := notify.Event{
+			Type:     notify.TypeOrderCreated,
+			Title:    "Order confirmed",
+			Body:     "A purchase order was created from the accepted quote.",
+			Data:     map[string]any{"order_id": order.ID, "rfq_id": order.RfqID},
+			CTALabel: "View order",
+			CTAPath:  "/orders/" + order.ID,
+		}
+		s.notifier.NotifyCompany(ctx, order.BuyerCompanyID, nev)
+		s.notifier.NotifyCompany(ctx, order.SellerCompanyID, nev)
 	}
 	return order, nil
 }
