@@ -16,6 +16,7 @@ import (
 	"github.com/tradebridge/core/internal/agent"
 	"github.com/tradebridge/core/internal/attachments"
 	"github.com/tradebridge/core/internal/catalog"
+	"github.com/tradebridge/core/internal/entitlements"
 	"github.com/tradebridge/core/internal/eventbus"
 	"github.com/tradebridge/core/internal/identity"
 	"github.com/tradebridge/core/internal/notify"
@@ -127,13 +128,15 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 
 	sender := notify.NewSender(cfg.ResendAPIKey, cfg.EmailFrom, cfg.Logger)
 	notifier := notify.New(q, sender, cfg.AppBaseURL, cfg.Logger)
+	entSvc := entitlements.NewService(q, cfg.Logger)
 
-	identity.NewHandler(q, tokens, notifier).Register(f, guard...)
+	identity.NewHandler(q, tokens, notifier, entSvc).Register(f, guard...)
 	suppliers.NewHandler(q).Register(f, guard...)
-	catalog.NewHandler(q).Register(f, guard...)
+	catalog.NewHandler(q, entSvc).Register(f, guard...)
 	agent.NewHandler(q, agent.Config{TTLDays: cfg.AgentCredTTLDays, GraceDays: cfg.AgentCredRotateGraceDays}).Register(f, guard...)
 
 	notify.NewHandler(q).Register(f, guard...)
+	entitlements.NewHandler(entSvc).Register(f, guard...)
 
 	// Attachments: bytes on local disk, metadata in Postgres. Constructed
 	// once here; attLoader is exposed to later tasks' rfq/quotes services.
@@ -168,7 +171,7 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	llmHealth := rfq.NewHealthTracker(20)
 	settingsSvc := settings.NewService(q, box, envExtraction, llmHealth)
 
-	rfq.NewHandler(rfq.NewService(q, pub, settingsSvc, attLoader, cfg.Logger, cfg.RFQTTLDays, llmHealth, notifier), q).Register(f, middleware.RequireVerified(q), guard...)
+	rfq.NewHandler(rfq.NewService(q, pub, settingsSvc, attLoader, cfg.Logger, cfg.RFQTTLDays, llmHealth, notifier), q, entSvc).Register(f, middleware.RequireVerified(q), guard...)
 	quotes.NewHandler(quotes.NewService(q, cfg.Pool, pub, attLoader, cfg.Logger, notifier), q).Register(f, guard...)
 	orders.NewHandler(q).Register(f, guard...)
 
@@ -185,6 +188,7 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 		adminGuard := middleware.PlatformAdminGuard(cfg.AdminJWTSecret)
 		admin.NewHandler(adminSvc, adminTokens).Register(f, adminGuard)
 		settings.NewHandler(settingsSvc).Register(f, adminGuard)
+		entitlements.NewAdminHandler(q, entSvc).Register(f, adminGuard)
 	} else {
 		cfg.Logger.Warn().Msg("ADMIN_JWT_SECRET unset — platform admin routes disabled")
 	}

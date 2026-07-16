@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/valyala/fasthttp"
 
+	"github.com/tradebridge/core/internal/entitlements"
 	"github.com/tradebridge/core/pkg/db/sqlc"
 	"github.com/tradebridge/core/pkg/middleware"
 )
@@ -19,11 +20,12 @@ import (
 type Handler struct {
 	svc *Service
 	q   *sqlc.Queries
+	ent *entitlements.Service
 }
 
 // NewHandler builds the RFQ handler over the service and query layer.
-func NewHandler(svc *Service, q *sqlc.Queries) *Handler {
-	return &Handler{svc: svc, q: q}
+func NewHandler(svc *Service, q *sqlc.Queries, ent *entitlements.Service) *Handler {
+	return &Handler{svc: svc, q: q, ent: ent}
 }
 
 // Register mounts the RFQ routes under the given tenant guard. verified gates
@@ -88,6 +90,9 @@ func (h *Handler) create(c *fiber.Ctx) error {
 	if req.Title == "" || req.Text == "" {
 		return fiber.NewError(fiber.StatusBadRequest, "title and text required")
 	}
+	if err := h.ent.CheckRFQQuota(c.Context(), middleware.CompanyID(c)); err != nil {
+		return entitlements.Fail(c, err)
+	}
 
 	rfq, matches, err := h.svc.CreateAndMatch(
 		c.Context(),
@@ -100,6 +105,7 @@ func (h *Handler) create(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
+	h.ent.IncrementRFQUsage(c.Context(), middleware.CompanyID(c))
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"rfq":         view(rfq),
 		"match_count": len(matches),

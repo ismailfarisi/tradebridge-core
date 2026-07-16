@@ -10,6 +10,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/tradebridge/core/internal/entitlements"
 	"github.com/tradebridge/core/internal/notify"
 	"github.com/tradebridge/core/pkg/db/sqlc"
 	"github.com/tradebridge/core/pkg/middleware"
@@ -20,11 +21,12 @@ type Handler struct {
 	q        *sqlc.Queries
 	tokens   *TokenService
 	notifier *notify.Notifier
+	ent      *entitlements.Service
 }
 
 // NewHandler builds the identity handler over the query layer + token service.
-func NewHandler(q *sqlc.Queries, tokens *TokenService, notifier *notify.Notifier) *Handler {
-	return &Handler{q: q, tokens: tokens, notifier: notifier}
+func NewHandler(q *sqlc.Queries, tokens *TokenService, notifier *notify.Notifier, ent *entitlements.Service) *Handler {
+	return &Handler{q: q, tokens: tokens, notifier: notifier, ent: ent}
 }
 
 // Register mounts the auth + user routes. Public routes go on the root group;
@@ -142,6 +144,9 @@ func (h *Handler) invite(c *fiber.Ctx) error {
 	}
 	if req.Role != "admin" && req.Role != "member" {
 		return fiber.NewError(fiber.StatusBadRequest, "role must be admin|member")
+	}
+	if err := h.ent.CheckSeatQuota(c.Context(), middleware.CompanyID(c)); err != nil {
+		return entitlements.Fail(c, err)
 	}
 
 	token, err := randomToken()

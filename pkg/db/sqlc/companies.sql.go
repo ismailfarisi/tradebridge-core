@@ -12,7 +12,7 @@ import (
 const createCompany = `-- name: CreateCompany :one
 INSERT INTO companies (name, type)
 VALUES ($1, $2)
-RETURNING id, name, type, created_at
+RETURNING id, name, type, created_at, stripe_customer_id
 `
 
 type CreateCompanyParams struct {
@@ -28,12 +28,13 @@ func (q *Queries) CreateCompany(ctx context.Context, arg CreateCompanyParams) (C
 		&i.Name,
 		&i.Type,
 		&i.CreatedAt,
+		&i.StripeCustomerID,
 	)
 	return i, err
 }
 
 const getCompanyByID = `-- name: GetCompanyByID :one
-SELECT id, name, type, created_at FROM companies
+SELECT id, name, type, created_at, stripe_customer_id FROM companies
 WHERE id = $1
 `
 
@@ -45,6 +46,7 @@ func (q *Queries) GetCompanyByID(ctx context.Context, id string) (Company, error
 		&i.Name,
 		&i.Type,
 		&i.CreatedAt,
+		&i.StripeCustomerID,
 	)
 	return i, err
 }
