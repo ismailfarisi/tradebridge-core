@@ -13,7 +13,7 @@ SELECT * FROM supplier_profiles
 WHERE company_id = $1;
 
 -- name: SearchSuppliers :many
-SELECT sp.*, c.name AS company_name
+SELECT sp.*, c.name AS company_name, c.verification_status
 FROM supplier_profiles sp
 JOIN companies c ON c.id = sp.company_id
 WHERE (

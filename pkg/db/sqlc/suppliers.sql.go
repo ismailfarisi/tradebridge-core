@@ -72,7 +72,7 @@ func (q *Queries) GetSupplierProfileByCompany(ctx context.Context, companyID str
 }
 
 const searchSuppliers = `-- name: SearchSuppliers :many
-SELECT sp.id, sp.company_id, sp.description, sp.categories, sp.location, sp.verified, sp.created_at, sp.updated_at, c.name AS company_name
+SELECT sp.id, sp.company_id, sp.description, sp.categories, sp.location, sp.verified, sp.created_at, sp.updated_at, c.name AS company_name, c.verification_status
 FROM supplier_profiles sp
 JOIN companies c ON c.id = sp.company_id
 WHERE (
@@ -96,15 +96,16 @@ type SearchSuppliersParams struct {
 }
 
 type SearchSuppliersRow struct {
-	ID          string    `json:"id"`
-	CompanyID   string    `json:"company_id"`
-	Description *string   `json:"description"`
-	Categories  []string  `json:"categories"`
-	Location    *string   `json:"location"`
-	Verified    bool      `json:"verified"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-	CompanyName string    `json:"company_name"`
+	ID                 string    `json:"id"`
+	CompanyID          string    `json:"company_id"`
+	Description        *string   `json:"description"`
+	Categories         []string  `json:"categories"`
+	Location           *string   `json:"location"`
+	Verified           bool      `json:"verified"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
+	CompanyName        string    `json:"company_name"`
+	VerificationStatus string    `json:"verification_status"`
 }
 
 func (q *Queries) SearchSuppliers(ctx context.Context, arg SearchSuppliersParams) ([]SearchSuppliersRow, error) {
@@ -126,6 +127,7 @@ func (q *Queries) SearchSuppliers(ctx context.Context, arg SearchSuppliersParams
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.CompanyName,
+			&i.VerificationStatus,
 		); err != nil {
 			return nil, err
 		}
