@@ -32,8 +32,14 @@ func makeCompany(t *testing.T, q *sqlc.Queries, name string) string {
 }
 
 func TestDomainVerificationRoundTrip(t *testing.T) {
-	q, _ := testQueriesOrSkip(t)
+	q, pool := testQueriesOrSkip(t)
 	ctx := context.Background()
+	// This test's DB is persistent across separate `go test` invocations (not
+	// per-run ephemeral), and SetCompanyVerified below permanently claims the
+	// domain via the partial unique index. Release any stale claim left by a
+	// prior run before (and after) this run so re-invocations stay green.
+	releaseDomain(t, pool, "acme-rt.example")
+	t.Cleanup(func() { releaseDomain(t, pool, "acme-rt.example") })
 	cid := makeCompany(t, q, "verif-rt-co")
 
 	dv, err := q.UpsertDomainVerification(ctx, sqlc.UpsertDomainVerificationParams{
@@ -60,3 +66,14 @@ func TestDomainVerificationRoundTrip(t *testing.T) {
 }
 
 func strptr(s string) *string { return &s }
+
+// releaseDomain frees a previously-claimed verified domain so tests that hard-
+// code a domain string stay idempotent across repeated `go test` invocations
+// against the same (persistent) test database.
+func releaseDomain(t *testing.T, pool *pgxpool.Pool, domain string) {
+	t.Helper()
+	_, err := pool.Exec(context.Background(),
+		`UPDATE companies SET verification_status='unverified', verified_domain=NULL, verified_at=NULL WHERE verified_domain=$1`,
+		domain)
+	require.NoError(t, err)
+}
