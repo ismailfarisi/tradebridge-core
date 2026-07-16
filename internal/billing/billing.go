@@ -3,7 +3,11 @@
 // confined to stripebilling.go; the rest of the system speaks WebhookEvent.
 package billing
 
-import "context"
+import (
+	"context"
+
+	"github.com/rs/zerolog"
+)
 
 // CheckoutParams describes a Stripe Checkout session to open.
 type CheckoutParams struct {
@@ -32,6 +36,45 @@ type WebhookEvent struct {
 	CancelAtPeriodEnd bool   `json:"cancel_at_period_end"`
 	// Ignore marks an event we recognize but don't act on (keeps handler simple).
 	Ignore bool `json:"ignore"`
+}
+
+// Prices maps our plan/interval pairs to Stripe price ids.
+type Prices struct {
+	ProMonth      string
+	ProYear       string
+	BusinessMonth string
+	BusinessYear  string
+}
+
+// priceFor returns the Stripe price id for a plan/interval, or "" if unknown.
+func (p Prices) priceFor(plan, interval string) string {
+	switch {
+	case plan == "pro" && interval == "month":
+		return p.ProMonth
+	case plan == "pro" && interval == "year":
+		return p.ProYear
+	case plan == "business" && interval == "month":
+		return p.BusinessMonth
+	case plan == "business" && interval == "year":
+		return p.BusinessYear
+	}
+	return ""
+}
+
+// StripeConfig configures the real provider.
+type StripeConfig struct {
+	SecretKey     string
+	WebhookSecret string
+	Prices        Prices
+}
+
+// NewBilling selects the real Stripe provider when a secret key is configured,
+// otherwise the deterministic stub.
+func NewBilling(cfg StripeConfig, logger zerolog.Logger) Billing {
+	if cfg.SecretKey == "" {
+		return NewStub()
+	}
+	return newStripeBilling(cfg, logger)
 }
 
 // Billing is the provider port. StripeBilling and StubBilling implement it.

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
 
@@ -38,4 +39,14 @@ func TestStub_CheckoutAndCustomerAreDeterministic(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Contains(t, url, "stub")
+}
+
+func TestNewBilling_SelectsStubWhenNoKey(t *testing.T) {
+	b := NewBilling(StripeConfig{}, zerolog.Nop())
+	require.False(t, b.Enabled())
+}
+
+func TestNewBilling_SelectsStripeWhenKeySet(t *testing.T) {
+	b := NewBilling(StripeConfig{SecretKey: "sk_test_x"}, zerolog.Nop())
+	require.True(t, b.Enabled())
 }
