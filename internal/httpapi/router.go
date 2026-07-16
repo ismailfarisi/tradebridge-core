@@ -188,6 +188,7 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 		adminGuard := middleware.PlatformAdminGuard(cfg.AdminJWTSecret)
 		admin.NewHandler(adminSvc, adminTokens).Register(f, adminGuard)
 		settings.NewHandler(settingsSvc).Register(f, adminGuard)
+		entitlements.NewAdminHandler(q, entSvc).Register(f, adminGuard)
 	} else {
 		cfg.Logger.Warn().Msg("ADMIN_JWT_SECRET unset — platform admin routes disabled")
 	}
