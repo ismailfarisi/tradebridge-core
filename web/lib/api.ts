@@ -60,6 +60,7 @@ export type Me = {
   role: string;
   company_name?: string;
   company_type?: CompanyType;
+  email_verified?: boolean;
 };
 export type RegisterInput = {
   company_name: string;
