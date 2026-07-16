@@ -30,6 +30,13 @@ const NAV: { group: string; items: NavItem[] }[] = [
       { href: "/seller/agent", label: "Agent credentials", show: isSeller },
     ],
   },
+  {
+    group: "Settings",
+    items: [
+      { href: "/settings/billing", label: "Billing & usage", show: () => true },
+      { href: "/settings/team", label: "Team", show: () => true },
+    ],
+  },
 ];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
