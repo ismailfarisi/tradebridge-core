@@ -25,6 +25,17 @@ func poolOrSkip(t *testing.T) *pgxpool.Pool {
 	return pool
 }
 
+// verifyUser marks userID as verified directly in the DB, bypassing the
+// verify-email token flow. Tests that exercise other features (attachments,
+// quotes, chat, ...) use this so a freshly registered user isn't blocked by
+// the email-verification soft gate on RFQ create/chat.
+func verifyUser(t *testing.T, pool *pgxpool.Pool, userID string) {
+	t.Helper()
+	_, err := pool.Exec(context.Background(),
+		`UPDATE users SET email_verified_at = NOW() WHERE id = $1`, userID)
+	require.NoError(t, err)
+}
+
 func TestGenULID(t *testing.T) {
 	pool := poolOrSkip(t)
 	var id string

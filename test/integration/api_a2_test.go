@@ -40,6 +40,7 @@ func TestA2_RFQCreateMatchAndBroadcast(t *testing.T) {
 	})
 	require.Equal(t, http.StatusCreated, st)
 	buyerToken := buyer["token"].(string)
+	verifyUser(t, pool, buyer["user_id"].(string))
 
 	st, created := doJSON(t, app, "POST", "/v1/rfqs", buyerToken, map[string]any{
 		"title": "Cartons needed",
@@ -93,12 +94,14 @@ func TestA2_RFQCreateMatchAndBroadcast(t *testing.T) {
 // TestA2_RFQValidation rejects empty input.
 func TestA2_RFQValidation(t *testing.T) {
 	app := buildAPI(t)
+	pool := poolOrSkip(t)
 
 	st, reg := doJSON(t, app, "POST", "/v1/auth/register", "", map[string]any{
 		"company_name": "EmptyCo", "email": uniqueEmail("empty-"), "password": "supersecret",
 	})
 	require.Equal(t, http.StatusCreated, st)
 	token := reg["token"].(string)
+	verifyUser(t, pool, reg["user_id"].(string))
 
 	st, _ = doJSON(t, app, "POST", "/v1/rfqs", token, map[string]any{"title": "no body"})
 	require.Equal(t, http.StatusBadRequest, st)

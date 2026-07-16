@@ -44,6 +44,7 @@ func TestChatAttachments(t *testing.T) {
 	})
 	require.Equal(t, http.StatusCreated, st)
 	buyerToken := buyer["token"].(string)
+	verifyUser(t, pool, buyer["user_id"].(string))
 
 	meta := uploadPNG(t, app, buyerToken)
 	attID := meta["id"].(string)

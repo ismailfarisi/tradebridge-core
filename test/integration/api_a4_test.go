@@ -47,6 +47,7 @@ func TestA4_FullLoop(t *testing.T) {
 	})
 	require.Equal(t, http.StatusCreated, st)
 	buyerToken := buyer["token"].(string)
+	verifyUser(t, pool, buyer["user_id"].(string))
 
 	st, created := doJSON(t, api, "POST", "/v1/rfqs", buyerToken, map[string]any{
 		"title": "Cartons", "text": "Need 500 cartons for packaging, deliver to Dubai.",
@@ -145,6 +146,7 @@ func TestQuotes_AcceptNotifiesLosers(t *testing.T) {
 	})
 	require.Equal(t, http.StatusCreated, st)
 	buyerToken := buyer["token"].(string)
+	verifyUser(t, pool, buyer["user_id"].(string))
 
 	st, created := doJSON(t, api, "POST", "/v1/rfqs", buyerToken, map[string]any{
 		"title": "Cartons", "text": "Need 500 cartons for packaging, deliver to Dubai.",

@@ -44,6 +44,7 @@ func TestChat_MessagesRoundTrip(t *testing.T) {
 // TestChat_HeuristicAsksThenCreates walks the no-key heuristic path end to end.
 func TestChat_HeuristicAsksThenCreates(t *testing.T) {
 	api := buildAPI(t)
+	pool := poolOrSkip(t)
 
 	st, buyer := doJSON(t, api, "POST", "/v1/auth/register", "", map[string]any{
 		"company_name": "ChatBuyer", "company_type": "buyer",
@@ -51,6 +52,7 @@ func TestChat_HeuristicAsksThenCreates(t *testing.T) {
 	})
 	require.Equal(t, http.StatusCreated, st)
 	token := buyer["token"].(string)
+	verifyUser(t, pool, buyer["user_id"].(string))
 
 	// Vague opener → assistant asks (done=false, no rfq).
 	st, r1 := doJSON(t, api, "POST", "/v1/rfq-chat", token, map[string]any{

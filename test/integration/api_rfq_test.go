@@ -26,6 +26,7 @@ func TestRFQ_SetsExpiresAtOnMatch(t *testing.T) {
 	})
 	require.Equal(t, http.StatusCreated, st)
 	token := buyer["token"].(string)
+	verifyUser(t, pool, buyer["user_id"].(string))
 
 	// Full detail in one shot → assistant creates + matches immediately.
 	st, r := doJSON(t, api, "POST", "/v1/rfq-chat", token, map[string]any{
