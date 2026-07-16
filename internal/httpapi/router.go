@@ -26,6 +26,7 @@ import (
 	"github.com/tradebridge/core/internal/rfq"
 	"github.com/tradebridge/core/internal/settings"
 	"github.com/tradebridge/core/internal/suppliers"
+	"github.com/tradebridge/core/internal/trust"
 	"github.com/tradebridge/core/internal/waitlist"
 	"github.com/tradebridge/core/pkg/cryptobox"
 	"github.com/tradebridge/core/pkg/db/sqlc"
@@ -79,6 +80,9 @@ type Config struct {
 	// BillingDevMode allows the unsigned StubBilling webhook/checkout when no
 	// Stripe key is configured — DEV/TEST ONLY. Never set in prod.
 	BillingDevMode bool
+
+	// VerifyDNSTimeout bounds each DNS-TXT lookup during domain verification.
+	VerifyDNSTimeout time.Duration
 }
 
 // New builds the Core API with all Phase 1 routes mounted.
@@ -144,6 +148,8 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 
 	identity.NewHandler(q, tokens, notifier, entSvc).Register(f, guard...)
 	suppliers.NewHandler(q).Register(f, guard...)
+	trustSvc := trust.NewService(q, cfg.Pool, trust.NewNetResolver(cfg.VerifyDNSTimeout), cfg.Logger)
+	trust.NewHandler(trustSvc, q).Register(f, middleware.RequireVerified(q), guard...)
 	catalog.NewHandler(q, entSvc).Register(f, guard...)
 	agent.NewHandler(q, agent.Config{TTLDays: cfg.AgentCredTTLDays, GraceDays: cfg.AgentCredRotateGraceDays}).Register(f, guard...)
 
