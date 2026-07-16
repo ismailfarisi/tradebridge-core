@@ -15,6 +15,7 @@ import (
 	"github.com/tradebridge/core/internal/admin"
 	"github.com/tradebridge/core/internal/agent"
 	"github.com/tradebridge/core/internal/attachments"
+	"github.com/tradebridge/core/internal/billing"
 	"github.com/tradebridge/core/internal/catalog"
 	"github.com/tradebridge/core/internal/entitlements"
 	"github.com/tradebridge/core/internal/eventbus"
@@ -67,6 +68,17 @@ type Config struct {
 	AgentCredTTLDays int
 	// AgentCredRotateGraceDays is the grace window for rotated credentials.
 	AgentCredRotateGraceDays int
+
+	// Stripe billing (Plan 2). Empty SecretKey => StubBilling.
+	StripeSecretKey          string
+	StripeWebhookSecret      string
+	StripePriceProMonth      string
+	StripePriceProYear       string
+	StripePriceBusinessMonth string
+	StripePriceBusinessYear  string
+	// BillingDevMode allows the unsigned StubBilling webhook/checkout when no
+	// Stripe key is configured — DEV/TEST ONLY. Never set in prod.
+	BillingDevMode bool
 }
 
 // New builds the Core API with all Phase 1 routes mounted.
@@ -136,6 +148,29 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	agent.NewHandler(q, agent.Config{TTLDays: cfg.AgentCredTTLDays, GraceDays: cfg.AgentCredRotateGraceDays}).Register(f, guard...)
 
 	notify.NewHandler(q).Register(f, guard...)
+
+	// Billing is registered BEFORE entitlements: its Register mounts the
+	// PUBLIC webhook via app.Post at the "/v1/billing" prefix, and in Fiber
+	// a Use-middleware group (like entitlements' guarded "/v1/billing" group
+	// below) only applies to routes registered AFTER it — registering
+	// billing first keeps the webhook unauthenticated as intended.
+	billingProvider := billing.NewBilling(billing.StripeConfig{
+		SecretKey:     cfg.StripeSecretKey,
+		WebhookSecret: cfg.StripeWebhookSecret,
+		Prices: billing.Prices{
+			ProMonth:      cfg.StripePriceProMonth,
+			ProYear:       cfg.StripePriceProYear,
+			BusinessMonth: cfg.StripePriceBusinessMonth,
+			BusinessYear:  cfg.StripePriceBusinessYear,
+		},
+	}, cfg.Logger)
+	billingSvc := billing.NewService(q, cfg.Logger)
+	// billingActive gates the stub webhook/checkout: a keyless deploy
+	// (Enabled()==false) only accepts unsigned billing requests when an
+	// operator has explicitly opted into BILLING_DEV_MODE (dev/test only).
+	billingActive := billingProvider.Enabled() || cfg.BillingDevMode
+	billing.NewHandler(q, billingProvider, billingSvc, appBaseURLOr(cfg.AppBaseURL), billingActive).Register(f, guard...)
+
 	entitlements.NewHandler(entSvc).Register(f, guard...)
 
 	// Attachments: bytes on local disk, metadata in Postgres. Constructed
@@ -194,4 +229,12 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	}
 
 	return f
+}
+
+// appBaseURLOr returns the configured base URL or the local dev default.
+func appBaseURLOr(u string) string {
+	if u == "" {
+		return "http://localhost:3010"
+	}
+	return u
 }

@@ -7,6 +7,8 @@ package sqlc
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const countCatalogByCompany = `-- name: CountCatalogByCompany :one
@@ -68,6 +70,23 @@ func (q *Queries) GetActiveSubscription(ctx context.Context, companyID string) (
 	return i, err
 }
 
+const getCompanyByStripeCustomer = `-- name: GetCompanyByStripeCustomer :one
+SELECT id, name, type, created_at, stripe_customer_id FROM companies WHERE stripe_customer_id = $1
+`
+
+func (q *Queries) GetCompanyByStripeCustomer(ctx context.Context, stripeCustomerID *string) (Company, error) {
+	row := q.db.QueryRow(ctx, getCompanyByStripeCustomer, stripeCustomerID)
+	var i Company
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Type,
+		&i.CreatedAt,
+		&i.StripeCustomerID,
+	)
+	return i, err
+}
+
 const getPlan = `-- name: GetPlan :one
 SELECT code, name, agent_autonomy, catalog_max_items, rfq_monthly_limit, seats, updated_at FROM plans WHERE code = $1
 `
@@ -82,6 +101,29 @@ func (q *Queries) GetPlan(ctx context.Context, code string) (Plan, error) {
 		&i.CatalogMaxItems,
 		&i.RfqMonthlyLimit,
 		&i.Seats,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getSubscriptionByCompany = `-- name: GetSubscriptionByCompany :one
+SELECT id, company_id, stripe_customer_id, stripe_subscription_id, plan, interval, status, current_period_end, cancel_at_period_end, created_at, updated_at FROM subscriptions WHERE company_id = $1
+`
+
+func (q *Queries) GetSubscriptionByCompany(ctx context.Context, companyID string) (Subscription, error) {
+	row := q.db.QueryRow(ctx, getSubscriptionByCompany, companyID)
+	var i Subscription
+	err := row.Scan(
+		&i.ID,
+		&i.CompanyID,
+		&i.StripeCustomerID,
+		&i.StripeSubscriptionID,
+		&i.Plan,
+		&i.Interval,
+		&i.Status,
+		&i.CurrentPeriodEnd,
+		&i.CancelAtPeriodEnd,
+		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
 	return i, err
@@ -126,6 +168,17 @@ func (q *Queries) IncrementUsageCounter(ctx context.Context, arg IncrementUsageC
 	return count, err
 }
 
+const isStripeEventProcessed = `-- name: IsStripeEventProcessed :one
+SELECT EXISTS(SELECT 1 FROM processed_stripe_events WHERE event_id = $1)
+`
+
+func (q *Queries) IsStripeEventProcessed(ctx context.Context, eventID string) (bool, error) {
+	row := q.db.QueryRow(ctx, isStripeEventProcessed, eventID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const listPlans = `-- name: ListPlans :many
 SELECT code, name, agent_autonomy, catalog_max_items, rfq_monthly_limit, seats, updated_at FROM plans ORDER BY
     CASE code WHEN 'free' THEN 0 WHEN 'pro' THEN 1 WHEN 'business' THEN 2 ELSE 3 END
@@ -157,6 +210,36 @@ func (q *Queries) ListPlans(ctx context.Context) ([]Plan, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const markStripeEventProcessed = `-- name: MarkStripeEventProcessed :exec
+INSERT INTO processed_stripe_events (event_id, type)
+VALUES ($1, $2)
+ON CONFLICT (event_id) DO NOTHING
+`
+
+type MarkStripeEventProcessedParams struct {
+	EventID string `json:"event_id"`
+	Type    string `json:"type"`
+}
+
+func (q *Queries) MarkStripeEventProcessed(ctx context.Context, arg MarkStripeEventProcessedParams) error {
+	_, err := q.db.Exec(ctx, markStripeEventProcessed, arg.EventID, arg.Type)
+	return err
+}
+
+const setCompanyStripeCustomer = `-- name: SetCompanyStripeCustomer :exec
+UPDATE companies SET stripe_customer_id = $2 WHERE id = $1
+`
+
+type SetCompanyStripeCustomerParams struct {
+	ID               string  `json:"id"`
+	StripeCustomerID *string `json:"stripe_customer_id"`
+}
+
+func (q *Queries) SetCompanyStripeCustomer(ctx context.Context, arg SetCompanyStripeCustomerParams) error {
+	_, err := q.db.Exec(ctx, setCompanyStripeCustomer, arg.ID, arg.StripeCustomerID)
+	return err
 }
 
 const updatePlanLimits = `-- name: UpdatePlanLimits :one
@@ -194,6 +277,62 @@ func (q *Queries) UpdatePlanLimits(ctx context.Context, arg UpdatePlanLimitsPara
 		&i.CatalogMaxItems,
 		&i.RfqMonthlyLimit,
 		&i.Seats,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const upsertSubscription = `-- name: UpsertSubscription :one
+INSERT INTO subscriptions (
+    company_id, stripe_customer_id, stripe_subscription_id, plan, interval,
+    status, current_period_end, cancel_at_period_end, updated_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+ON CONFLICT (company_id) DO UPDATE SET
+    stripe_customer_id     = EXCLUDED.stripe_customer_id,
+    stripe_subscription_id = EXCLUDED.stripe_subscription_id,
+    plan                   = EXCLUDED.plan,
+    interval               = EXCLUDED.interval,
+    status                 = EXCLUDED.status,
+    current_period_end     = EXCLUDED.current_period_end,
+    cancel_at_period_end   = EXCLUDED.cancel_at_period_end,
+    updated_at             = NOW()
+RETURNING id, company_id, stripe_customer_id, stripe_subscription_id, plan, interval, status, current_period_end, cancel_at_period_end, created_at, updated_at
+`
+
+type UpsertSubscriptionParams struct {
+	CompanyID            string             `json:"company_id"`
+	StripeCustomerID     *string            `json:"stripe_customer_id"`
+	StripeSubscriptionID *string            `json:"stripe_subscription_id"`
+	Plan                 string             `json:"plan"`
+	Interval             string             `json:"interval"`
+	Status               string             `json:"status"`
+	CurrentPeriodEnd     pgtype.Timestamptz `json:"current_period_end"`
+	CancelAtPeriodEnd    bool               `json:"cancel_at_period_end"`
+}
+
+func (q *Queries) UpsertSubscription(ctx context.Context, arg UpsertSubscriptionParams) (Subscription, error) {
+	row := q.db.QueryRow(ctx, upsertSubscription,
+		arg.CompanyID,
+		arg.StripeCustomerID,
+		arg.StripeSubscriptionID,
+		arg.Plan,
+		arg.Interval,
+		arg.Status,
+		arg.CurrentPeriodEnd,
+		arg.CancelAtPeriodEnd,
+	)
+	var i Subscription
+	err := row.Scan(
+		&i.ID,
+		&i.CompanyID,
+		&i.StripeCustomerID,
+		&i.StripeSubscriptionID,
+		&i.Plan,
+		&i.Interval,
+		&i.Status,
+		&i.CurrentPeriodEnd,
+		&i.CancelAtPeriodEnd,
+		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
 	return i, err
