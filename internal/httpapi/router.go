@@ -83,6 +83,8 @@ type Config struct {
 
 	// VerifyDNSTimeout bounds each DNS-TXT lookup during domain verification.
 	VerifyDNSTimeout time.Duration
+	// VerifyRequiredForMatch gates the RFQ match pool to verified sellers only.
+	VerifyRequiredForMatch bool
 }
 
 // New builds the Core API with all Phase 1 routes mounted.
@@ -212,7 +214,7 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	llmHealth := rfq.NewHealthTracker(20)
 	settingsSvc := settings.NewService(q, box, envExtraction, llmHealth)
 
-	rfq.NewHandler(rfq.NewService(q, pub, settingsSvc, attLoader, cfg.Logger, cfg.RFQTTLDays, llmHealth, notifier), q, entSvc).Register(f, middleware.RequireVerified(q), guard...)
+	rfq.NewHandler(rfq.NewService(q, pub, settingsSvc, attLoader, cfg.Logger, cfg.RFQTTLDays, llmHealth, notifier, cfg.VerifyRequiredForMatch), q, entSvc).Register(f, middleware.RequireVerified(q), guard...)
 	quotes.NewHandler(quotes.NewService(q, cfg.Pool, pub, attLoader, cfg.Logger, notifier), q).Register(f, guard...)
 	orders.NewHandler(q).Register(f, guard...)
 

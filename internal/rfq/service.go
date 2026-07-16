@@ -25,14 +25,15 @@ const maxMatches = 25
 // The extractor is resolved per RFQ from the buyer company's settings, so each
 // tenant can configure its own provider/model/key.
 type Service struct {
-	q        *sqlc.Queries
-	pub      *eventbus.Publisher
-	resolver ExtractorResolver
-	loader   *attachments.Loader
-	logger   zerolog.Logger
-	ttlDays  int
-	health   *HealthTracker
-	notifier *notify.Notifier
+	q                      *sqlc.Queries
+	pub                    *eventbus.Publisher
+	resolver               ExtractorResolver
+	loader                 *attachments.Loader
+	logger                 zerolog.Logger
+	ttlDays                int
+	health                 *HealthTracker
+	notifier               *notify.Notifier
+	verifyRequiredForMatch bool
 }
 
 // NewService builds the RFQ service. ttlDays is how long a matched RFQ stays
@@ -40,12 +41,13 @@ type Service struct {
 // to a 14-day default. loader may be nil (unit tests) — attachment hydration
 // is then skipped entirely. health may be nil — intake outcome recording is
 // then a no-op. notifier may be nil (unit tests) — matched-seller
-// notifications are then skipped entirely.
-func NewService(q *sqlc.Queries, pub *eventbus.Publisher, resolver ExtractorResolver, loader *attachments.Loader, logger zerolog.Logger, ttlDays int, health *HealthTracker, notifier *notify.Notifier) *Service {
+// notifications are then skipped entirely. verifyRequiredForMatch gates the
+// match pool to verified sellers only (default off).
+func NewService(q *sqlc.Queries, pub *eventbus.Publisher, resolver ExtractorResolver, loader *attachments.Loader, logger zerolog.Logger, ttlDays int, health *HealthTracker, notifier *notify.Notifier, verifyRequiredForMatch bool) *Service {
 	if ttlDays <= 0 {
 		ttlDays = 14
 	}
-	return &Service{q: q, pub: pub, resolver: resolver, loader: loader, logger: logger, ttlDays: ttlDays, health: health, notifier: notifier}
+	return &Service{q: q, pub: pub, resolver: resolver, loader: loader, logger: logger, ttlDays: ttlDays, health: health, notifier: notifier, verifyRequiredForMatch: verifyRequiredForMatch}
 }
 
 // hydrateAttachments resolves each message's AttachmentIDs into metadata +
@@ -310,6 +312,7 @@ func (s *Service) findMatches(ctx context.Context, buyerCompanyID string, req Re
 		rows, err := s.q.MatchSuppliers(ctx, sqlc.MatchSuppliersParams{
 			ExcludeCompany: buyerCompanyID,
 			Needle:         needle,
+			VerifiedOnly:   s.verifyRequiredForMatch,
 			Lim:            maxMatches,
 		})
 		if err != nil {

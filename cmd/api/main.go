@@ -54,6 +54,9 @@ func main() {
 		StripePriceBusinessYear:  app.Config.StripePriceBusinessYear,
 
 		BillingDevMode: app.Config.BillingDevMode,
+
+		VerifyDNSTimeout:       app.Config.VerifyDNSTimeout,
+		VerifyRequiredForMatch: app.Config.VerifyRequiredForMatch,
 	})
 
 	sweepCtx, cancelSweep := context.WithCancel(context.Background())
