@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/tradebridge/core/internal/identity"
 	"github.com/tradebridge/core/pkg/db/sqlc"
@@ -55,6 +56,8 @@ func (h *Handler) issue(c *fiber.Ctx) error {
 		CompanyID:  middleware.CompanyID(c),
 		Label:      req.Label,
 		SecretHash: hash,
+		// NULL placeholder; Task 2 wires up the real TTL-derived expiry.
+		ExpiresAt: pgtype.Timestamptz{},
 	})
 	if err != nil {
 		return err
