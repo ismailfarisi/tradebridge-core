@@ -6,6 +6,7 @@ package gateway
 
 import (
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
@@ -75,7 +76,8 @@ func (h *Handler) authenticate(c *fiber.Ctx) (authedAgent, error) {
 	ctx := c.Context()
 	ip := clientIP(c)
 	if h.rl.authFailBlocked(ctx, ip) {
-		c.Set("Retry-After", "60")
+		// The IP block persists for the full auth-fail window, so advertise that.
+		c.Set("Retry-After", strconv.Itoa(int(h.rl.failWin.Seconds())))
 		return authedAgent{}, fiber.NewError(fiber.StatusTooManyRequests, "too many failed auth attempts")
 	}
 
