@@ -16,6 +16,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/tradebridge/core/internal/attachments"
+	"github.com/tradebridge/core/internal/entitlements"
 	"github.com/tradebridge/core/internal/identity"
 	"github.com/tradebridge/core/internal/notify"
 	"github.com/tradebridge/core/pkg/db/sqlc"
@@ -36,11 +37,12 @@ type Handler struct {
 	logger   zerolog.Logger
 	rl       *rateLimiter
 	notifier *notify.Notifier // may be nil; notifications are then skipped
+	ent      *entitlements.Service
 }
 
 // NewHandler builds the gateway handler. notifier may be nil, in which case
 // domain events (e.g. quote.submitted) do not notify anyone.
-func NewHandler(q *sqlc.Queries, rdb *redis.Client, store *attachments.Store, logger zerolog.Logger, rlc RateLimitConfig, notifier *notify.Notifier) *Handler {
+func NewHandler(q *sqlc.Queries, rdb *redis.Client, store *attachments.Store, logger zerolog.Logger, rlc RateLimitConfig, notifier *notify.Notifier, ent *entitlements.Service) *Handler {
 	var c counter
 	if rdb != nil {
 		c = redisCounter{rdb: rdb}
@@ -54,7 +56,7 @@ func NewHandler(q *sqlc.Queries, rdb *redis.Client, store *attachments.Store, lo
 		failWin: time.Duration(rlc.AuthfailWindowSec) * time.Second,
 		logger:  logger,
 	}
-	return &Handler{q: q, redis: rdb, store: store, logger: logger, rl: rl, notifier: notifier}
+	return &Handler{q: q, redis: rdb, store: store, logger: logger, rl: rl, notifier: notifier, ent: ent}
 }
 
 // Register mounts the gateway routes.
@@ -63,6 +65,7 @@ func (h *Handler) Register(app *fiber.App) {
 	app.Post("/agent/v1/commands", h.command)
 	app.Post("/agent/v1/events/:seq/ack", h.ack)
 	app.Post("/agent/v1/heartbeat", h.heartbeat)
+	app.Get("/agent/v1/entitlements", h.entitlements)
 	app.Get("/agent/v1/attachments/:id", h.attachment)
 }
 
@@ -124,4 +127,18 @@ func (h *Handler) heartbeat(c *fiber.Ctx) error {
 		return err
 	}
 	return c.JSON(fiber.Map{"status": "ok"})
+}
+
+// entitlements returns the authenticated agent company's feature entitlements,
+// so the agent can gate autonomy (auto-quoting) locally. Read-only.
+func (h *Handler) entitlements(c *fiber.Ctx) error {
+	agent, err := h.authenticate(c)
+	if err != nil {
+		return err
+	}
+	ent := h.ent.For(c.Context(), agent.CompanyID)
+	return c.JSON(fiber.Map{
+		"agent_autonomy": ent.AgentAutonomy,
+		"plan":           h.ent.PlanCode(c.Context(), agent.CompanyID),
+	})
 }
