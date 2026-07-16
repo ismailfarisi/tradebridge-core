@@ -110,6 +110,9 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	// Waitlist: PUBLIC, pre-signup capture — no tenant guard.
 	waitlist.NewHandler(q).Register(f)
 
+	// Public seller storefront (unauthenticated; rate-limited in Plan 3).
+	suppliers.NewPublicHandler(q).RegisterPublic(f)
+
 	// Tenant guard chain, applied per-group (never as a broad "/v1" prefix) so
 	// public /v1/auth/* routes stay open.
 	guard := []fiber.Handler{

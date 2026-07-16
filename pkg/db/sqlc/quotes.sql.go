@@ -260,7 +260,7 @@ func (q *Queries) ListSubmittedQuoteSellersExcept(ctx context.Context, arg ListS
 }
 
 const rankQuotesByRFQ = `-- name: RankQuotesByRFQ :many
-SELECT q.id, q.rfq_id, q.seller_company_id, q.agent_command_id, q.price_cents, q.currency, q.delivery_days, q.notes, q.completeness, q.status, q.created_at, q.updated_at, c.name AS seller_name
+SELECT q.id, q.rfq_id, q.seller_company_id, q.agent_command_id, q.price_cents, q.currency, q.delivery_days, q.notes, q.completeness, q.status, q.created_at, q.updated_at, c.name AS seller_name, c.verification_status
 FROM quotes q
 JOIN companies c ON c.id = q.seller_company_id
 WHERE q.rfq_id = $1
@@ -268,19 +268,20 @@ ORDER BY q.price_cents ASC, q.delivery_days ASC NULLS LAST, q.completeness DESC,
 `
 
 type RankQuotesByRFQRow struct {
-	ID              string    `json:"id"`
-	RfqID           string    `json:"rfq_id"`
-	SellerCompanyID string    `json:"seller_company_id"`
-	AgentCommandID  *string   `json:"agent_command_id"`
-	PriceCents      int64     `json:"price_cents"`
-	Currency        string    `json:"currency"`
-	DeliveryDays    *int32    `json:"delivery_days"`
-	Notes           string    `json:"notes"`
-	Completeness    float64   `json:"completeness"`
-	Status          string    `json:"status"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
-	SellerName      string    `json:"seller_name"`
+	ID                 string    `json:"id"`
+	RfqID              string    `json:"rfq_id"`
+	SellerCompanyID    string    `json:"seller_company_id"`
+	AgentCommandID     *string   `json:"agent_command_id"`
+	PriceCents         int64     `json:"price_cents"`
+	Currency           string    `json:"currency"`
+	DeliveryDays       *int32    `json:"delivery_days"`
+	Notes              string    `json:"notes"`
+	Completeness       float64   `json:"completeness"`
+	Status             string    `json:"status"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
+	SellerName         string    `json:"seller_name"`
+	VerificationStatus string    `json:"verification_status"`
 }
 
 func (q *Queries) RankQuotesByRFQ(ctx context.Context, rfqID string) ([]RankQuotesByRFQRow, error) {
@@ -306,6 +307,7 @@ func (q *Queries) RankQuotesByRFQ(ctx context.Context, rfqID string) ([]RankQuot
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.SellerName,
+			&i.VerificationStatus,
 		); err != nil {
 			return nil, err
 		}

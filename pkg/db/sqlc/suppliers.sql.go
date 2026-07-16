@@ -10,6 +10,46 @@ import (
 	"time"
 )
 
+const getPublicSeller = `-- name: GetPublicSeller :one
+SELECT c.id AS company_id,
+       c.name,
+       c.verification_status,
+       c.verified_domain,
+       sp.description,
+       sp.categories,
+       sp.location
+FROM supplier_profiles sp
+JOIN companies c ON c.id = sp.company_id
+WHERE sp.company_id = $1
+`
+
+type GetPublicSellerRow struct {
+	CompanyID          string   `json:"company_id"`
+	Name               string   `json:"name"`
+	VerificationStatus string   `json:"verification_status"`
+	VerifiedDomain     *string  `json:"verified_domain"`
+	Description        *string  `json:"description"`
+	Categories         []string `json:"categories"`
+	Location           *string  `json:"location"`
+}
+
+// Tenant-safe storefront projection: explicit public columns only (no SELECT *
+// of companies, which would leak stripe_customer_id etc.).
+func (q *Queries) GetPublicSeller(ctx context.Context, companyID string) (GetPublicSellerRow, error) {
+	row := q.db.QueryRow(ctx, getPublicSeller, companyID)
+	var i GetPublicSellerRow
+	err := row.Scan(
+		&i.CompanyID,
+		&i.Name,
+		&i.VerificationStatus,
+		&i.VerifiedDomain,
+		&i.Description,
+		&i.Categories,
+		&i.Location,
+	)
+	return i, err
+}
+
 const getSupplierProfileByCompany = `-- name: GetSupplierProfileByCompany :one
 SELECT id, company_id, description, categories, location, verified, created_at, updated_at FROM supplier_profiles
 WHERE company_id = $1
@@ -32,7 +72,7 @@ func (q *Queries) GetSupplierProfileByCompany(ctx context.Context, companyID str
 }
 
 const searchSuppliers = `-- name: SearchSuppliers :many
-SELECT sp.id, sp.company_id, sp.description, sp.categories, sp.location, sp.verified, sp.created_at, sp.updated_at, c.name AS company_name
+SELECT sp.id, sp.company_id, sp.description, sp.categories, sp.location, sp.verified, sp.created_at, sp.updated_at, c.name AS company_name, c.verification_status
 FROM supplier_profiles sp
 JOIN companies c ON c.id = sp.company_id
 WHERE (
@@ -56,15 +96,16 @@ type SearchSuppliersParams struct {
 }
 
 type SearchSuppliersRow struct {
-	ID          string    `json:"id"`
-	CompanyID   string    `json:"company_id"`
-	Description *string   `json:"description"`
-	Categories  []string  `json:"categories"`
-	Location    *string   `json:"location"`
-	Verified    bool      `json:"verified"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-	CompanyName string    `json:"company_name"`
+	ID                 string    `json:"id"`
+	CompanyID          string    `json:"company_id"`
+	Description        *string   `json:"description"`
+	Categories         []string  `json:"categories"`
+	Location           *string   `json:"location"`
+	Verified           bool      `json:"verified"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
+	CompanyName        string    `json:"company_name"`
+	VerificationStatus string    `json:"verification_status"`
 }
 
 func (q *Queries) SearchSuppliers(ctx context.Context, arg SearchSuppliersParams) ([]SearchSuppliersRow, error) {
@@ -86,6 +127,7 @@ func (q *Queries) SearchSuppliers(ctx context.Context, arg SearchSuppliersParams
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.CompanyName,
+			&i.VerificationStatus,
 		); err != nil {
 			return nil, err
 		}
