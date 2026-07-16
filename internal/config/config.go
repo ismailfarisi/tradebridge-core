@@ -68,6 +68,15 @@ type Config struct {
 	AppBaseURL string `mapstructure:"APP_BASE_URL"`
 	// SentryDSN enables error reporting to Sentry when set.
 	SentryDSN string `mapstructure:"SENTRY_DSN"`
+
+	// Stripe billing (Sprint 2). All empty => StubBilling (dev/test); checkout
+	// returns a stub URL. Set these to go live (activation follow-up).
+	StripeSecretKey          string `mapstructure:"STRIPE_SECRET_KEY"`
+	StripeWebhookSecret      string `mapstructure:"STRIPE_WEBHOOK_SECRET"`
+	StripePriceProMonth      string `mapstructure:"STRIPE_PRICE_PRO_MONTH"`
+	StripePriceProYear       string `mapstructure:"STRIPE_PRICE_PRO_YEAR"`
+	StripePriceBusinessMonth string `mapstructure:"STRIPE_PRICE_BUSINESS_MONTH"`
+	StripePriceBusinessYear  string `mapstructure:"STRIPE_PRICE_BUSINESS_YEAR"`
 }
 
 // Load reads configuration from the environment, falling back to a local
@@ -100,6 +109,13 @@ func Load() (*Config, error) {
 	v.SetDefault("EMAIL_FROM", "TradeBridge <no-reply@switeaz.com>")
 	v.SetDefault("APP_BASE_URL", "http://localhost:3010")
 	v.SetDefault("SENTRY_DSN", "")
+
+	v.SetDefault("STRIPE_SECRET_KEY", "")
+	v.SetDefault("STRIPE_WEBHOOK_SECRET", "")
+	v.SetDefault("STRIPE_PRICE_PRO_MONTH", "")
+	v.SetDefault("STRIPE_PRICE_PRO_YEAR", "")
+	v.SetDefault("STRIPE_PRICE_BUSINESS_MONTH", "")
+	v.SetDefault("STRIPE_PRICE_BUSINESS_YEAR", "")
 
 	v.SetConfigName(".env")
 	v.SetConfigType("env")

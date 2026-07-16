@@ -40,3 +40,36 @@ SELECT COUNT(*) FROM users WHERE company_id = $1;
 -- name: CountPendingInvitesByCompany :one
 SELECT COUNT(*) FROM user_invites
 WHERE company_id = $1 AND accepted_at IS NULL AND expires_at > NOW();
+
+-- name: UpsertSubscription :one
+INSERT INTO subscriptions (
+    company_id, stripe_customer_id, stripe_subscription_id, plan, interval,
+    status, current_period_end, cancel_at_period_end, updated_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+ON CONFLICT (company_id) DO UPDATE SET
+    stripe_customer_id     = EXCLUDED.stripe_customer_id,
+    stripe_subscription_id = EXCLUDED.stripe_subscription_id,
+    plan                   = EXCLUDED.plan,
+    interval               = EXCLUDED.interval,
+    status                 = EXCLUDED.status,
+    current_period_end     = EXCLUDED.current_period_end,
+    cancel_at_period_end   = EXCLUDED.cancel_at_period_end,
+    updated_at             = NOW()
+RETURNING *;
+
+-- name: GetSubscriptionByCompany :one
+SELECT * FROM subscriptions WHERE company_id = $1;
+
+-- name: SetCompanyStripeCustomer :exec
+UPDATE companies SET stripe_customer_id = $2 WHERE id = $1;
+
+-- name: GetCompanyByStripeCustomer :one
+SELECT * FROM companies WHERE stripe_customer_id = $1;
+
+-- name: IsStripeEventProcessed :one
+SELECT EXISTS(SELECT 1 FROM processed_stripe_events WHERE event_id = $1);
+
+-- name: MarkStripeEventProcessed :exec
+INSERT INTO processed_stripe_events (event_id, type)
+VALUES ($1, $2)
+ON CONFLICT (event_id) DO NOTHING;
