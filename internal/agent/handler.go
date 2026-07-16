@@ -6,23 +6,30 @@ package agent
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/tradebridge/core/internal/identity"
 	"github.com/tradebridge/core/pkg/db/sqlc"
 	"github.com/tradebridge/core/pkg/middleware"
 )
 
+// Config carries the credential-lifecycle policy for issuance + rotation.
+type Config struct {
+	TTLDays   int
+	GraceDays int
+}
+
 // Handler serves agent-credential issuance + management routes.
 type Handler struct {
-	q *sqlc.Queries
+	q   *sqlc.Queries
+	cfg Config
 }
 
 // NewHandler builds the agent-credentials handler over the query layer.
-func NewHandler(q *sqlc.Queries) *Handler {
-	return &Handler{q: q}
+func NewHandler(q *sqlc.Queries, cfg Config) *Handler {
+	return &Handler{q: q, cfg: cfg}
 }
 
 // Register mounts the agent-credential routes under the given tenant guard.
@@ -56,8 +63,7 @@ func (h *Handler) issue(c *fiber.Ctx) error {
 		CompanyID:  middleware.CompanyID(c),
 		Label:      req.Label,
 		SecretHash: hash,
-		// NULL placeholder; Task 2 wires up the real TTL-derived expiry.
-		ExpiresAt: pgtype.Timestamptz{},
+		ExpiresAt:  credExpiry(time.Now(), h.cfg.TTLDays),
 	})
 	if err != nil {
 		return err
@@ -72,10 +78,12 @@ func (h *Handler) issue(c *fiber.Ctx) error {
 }
 
 type credResp struct {
-	ID       string `json:"id"`
-	Label    string `json:"label"`
-	Status   string `json:"status"`
-	LastSeen any    `json:"last_seen"`
+	ID        string `json:"id"`
+	Label     string `json:"label"`
+	Status    string `json:"status"`
+	LastSeen  any    `json:"last_seen"`
+	ExpiresAt any    `json:"expires_at"`
+	CreatedAt any    `json:"created_at"`
 }
 
 func (h *Handler) list(c *fiber.Ctx) error {
@@ -85,11 +93,14 @@ func (h *Handler) list(c *fiber.Ctx) error {
 	}
 	out := make([]credResp, len(creds))
 	for i, cr := range creds {
-		var last any
+		var last, exp any
 		if cr.LastSeen.Valid {
 			last = cr.LastSeen.Time
 		}
-		out[i] = credResp{ID: cr.ID, Label: cr.Label, Status: cr.Status, LastSeen: last}
+		if cr.ExpiresAt.Valid {
+			exp = cr.ExpiresAt.Time
+		}
+		out[i] = credResp{ID: cr.ID, Label: cr.Label, Status: cr.Status, LastSeen: last, ExpiresAt: exp, CreatedAt: cr.CreatedAt}
 	}
 	return c.JSON(fiber.Map{"credentials": out})
 }

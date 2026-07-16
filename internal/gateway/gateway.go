@@ -7,6 +7,7 @@ package gateway
 import (
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5"
@@ -65,6 +66,9 @@ func (h *Handler) authenticate(c *fiber.Ctx) (authedAgent, error) {
 	}
 	if cred.Status != "active" || !identity.CheckPassword(cred.SecretHash, secret) {
 		return authedAgent{}, fiber.NewError(fiber.StatusUnauthorized, "invalid agent credential")
+	}
+	if credExpired(cred.ExpiresAt, time.Now()) {
+		return authedAgent{}, fiber.NewError(fiber.StatusUnauthorized, "credential expired")
 	}
 	return authedAgent{CredentialID: cred.ID, CompanyID: cred.CompanyID}, nil
 }

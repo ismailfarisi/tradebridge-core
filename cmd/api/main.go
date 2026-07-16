@@ -38,6 +38,9 @@ func main() {
 		RFQTTLDays: app.Config.RFQTTLDays,
 
 		AttachmentsDir: app.Config.AttachmentsDir,
+
+		AgentCredTTLDays:         app.Config.AgentCredTTLDays,
+		AgentCredRotateGraceDays: app.Config.AgentCredRotateGraceDays,
 	})
 
 	sweepCtx, cancelSweep := context.WithCancel(context.Background())
