@@ -2,6 +2,14 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Deferred pre-launch polish (whole-branch review — all Minor; fixed items noted):**
+> - [FIXED `b99cc7f`] team paywall modal now has a busy state (no double-checkout); billing poll `setTimeout` cleared on unmount.
+> - Modal keyboard a11y: add Escape-to-close, focus trap, and initial focus before public launch.
+> - Strip `?checkout=success` from the URL after handling (cosmetic).
+> - Logged-out "Upgrade" on `/pricing` routes to `/register` and loses the chosen plan — carry the checkout intent through signup (funnel improvement).
+> - `/pricing` table is hardcoded marketing copy; if admin edits plan limits it can drift — consider a public plans endpoint.
+> - Add a vitest case for a non-JSON 402 body (the fallback path is correct but uncovered).
+
 **Goal:** Make the freemium engine visible and usable in the buyer app (`core/web`): a pricing page, a contextual upgrade paywall that fires on any `402`, a billing/usage screen with meters, a team/seats screen whose invite respects the seat cap, and the Stripe Checkout redirect flow.
 
 **Architecture:** All billing network logic + the `402 {code,feature,plan_required}` → typed `PaywallError` parsing lives in a tested `lib/billing.ts` (mirrors Sprint 1's `lib/notifications.ts` `call<T>` pattern). React components/pages are thin consumers built in the existing dark-theme, CSS-variable, utility-class idiom (`AppShell`, `PageHeader`, `.card/.btn/.field/.tbl`). Per the Sprint 1 precedent, **only lib logic is unit-tested (vitest); components/pages are verified by `tsc --noEmit` + `next build`** (no React Testing Library).
