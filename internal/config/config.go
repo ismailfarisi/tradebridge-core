@@ -77,6 +77,10 @@ type Config struct {
 	StripePriceProYear       string `mapstructure:"STRIPE_PRICE_PRO_YEAR"`
 	StripePriceBusinessMonth string `mapstructure:"STRIPE_PRICE_BUSINESS_MONTH"`
 	StripePriceBusinessYear  string `mapstructure:"STRIPE_PRICE_BUSINESS_YEAR"`
+
+	// BillingDevMode allows the unsigned StubBilling webhook — DEV/TEST ONLY.
+	// Never set in prod.
+	BillingDevMode bool `mapstructure:"BILLING_DEV_MODE"`
 }
 
 // Load reads configuration from the environment, falling back to a local
@@ -116,6 +120,7 @@ func Load() (*Config, error) {
 	v.SetDefault("STRIPE_PRICE_PRO_YEAR", "")
 	v.SetDefault("STRIPE_PRICE_BUSINESS_MONTH", "")
 	v.SetDefault("STRIPE_PRICE_BUSINESS_YEAR", "")
+	v.SetDefault("BILLING_DEV_MODE", false)
 
 	v.SetConfigName(".env")
 	v.SetConfigType("env")

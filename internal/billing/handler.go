@@ -16,11 +16,19 @@ type Handler struct {
 	provider   Billing
 	svc        *Service
 	appBaseURL string
+	// active gates all billing routes: true when a real Stripe provider is
+	// configured (Enabled()==true) or an operator has explicitly opted into
+	// BILLING_DEV_MODE for the unsigned StubBilling flow (dev/test only).
+	// When false, checkout/portal/webhook all fail closed with 503 rather
+	// than parsing an unsigned webhook or returning a stub checkout URL.
+	active bool
 }
 
-// NewHandler builds the billing handler.
-func NewHandler(q *sqlc.Queries, provider Billing, svc *Service, appBaseURL string) *Handler {
-	return &Handler{q: q, provider: provider, svc: svc, appBaseURL: appBaseURL}
+// NewHandler builds the billing handler. active must be true only when a
+// real Stripe provider is configured or BILLING_DEV_MODE is explicitly set;
+// otherwise all billing routes fail closed (see active).
+func NewHandler(q *sqlc.Queries, provider Billing, svc *Service, appBaseURL string, active bool) *Handler {
+	return &Handler{q: q, provider: provider, svc: svc, appBaseURL: appBaseURL, active: active}
 }
 
 // Register mounts the PUBLIC webhook (Stripe calls it with a signature, not a
@@ -45,6 +53,9 @@ type checkoutReq struct {
 }
 
 func (h *Handler) checkout(c *fiber.Ctx) error {
+	if !h.active {
+		return fiber.NewError(fiber.StatusServiceUnavailable, "billing not configured")
+	}
 	var req checkoutReq
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
@@ -94,6 +105,9 @@ func (h *Handler) checkout(c *fiber.Ctx) error {
 }
 
 func (h *Handler) portal(c *fiber.Ctx) error {
+	if !h.active {
+		return fiber.NewError(fiber.StatusServiceUnavailable, "billing not configured")
+	}
 	ctx := c.Context()
 	co, err := h.q.GetCompanyByID(ctx, middleware.CompanyID(c))
 	if err != nil {
@@ -110,6 +124,9 @@ func (h *Handler) portal(c *fiber.Ctx) error {
 }
 
 func (h *Handler) webhook(c *fiber.Ctx) error {
+	if !h.active {
+		return fiber.NewError(fiber.StatusServiceUnavailable, "billing not configured")
+	}
 	ev, err := h.provider.ParseWebhook(c.Body(), c.Get("Stripe-Signature"))
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid webhook")

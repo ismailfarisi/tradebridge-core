@@ -76,6 +76,9 @@ type Config struct {
 	StripePriceProYear       string
 	StripePriceBusinessMonth string
 	StripePriceBusinessYear  string
+	// BillingDevMode allows the unsigned StubBilling webhook/checkout when no
+	// Stripe key is configured — DEV/TEST ONLY. Never set in prod.
+	BillingDevMode bool
 }
 
 // New builds the Core API with all Phase 1 routes mounted.
@@ -162,7 +165,11 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 		},
 	}, cfg.Logger)
 	billingSvc := billing.NewService(q, cfg.Logger)
-	billing.NewHandler(q, billingProvider, billingSvc, appBaseURLOr(cfg.AppBaseURL)).Register(f, guard...)
+	// billingActive gates the stub webhook/checkout: a keyless deploy
+	// (Enabled()==false) only accepts unsigned billing requests when an
+	// operator has explicitly opted into BILLING_DEV_MODE (dev/test only).
+	billingActive := billingProvider.Enabled() || cfg.BillingDevMode
+	billing.NewHandler(q, billingProvider, billingSvc, appBaseURLOr(cfg.AppBaseURL), billingActive).Register(f, guard...)
 
 	entitlements.NewHandler(entSvc).Register(f, guard...)
 

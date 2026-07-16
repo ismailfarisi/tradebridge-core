@@ -10,6 +10,7 @@ import (
 
 	"github.com/tradebridge/core/internal/billing"
 	"github.com/tradebridge/core/internal/entitlements"
+	"github.com/tradebridge/core/internal/httpapi"
 	"github.com/tradebridge/core/pkg/db/sqlc"
 )
 
@@ -103,4 +104,21 @@ func TestBillingHTTP_CheckoutWebhookUnlocksPro(t *testing.T) {
 	require.Equal(t, http.StatusOK, st)
 	st, sum = doJSON(t, app, "GET", "/v1/billing/summary", token, nil)
 	require.Equal(t, "free", sum["plan"])
+}
+
+// TestBillingWebhook_RefusedWhenUnconfigured proves the fail-closed interlock:
+// on a keyless deploy with BILLING_DEV_MODE unset (the default), the public
+// webhook must NOT parse an unsigned forged event — it should refuse before
+// ever reaching StubBilling.ParseWebhook.
+func TestBillingWebhook_RefusedWhenUnconfigured(t *testing.T) {
+	pool := poolOrSkip(t)
+	// Build an app WITHOUT a Stripe key and WITHOUT dev mode → billing inactive.
+	app := httpapi.New(sqlc.New(pool), httpapi.Config{
+		JWTSecret: "test-secret", Logger: zerolog.Nop(), Pool: pool, AttachmentsDir: t.TempDir(),
+		// BillingDevMode defaults false; no Stripe key → provider is stub, Enabled()==false.
+	})
+	st, _ := doJSON(t, app, "POST", "/v1/billing/webhook", "", map[string]any{
+		"id": "evt_forged", "company_id": "co_x", "plan": "pro", "status": "active",
+	})
+	require.Equal(t, http.StatusServiceUnavailable, st) // fails closed — no unsigned parse, no state change
 }

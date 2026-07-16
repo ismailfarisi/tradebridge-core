@@ -30,6 +30,7 @@ func buildAPI(t *testing.T) *fiber.App {
 		Logger:         zerolog.Nop(),
 		Pool:           pool,
 		AttachmentsDir: t.TempDir(),
+		BillingDevMode: true,
 	})
 }
 
@@ -44,6 +45,7 @@ func buildAPIWithAdmin(t *testing.T, email, password string) *fiber.App {
 		PlatformAdminPassword: password,
 		Logger:                zerolog.Nop(),
 		Pool:                  pool,
+		BillingDevMode:        true,
 	})
 }
 
