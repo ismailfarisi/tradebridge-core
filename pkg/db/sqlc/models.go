@@ -65,6 +65,13 @@ type AuditLog struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type Block struct {
+	ID               string    `json:"id"`
+	CompanyID        string    `json:"company_id"`
+	BlockedCompanyID string    `json:"blocked_company_id"`
+	CreatedAt        time.Time `json:"created_at"`
+}
+
 type CatalogSummary struct {
 	ID        string    `json:"id"`
 	CompanyID string    `json:"company_id"`
@@ -206,6 +213,17 @@ type QuoteMessage struct {
 	Body        string    `json:"body"`
 	CreatedAt   time.Time `json:"created_at"`
 	Attachments []byte    `json:"attachments"`
+}
+
+type Report struct {
+	ID                string             `json:"id"`
+	ReporterCompanyID string             `json:"reporter_company_id"`
+	ReportedCompanyID string             `json:"reported_company_id"`
+	Reason            string             `json:"reason"`
+	Detail            *string            `json:"detail"`
+	Status            string             `json:"status"`
+	CreatedAt         time.Time          `json:"created_at"`
+	ResolvedAt        pgtype.Timestamptz `json:"resolved_at"`
 }
 
 type Rfq struct {

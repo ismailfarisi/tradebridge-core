@@ -244,6 +244,11 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	quotes.NewHandler(quotes.NewService(q, cfg.Pool, pub, attLoader, cfg.Logger, notifier), q).Register(f, rlMessage, guard...)
 	orders.NewHandler(q).Register(f, guard...)
 
+	// Abuse reports: rate-limited, requires a verified email.
+	rlReport := mkRL("report", cfg.RateLimitReport, middleware.RateLimit{Limit: 30, Window: time.Hour}, middleware.KeyCompanyOrIP)
+	reports := trust.NewReportsHandler(q)
+	reports.Register(f, append(append([]fiber.Handler{}, guard...), middleware.RequireVerified(q), rlReport)...)
+
 	// Platform superadmin realm: a separate credential store and JWT secret
 	// from company auth. Fail-closed — routes are not mounted at all when no
 	// secret is configured, rather than mounting with a guessable default.
@@ -259,6 +264,7 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 		settings.NewHandler(settingsSvc).Register(f, adminGuard)
 		entitlements.NewAdminHandler(q, entSvc).Register(f, adminGuard)
 		trust.NewAdminHandler(trustSvc, q).Register(f, adminGuard)
+		reports.RegisterAdmin(f, adminGuard)
 	} else {
 		cfg.Logger.Warn().Msg("ADMIN_JWT_SECRET unset — platform admin routes disabled")
 	}
