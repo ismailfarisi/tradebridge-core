@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { PageHeader } from "@/components/AppShell";
-import { useToken } from "@/lib/auth";
+import { useMe } from "@/lib/auth";
 import { getProfile, upsertProfile } from "@/lib/api";
 
 export default function ProfilePage() {
-  const token = useToken();
+  const { token, me } = useMe();
   const [description, setDescription] = useState("");
   const [categories, setCategories] = useState("");
   const [location, setLocation] = useState("");
@@ -67,6 +68,10 @@ export default function ProfilePage() {
           {err && <p className="err">{err}</p>}
           <div><button className="btn btn-primary" disabled={busy}>{busy ? "Saving…" : "Save profile"}</button></div>
         </form>
+        <p className="muted" style={{ marginTop: "0.8rem" }}>
+          <Link href="/settings/verification">Verify your domain</Link> to earn the badge ·{" "}
+          <Link href={`/s/${me?.company_id ?? ""}`}>View public storefront</Link>
+        </p>
       </div>
     </>
   );
