@@ -249,6 +249,9 @@ func randomToken() (string, error) {
 }
 
 func (h *Handler) sendVerification(ctx context.Context, u sqlc.User) {
+	if h.notifier == nil {
+		return
+	}
 	token, err := randomToken()
 	if err != nil {
 		return
