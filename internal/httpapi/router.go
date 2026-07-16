@@ -16,6 +16,7 @@ import (
 	"github.com/tradebridge/core/internal/agent"
 	"github.com/tradebridge/core/internal/attachments"
 	"github.com/tradebridge/core/internal/catalog"
+	"github.com/tradebridge/core/internal/entitlements"
 	"github.com/tradebridge/core/internal/eventbus"
 	"github.com/tradebridge/core/internal/identity"
 	"github.com/tradebridge/core/internal/notify"
@@ -127,6 +128,7 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 
 	sender := notify.NewSender(cfg.ResendAPIKey, cfg.EmailFrom, cfg.Logger)
 	notifier := notify.New(q, sender, cfg.AppBaseURL, cfg.Logger)
+	entSvc := entitlements.NewService(q, cfg.Logger)
 
 	identity.NewHandler(q, tokens, notifier).Register(f, guard...)
 	suppliers.NewHandler(q).Register(f, guard...)
@@ -134,6 +136,7 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	agent.NewHandler(q, agent.Config{TTLDays: cfg.AgentCredTTLDays, GraceDays: cfg.AgentCredRotateGraceDays}).Register(f, guard...)
 
 	notify.NewHandler(q).Register(f, guard...)
+	entitlements.NewHandler(entSvc).Register(f, guard...)
 
 	// Attachments: bytes on local disk, metadata in Postgres. Constructed
 	// once here; attLoader is exposed to later tasks' rfq/quotes services.
