@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { PageHeader } from "@/components/AppShell";
 import { StatusBadge } from "../page";
+import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { useToken } from "@/lib/auth";
 import { acceptQuote, getRfq, rfqQuotes, type QuoteRow, type RFQ } from "@/lib/api";
 
@@ -91,7 +92,10 @@ export default function RfqDetail() {
             {quotes.map((q, i) => (
               <tr key={q.id}>
                 <td>{q.rank ?? i + 1}</td>
-                <td>{q.seller_name ?? q.seller_company_id.slice(0, 8)}</td>
+                <td>
+                  {q.seller_name ?? q.seller_company_id.slice(0, 8)}{" "}
+                  <VerifiedBadge status={q.seller_verification_status} />
+                </td>
                 <td><strong>{q.currency} {(q.price_cents / 100).toFixed(2)}</strong></td>
                 <td className="muted">{q.delivery_days != null ? `${q.delivery_days} days` : "—"}</td>
                 <td className="muted small">{q.notes}</td>
