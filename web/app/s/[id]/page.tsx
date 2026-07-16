@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import { ReportBlockActions } from "@/components/ReportBlockActions";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { getPublicSeller, type PublicSeller } from "@/lib/trust";
 
@@ -57,6 +58,8 @@ export default function StorefrontPage() {
         <h2 style={{ marginTop: 0 }}>Reputation</h2>
         <p className="muted">Ratings & reviews coming soon.</p>
       </section>
+
+      <ReportBlockActions companyId={seller.company_id} />
     </main>
   );
 }
