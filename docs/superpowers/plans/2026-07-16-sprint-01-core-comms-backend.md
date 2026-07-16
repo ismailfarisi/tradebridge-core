@@ -540,49 +540,16 @@ git commit -m "feat(notify): /v1/notifications API + config + router wiring"
 
 **Files:**
 - Create: `pkg/middleware/verified.go`
-- Test: `pkg/middleware/verified_test.go` (unit, no DB) + `test/integration/api_verify_test.go`
-- Modify: `internal/identity/handler.go` (register sends verify email; add verify-email + resend routes; needs a `*notify.Notifier`), `internal/httpapi/router.go` (pass `notifier` to `identity.NewHandler`; mount `RequireVerified` on RFQ create).
+- Test: `test/integration/api_verify_test.go`
+- Modify: `internal/identity/handler.go` (register sends verify email; add verify-email + resend routes; needs a `*notify.Notifier`), `internal/httpapi/router.go` (pass `notifier` to `identity.NewHandler`; mount `RequireVerified` on RFQ create), `internal/rfq/handler.go` (accept the gate middleware).
 
 **Interfaces:**
-- Produces: `identity.NewHandler(q *sqlc.Queries, tokens *TokenService, notifier *notify.Notifier) *Handler` (signature change — the sole caller is router.go); routes `POST /v1/auth/verify-email {token}` (public) and `POST /v1/auth/resend-verification` (guarded); `middleware.RequireVerified(q *sqlc.Queries) fiber.Handler` → 403 `{code:"verify_email"}` when caller's `email_verified_at` is NULL. Runs after `TenantGuard`.
+- Produces: `identity.NewHandler(q *sqlc.Queries, tokens *TokenService, notifier *notify.Notifier) *Handler` (signature change — the sole caller is router.go); routes `POST /v1/auth/verify-email {token}` (public) and `POST /v1/auth/resend-verification` (guarded); `middleware.RequireVerified(q *sqlc.Queries) fiber.Handler` → 403 `{code:"verify_email"}` when caller's `email_verified_at` is NULL. Runs after `TenantGuard`. `rfq.Handler.Register(app *fiber.App, verified fiber.Handler, guard ...fiber.Handler)` (signature change — sole caller is router.go).
 - Consumes: `notify.RenderVerificationEmail`, `notify.SendTransactional`, `randomToken()` (existing in identity), sqlc `CreateEmailVerification`/`GetEmailVerificationByToken`/`ConsumeEmailVerification`/`MarkUserEmailVerified`, `GetUserByID`.
 
-- [ ] **Step 1: Write the failing middleware unit test** `pkg/middleware/verified_test.go`
+**Testing note:** `RequireVerified` reads the DB (`GetUserByID`), so it is exercised through the integration test below (this codebase's convention: DB-backed logic uses the `poolOrSkip` harness, not a mocked unit test). Do NOT add a contrived pure-unit test that asserts a tautology — the integration test is the real gate.
 
-```go
-package middleware
-
-import (
-	"net/http/httptest"
-	"testing"
-
-	"github.com/gofiber/fiber/v2"
-	"github.com/stretchr/testify/require"
-)
-
-// isVerifiedGate is the pure decision extracted for unit testing: given whether
-// the user's email is verified, should the request pass?
-func TestVerifiedGateDecision(t *testing.T) {
-	require.True(t, allowVerified(true))
-	require.False(t, allowVerified(false))
-}
-
-// Smoke: a handler behind a stub gate returning 403 shape.
-func TestVerifyErrorShape(t *testing.T) {
-	app := fiber.New()
-	app.Get("/x", func(c *fiber.Ctx) error { return verifyEmailError() })
-	req := httptest.NewRequest("GET", "/x", nil)
-	resp, _ := app.Test(req)
-	require.Equal(t, 403, resp.StatusCode)
-}
-```
-
-- [ ] **Step 2: Run to verify it fails**
-
-Run: `go test ./pkg/middleware/ -run 'TestVerified|TestVerifyError' -v`
-Expected: FAIL — undefined.
-
-- [ ] **Step 3: Write `pkg/middleware/verified.go`**
+- [ ] **Step 1: Write `pkg/middleware/verified.go`** (implementation is small and has no pure branch worth a standalone unit test; the RED comes from the integration test in Step 2)
 
 ```go
 package middleware
@@ -596,19 +563,11 @@ import (
 	"github.com/tradebridge/core/pkg/db/sqlc"
 )
 
-// allowVerified is the pure gate decision (extracted for testing).
-func allowVerified(emailVerified bool) bool { return emailVerified }
-
-// verifyEmailError is the 403 returned to unverified callers. The `code` lets
-// the frontend show the "verify your email" banner instead of a raw error.
-func verifyEmailError() error {
-	return fiber.NewError(fiber.StatusForbidden, "verify_email")
-}
-
 // RequireVerified must run after TenantGuard. It blocks the request when the
 // acting user has not verified their email (soft gate). Existing users are
 // grandfathered (email_verified_at backfilled), so this only stops brand-new
-// unverified signups from the gated action.
+// unverified signups from the gated action. The `code` field lets the frontend
+// show the "verify your email" banner instead of a raw error string.
 func RequireVerified(q *sqlc.Queries) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		u, err := q.GetUserByID(c.Context(), UserID(c))
@@ -617,7 +576,7 @@ func RequireVerified(q *sqlc.Queries) fiber.Handler {
 		} else if err != nil {
 			return err
 		}
-		if !allowVerified(u.EmailVerifiedAt.Valid) {
+		if !u.EmailVerifiedAt.Valid {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
 				"code": "verify_email", "message": "verify your email to continue",
 			})
@@ -627,12 +586,7 @@ func RequireVerified(q *sqlc.Queries) fiber.Handler {
 }
 ```
 
-- [ ] **Step 4: Run middleware unit test**
-
-Run: `go test ./pkg/middleware/ -run 'TestVerified|TestVerifyError' -v`
-Expected: PASS. (Note `verifyEmailError` returns a Fiber error → default 403 body; the `TestVerifyErrorShape` asserts only the status.)
-
-- [ ] **Step 5: Write the failing integration test** `test/integration/api_verify_test.go`
+- [ ] **Step 2: Write the failing integration test** `test/integration/api_verify_test.go`
 
 ```go
 package integration
@@ -681,12 +635,12 @@ func TestVerify_SoftGateOnRFQCreate(t *testing.T) {
 ```
 (If `t.Context()` is unavailable on the Go version, use `context.Background()`.)
 
-- [ ] **Step 6: Run to verify it fails**
+- [ ] **Step 3: Run to verify it fails**
 
 Run: `TEST_DATABASE_URL=... go test ./test/integration/ -run TestVerify_SoftGate -v`
 Expected: FAIL — RFQ create returns 201 (no gate yet) / no verify route.
 
-- [ ] **Step 7: Implement.** In `internal/identity/handler.go`:
+- [ ] **Step 4: Implement.** In `internal/identity/handler.go`:
   - Change `NewHandler(q, tokens)` → `NewHandler(q, tokens, notifier *notify.Notifier)`; store `notifier`.
   - In `Register`, add `auth.Post("/verify-email", h.verifyEmail)` and `users.Post("/resend-verification", h.resendVerification)` — wait, resend needs the user's own id: mount under the guarded group. Add to `auth` (public): `verify-email`; add to a guarded group: `resend-verification`.
   - In `register`, after the user is created and before `issue`, call `h.sendVerification(ctx, user)`.
@@ -735,17 +689,21 @@ func (h *Handler) resendVerification(c *fiber.Ctx) error {
 }
 ```
   Add imports `context`, `notify`, ensure `time`, `errors`, `pgx`, `middleware` present.
-  - In `router.go`: `identity.NewHandler(q, tokens, notifier).Register(f, guard...)` and remove the `_ = notifier` placeholder. Gate RFQ create: the cleanest mount is inside `rfq`'s Register via an extra guard, but to avoid changing rfq's signature, wrap at the router by mounting a `RequireVerified` on the create route. Since `rfq.NewHandler(...).Register` owns `/v1/rfqs`, add the gate **inside** `rfq/handler.go` Register by accepting an optional extra middleware. Simplest per-plan approach: add a parameter-free guard in Register — change `g.Post("/", h.create)` to `g.Post("/", append(extra, h.create)...)` where `extra` is passed to `Register`. **Chosen approach:** add `verified fiber.Handler` param to `rfq.NewHandler` is heavier; instead mount the gate at the router by re-registering: after `rfq...Register`, the route already exists. To keep it simple and explicit, change `rfq.Handler.Register` signature to `Register(app, verified fiber.Handler, guard ...fiber.Handler)` and apply `verified` only to `create`, `chat`, `chatStream`. Update the sole caller in router.go to pass `middleware.RequireVerified(q)`.
+  - **Gate the RFQ write routes.** Change `rfq.Handler.Register` signature to `Register(app *fiber.App, verified fiber.Handler, guard ...fiber.Handler)` and apply `verified` (after the guard, before the handler) to the three write routes only — `create` (`POST /v1/rfqs`), `chat` (`POST /v1/rfq-chat`), `chatStream` (`POST /v1/rfq-chat/stream`); leave `list`/`get`/`close` ungated. Example for `create`:
+    ```go
+    g.Post("/", append(append([]fiber.Handler{}, verified), h.create)...)
+    ```
+  - In `router.go`: `identity.NewHandler(q, tokens, notifier).Register(f, guard...)` (remove the `_ = notifier` placeholder from Task 5), and `rfq.NewHandler(...).Register(f, middleware.RequireVerified(q), guard...)`.
 
-- [ ] **Step 8: Run to verify it passes**
+- [ ] **Step 5: Run to verify it passes**
 
-Run: `go build ./... && TEST_DATABASE_URL=... go test ./test/integration/ -run 'TestVerify_SoftGate' ./pkg/middleware/ -run 'TestVerified|TestVerifyError' -v`
-Expected: build clean; PASS. Then run the full identity/rfq suites to catch signature breaks: `TEST_DATABASE_URL=... go test ./... 2>&1 | tail -20` — all green.
+Run: `go build ./... && TEST_DATABASE_URL=... go test ./test/integration/ -run 'TestVerify_SoftGate' -v`
+Expected: build clean; PASS. Then run the full suite to catch signature breaks: `TEST_DATABASE_URL=... go test ./... 2>&1 | tail -20` — all green.
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add internal/identity/handler.go internal/httpapi/router.go internal/rfq/handler.go pkg/middleware/verified.go pkg/middleware/verified_test.go test/integration/api_verify_test.go
+git add internal/identity/handler.go internal/httpapi/router.go internal/rfq/handler.go pkg/middleware/verified.go test/integration/api_verify_test.go
 git commit -m "feat(identity): email verification + soft gate on RFQ create"
 ```
 
