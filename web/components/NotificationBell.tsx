@@ -50,7 +50,8 @@ export default function NotificationBell({ token }: { token: string }) {
       setItems((xs) => xs.map((x) => (x.id === n.id ? { ...x, read: true } : x)));
       setUnread((u) => Math.max(0, u - 1));
     }
-    const path = typeof n.data?.cta_path === "string" ? (n.data.cta_path as string) : null;
+    const raw = typeof n.data?.cta_path === "string" ? (n.data.cta_path as string) : null;
+    const path = raw && raw.startsWith("/") && !raw.startsWith("//") ? raw : null;
     if (path) { setOpen(false); router.push(path); }
   }
 
