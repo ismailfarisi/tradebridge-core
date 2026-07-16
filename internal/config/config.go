@@ -58,6 +58,16 @@ type Config struct {
 	// AttachmentsDir is where RFQ attachment bytes are stored on disk.
 	// Empty means ~/tradebridge-data/attachments.
 	AttachmentsDir string `mapstructure:"ATTACHMENTS_DIR"`
+
+	// ResendAPIKey enables transactional email via Resend. When empty, the
+	// notify package logs email instead of sending it.
+	ResendAPIKey string `mapstructure:"RESEND_API_KEY"`
+	// EmailFrom is the From address used for transactional email.
+	EmailFrom string `mapstructure:"EMAIL_FROM"`
+	// AppBaseURL is used to build links in rendered emails.
+	AppBaseURL string `mapstructure:"APP_BASE_URL"`
+	// SentryDSN enables error reporting to Sentry when set.
+	SentryDSN string `mapstructure:"SENTRY_DSN"`
 }
 
 // Load reads configuration from the environment, falling back to a local
@@ -86,6 +96,10 @@ func Load() (*Config, error) {
 	v.SetDefault("AGENT_RL_PER_MIN", 120)
 	v.SetDefault("AGENT_AUTHFAIL_MAX", 20)
 	v.SetDefault("AGENT_AUTHFAIL_WINDOW_SEC", 300)
+	v.SetDefault("RESEND_API_KEY", "")
+	v.SetDefault("EMAIL_FROM", "TradeBridge <no-reply@switeaz.com>")
+	v.SetDefault("APP_BASE_URL", "http://localhost:3010")
+	v.SetDefault("SENTRY_DSN", "")
 
 	v.SetConfigName(".env")
 	v.SetConfigType("env")

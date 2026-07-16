@@ -18,6 +18,7 @@ import (
 	"github.com/tradebridge/core/internal/catalog"
 	"github.com/tradebridge/core/internal/eventbus"
 	"github.com/tradebridge/core/internal/identity"
+	"github.com/tradebridge/core/internal/notify"
 	"github.com/tradebridge/core/internal/orders"
 	"github.com/tradebridge/core/internal/quotes"
 	"github.com/tradebridge/core/internal/rfq"
@@ -41,6 +42,12 @@ type Config struct {
 	AnthropicModel  string
 	SettingsEncKey  string
 	CORSOrigins     string
+
+	// ResendAPIKey, EmailFrom, AppBaseURL configure the notify package's
+	// transactional email sender and link-building base URL.
+	ResendAPIKey string
+	EmailFrom    string
+	AppBaseURL   string
 
 	// Platform superadmin realm (separate from company auth).
 	AdminJWTSecret        string
@@ -113,6 +120,11 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	agent.NewHandler(q, agent.Config{TTLDays: cfg.AgentCredTTLDays, GraceDays: cfg.AgentCredRotateGraceDays}).Register(f, guard...)
 
 	pub := eventbus.New(q, cfg.Redis, cfg.Logger)
+
+	sender := notify.NewSender(cfg.ResendAPIKey, cfg.EmailFrom, cfg.Logger)
+	notifier := notify.New(q, sender, cfg.AppBaseURL, cfg.Logger)
+	_ = notifier // wired into services in Tasks 6–9
+	notify.NewHandler(q).Register(f, guard...)
 
 	// Attachments: bytes on local disk, metadata in Postgres. Constructed
 	// once here; attLoader is exposed to later tasks' rfq/quotes services.

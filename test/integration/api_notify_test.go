@@ -2,6 +2,7 @@ package integration
 
 import (
 	"context"
+	"net/http"
 	"sync"
 	"testing"
 	"time"
@@ -122,4 +123,41 @@ func TestNotify_PanickingSenderDoesNotCrash(t *testing.T) {
 	// Reaching the assertion below proves the test process survived.
 	time.Sleep(200 * time.Millisecond)
 	require.True(t, true, "process survived a panicking Sender")
+}
+
+func TestNotify_ListAndMarkRead(t *testing.T) {
+	app := buildAPI(t)
+	pool := poolOrSkip(t)
+	q := sqlc.New(pool)
+	ctx := context.Background()
+
+	// Register a user to get a JWT + their ids.
+	status, body := doJSON(t, app, "POST", "/v1/auth/register", "", map[string]any{
+		"company_name": "Inbox Co", "company_type": "buyer",
+		"email": "inbox@x.com", "password": "password123",
+	})
+	require.Equal(t, http.StatusCreated, status)
+	token := body["token"].(string)
+	userID := body["user_id"].(string)
+	companyID := body["company_id"].(string)
+
+	// Seed a notification directly.
+	_, err := q.CreateNotification(ctx, sqlc.CreateNotificationParams{
+		UserID: userID, CompanyID: companyID, Type: "order.created",
+		Title: "Order confirmed", Body: "b", Data: []byte(`{"order_id":"O1"}`),
+	})
+	require.NoError(t, err)
+
+	status, list := doJSON(t, app, "GET", "/v1/notifications", token, nil)
+	require.Equal(t, http.StatusOK, status)
+	require.Equal(t, float64(1), list["unread"])
+	items := list["notifications"].([]any)
+	require.Len(t, items, 1)
+	id := items[0].(map[string]any)["id"].(string)
+
+	status, _ = doJSON(t, app, "POST", "/v1/notifications/"+id+"/read", token, nil)
+	require.Equal(t, http.StatusNoContent, status)
+
+	status, list = doJSON(t, app, "GET", "/v1/notifications", token, nil)
+	require.Equal(t, float64(0), list["unread"])
 }

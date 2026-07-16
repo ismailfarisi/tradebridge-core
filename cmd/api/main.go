@@ -31,6 +31,10 @@ func main() {
 		SettingsEncKey:  app.Config.SettingsEncKey,
 		CORSOrigins:     app.Config.CORSOrigins,
 
+		ResendAPIKey: app.Config.ResendAPIKey,
+		EmailFrom:    app.Config.EmailFrom,
+		AppBaseURL:   app.Config.AppBaseURL,
+
 		AdminJWTSecret:        app.Config.AdminJWTSecret,
 		PlatformAdminEmail:    app.Config.PlatformAdminEmail,
 		PlatformAdminPassword: app.Config.PlatformAdminPassword,
