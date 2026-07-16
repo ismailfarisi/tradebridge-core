@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tradebridge/core/internal/attachments"
+	"github.com/tradebridge/core/internal/entitlements"
 	"github.com/tradebridge/core/internal/gateway"
 	"github.com/tradebridge/core/internal/notify"
 	"github.com/tradebridge/core/pkg/db/sqlc"
@@ -27,7 +28,7 @@ func buildGateway(t *testing.T) *fiber.App {
 	require.NoError(t, err)
 	f := fiber.New()
 	ntf := notify.New(sqlc.New(pool), notify.NewSender("", "", zerolog.Nop()), "", zerolog.Nop())
-	gateway.NewHandler(sqlc.New(pool), nil, store, zerolog.Nop(), gateway.RateLimitConfig{PerMin: 120, AuthfailMax: 20, AuthfailWindowSec: 300}, ntf).Register(f)
+	gateway.NewHandler(sqlc.New(pool), nil, store, zerolog.Nop(), gateway.RateLimitConfig{PerMin: 120, AuthfailMax: 20, AuthfailWindowSec: 300}, ntf, entitlements.NewService(sqlc.New(pool), zerolog.Nop())).Register(f)
 	return f
 }
 
@@ -42,7 +43,7 @@ func buildGatewayWithStore(t *testing.T) (*fiber.App, *sqlc.Queries, *attachment
 	q := sqlc.New(pool)
 	f := fiber.New()
 	ntf := notify.New(q, notify.NewSender("", "", zerolog.Nop()), "", zerolog.Nop())
-	gateway.NewHandler(q, nil, store, zerolog.Nop(), gateway.RateLimitConfig{PerMin: 120, AuthfailMax: 20, AuthfailWindowSec: 300}, ntf).Register(f)
+	gateway.NewHandler(q, nil, store, zerolog.Nop(), gateway.RateLimitConfig{PerMin: 120, AuthfailMax: 20, AuthfailWindowSec: 300}, ntf, entitlements.NewService(sqlc.New(pool), zerolog.Nop())).Register(f)
 	return f, q, store
 }
 
