@@ -24,6 +24,7 @@ import (
 	"github.com/tradebridge/core/internal/rfq"
 	"github.com/tradebridge/core/internal/settings"
 	"github.com/tradebridge/core/internal/suppliers"
+	"github.com/tradebridge/core/internal/waitlist"
 	"github.com/tradebridge/core/pkg/cryptobox"
 	"github.com/tradebridge/core/pkg/db/sqlc"
 	"github.com/tradebridge/core/pkg/middleware"
@@ -86,6 +87,9 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	f.Get("/health", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"status": "ok"})
 	})
+
+	// Waitlist: PUBLIC, pre-signup capture — no tenant guard.
+	waitlist.NewHandler(q).Register(f)
 
 	// Tenant guard chain, applied per-group (never as a broad "/v1" prefix) so
 	// public /v1/auth/* routes stay open.
