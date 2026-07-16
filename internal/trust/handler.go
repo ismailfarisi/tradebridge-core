@@ -20,12 +20,11 @@ func NewHandler(svc *Service, q *sqlc.Queries) *Handler {
 }
 
 // Register mounts verification routes. Mutating routes require owner/admin role
-// and a verified email; check is additionally intended to be rate-limited
-// (wired in Plan 3).
-func (h *Handler) Register(app *fiber.App, verified fiber.Handler, guard ...fiber.Handler) {
+// and a verified email; checkRL rate-limits the check route.
+func (h *Handler) Register(app *fiber.App, verified fiber.Handler, checkRL fiber.Handler, guard ...fiber.Handler) {
 	writeGuard := append(append([]fiber.Handler{}, guard...), verified, middleware.RequireRole("owner", "admin"))
 	app.Post("/v1/verification/domain", append(append([]fiber.Handler{}, writeGuard...), h.claim)...)
-	app.Post("/v1/verification/domain/check", append(append([]fiber.Handler{}, writeGuard...), h.check)...)
+	app.Post("/v1/verification/domain/check", append(append(append([]fiber.Handler{}, writeGuard...), checkRL), h.check)...)
 	app.Get("/v1/verification", append(append([]fiber.Handler{}, guard...), h.status)...)
 }
 

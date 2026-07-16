@@ -85,6 +85,15 @@ type Config struct {
 	VerifyDNSTimeout time.Duration
 	// VerifyRequiredForMatch gates the RFQ match pool to verified sellers only.
 	VerifyRequiredForMatch bool
+
+	// Abuse controls (Sprint 3). RateLimitEnabled is the master switch; each
+	// limit is "N/DURATION" (e.g. "5/1h"). All fail OPEN.
+	RateLimitEnabled     bool
+	RateLimitSignup      string
+	RateLimitRFQ         string
+	RateLimitMessage     string
+	RateLimitVerifyCheck string
+	RateLimitReport      string
 }
 
 // New builds the Core API with all Phase 1 routes mounted.
@@ -151,10 +160,24 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	notifier := notify.New(q, sender, cfg.AppBaseURL, cfg.Logger)
 	entSvc := entitlements.NewService(q, cfg.Logger)
 
-	identity.NewHandler(q, tokens, notifier, entSvc).Register(f, guard...)
+	// Fail-open Redis rate limiters (Sprint 3 abuse controls). A nil Redis
+	// client or RateLimitEnabled=false makes every limiter a pass-through.
+	rlCounter := middleware.NewRedisRateCounter(cfg.Redis)
+	rlOn := cfg.RateLimitEnabled
+	mkRL := func(scope, spec string, def middleware.RateLimit, key middleware.KeyFunc) fiber.Handler {
+		return middleware.RateLimiter(rlOn, rlCounter, scope, middleware.ParseRateLimit(spec, def), key, cfg.Logger)
+	}
+	rlSignup := mkRL("signup", cfg.RateLimitSignup, middleware.RateLimit{Limit: 5, Window: time.Hour}, middleware.KeyIP)
+	rlRFQ := mkRL("rfq", cfg.RateLimitRFQ, middleware.RateLimit{Limit: 20, Window: time.Hour}, middleware.KeyCompanyOrIP)
+	rlMessage := mkRL("message", cfg.RateLimitMessage, middleware.RateLimit{Limit: 120, Window: time.Hour}, middleware.KeyCompanyOrIP)
+	rlVerify := mkRL("verify", cfg.RateLimitVerifyCheck, middleware.RateLimit{Limit: 10, Window: time.Hour}, middleware.KeyCompanyOrIP)
+	// rlReport (Task 3's reports handler) is wired in further down where the
+	// reports handler is registered, to keep it visibly close to its use.
+
+	identity.NewHandler(q, tokens, notifier, entSvc).Register(f, rlSignup, guard...)
 	suppliers.NewHandler(q).Register(f, guard...)
 	trustSvc := trust.NewService(q, cfg.Pool, trust.NewNetResolver(cfg.VerifyDNSTimeout), cfg.Logger)
-	trust.NewHandler(trustSvc, q).Register(f, middleware.RequireVerified(q), guard...)
+	trust.NewHandler(trustSvc, q).Register(f, middleware.RequireVerified(q), rlVerify, guard...)
 	catalog.NewHandler(q, entSvc).Register(f, guard...)
 	agent.NewHandler(q, agent.Config{TTLDays: cfg.AgentCredTTLDays, GraceDays: cfg.AgentCredRotateGraceDays}).Register(f, guard...)
 
@@ -217,9 +240,16 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	llmHealth := rfq.NewHealthTracker(20)
 	settingsSvc := settings.NewService(q, box, envExtraction, llmHealth)
 
-	rfq.NewHandler(rfq.NewService(q, pub, settingsSvc, attLoader, cfg.Logger, cfg.RFQTTLDays, llmHealth, notifier, cfg.VerifyRequiredForMatch), q, entSvc).Register(f, middleware.RequireVerified(q), guard...)
-	quotes.NewHandler(quotes.NewService(q, cfg.Pool, pub, attLoader, cfg.Logger, notifier), q).Register(f, guard...)
+	rfq.NewHandler(rfq.NewService(q, pub, settingsSvc, attLoader, cfg.Logger, cfg.RFQTTLDays, llmHealth, notifier, cfg.VerifyRequiredForMatch), q, entSvc).Register(f, middleware.RequireVerified(q), rlRFQ, guard...)
+	quotes.NewHandler(quotes.NewService(q, cfg.Pool, pub, attLoader, cfg.Logger, notifier), q).Register(f, rlMessage, guard...)
 	orders.NewHandler(q).Register(f, guard...)
+
+	// Abuse reports: rate-limited, requires a verified email.
+	rlReport := mkRL("report", cfg.RateLimitReport, middleware.RateLimit{Limit: 30, Window: time.Hour}, middleware.KeyCompanyOrIP)
+	reports := trust.NewReportsHandler(q)
+	reports.Register(f, append(append([]fiber.Handler{}, guard...), middleware.RequireVerified(q), rlReport)...)
+
+	trust.NewBlocksHandler(q).Register(f, guard...)
 
 	// Platform superadmin realm: a separate credential store and JWT secret
 	// from company auth. Fail-closed — routes are not mounted at all when no
@@ -236,6 +266,7 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 		settings.NewHandler(settingsSvc).Register(f, adminGuard)
 		entitlements.NewAdminHandler(q, entSvc).Register(f, adminGuard)
 		trust.NewAdminHandler(trustSvc, q).Register(f, adminGuard)
+		reports.RegisterAdmin(f, adminGuard)
 	} else {
 		cfg.Logger.Warn().Msg("ADMIN_JWT_SECRET unset — platform admin routes disabled")
 	}

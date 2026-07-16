@@ -343,6 +343,25 @@ func (s *Service) findMatches(ctx context.Context, buyerCompanyID string, req Re
 		})
 	}
 
+	// Filter out blocked pairs (either direction) before ranking.
+	blockedRows, err := s.q.ListBlockCompanyIDsFor(ctx, buyerCompanyID)
+	if err != nil {
+		return nil, err
+	}
+	if len(blockedRows) > 0 {
+		blocked := make(map[string]struct{}, len(blockedRows))
+		for _, id := range blockedRows {
+			blocked[id] = struct{}{}
+		}
+		kept := out[:0]
+		for _, m := range out {
+			if _, isBlocked := blocked[m.SellerCompanyID]; !isBlocked {
+				kept = append(kept, m)
+			}
+		}
+		out = kept
+	}
+
 	// Highest score first; stable tiebreak by company id for determinism.
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Score != out[j].Score {

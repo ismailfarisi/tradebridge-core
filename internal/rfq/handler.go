@@ -30,10 +30,11 @@ func NewHandler(svc *Service, q *sqlc.Queries, ent *entitlements.Service) *Handl
 
 // Register mounts the RFQ routes under the given tenant guard. verified gates
 // the write routes (create, chat, chatStream) so an unverified user can still
-// list/get/close their existing RFQs but can't create new ones.
-func (h *Handler) Register(app *fiber.App, verified fiber.Handler, guard ...fiber.Handler) {
+// list/get/close their existing RFQs but can't create new ones. createRL
+// rate-limits RFQ creation.
+func (h *Handler) Register(app *fiber.App, verified fiber.Handler, createRL fiber.Handler, guard ...fiber.Handler) {
 	g := app.Group("/v1/rfqs", guard...)
-	g.Post("/", append(append([]fiber.Handler{}, verified), h.create)...)
+	g.Post("/", append(append([]fiber.Handler{}, verified, createRL), h.create)...)
 	g.Get("/", h.list)
 	g.Get("/:id", h.get)
 	g.Post("/:id/close", h.close)

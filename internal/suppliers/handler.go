@@ -80,6 +80,26 @@ func (h *Handler) search(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
+
+	// Hide companies blocked in either direction from the searching company.
+	blockedRows, err := h.q.ListBlockCompanyIDsFor(c.Context(), middleware.CompanyID(c))
+	if err != nil {
+		return err
+	}
+	if len(blockedRows) > 0 {
+		blocked := make(map[string]struct{}, len(blockedRows))
+		for _, id := range blockedRows {
+			blocked[id] = struct{}{}
+		}
+		filtered := rows[:0]
+		for _, r := range rows {
+			if _, b := blocked[r.CompanyID]; !b {
+				filtered = append(filtered, r)
+			}
+		}
+		rows = filtered
+	}
+
 	return c.JSON(fiber.Map{"results": rows, "count": len(rows)})
 }
 
