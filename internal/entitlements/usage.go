@@ -98,8 +98,9 @@ func (s *Service) CheckRFQQuota(ctx context.Context, companyID string) error {
 	if limit == -1 {
 		return nil
 	}
-	if s.rfqUsed(ctx, companyID) >= limit {
-		return &PaywallError{Feature: "rfq_monthly_limit", PlanRequired: s.planRequiredFor(ctx, "rfq_monthly_limit", limit)}
+	used := s.rfqUsed(ctx, companyID)
+	if used >= limit {
+		return &PaywallError{Feature: "rfq_monthly_limit", PlanRequired: s.planRequiredFor(ctx, "rfq_monthly_limit", used)}
 	}
 	return nil
 }
@@ -126,7 +127,7 @@ func (s *Service) CheckCatalogQuota(ctx context.Context, companyID string) error
 		return err
 	}
 	if int(n) >= limit {
-		return &PaywallError{Feature: "catalog_max_items", PlanRequired: s.planRequiredFor(ctx, "catalog_max_items", limit)}
+		return &PaywallError{Feature: "catalog_max_items", PlanRequired: s.planRequiredFor(ctx, "catalog_max_items", int(n))}
 	}
 	return nil
 }
@@ -143,7 +144,7 @@ func (s *Service) CheckSeatQuota(ctx context.Context, companyID string) error {
 		return err
 	}
 	if used >= limit {
-		return &PaywallError{Feature: "seats", PlanRequired: s.planRequiredFor(ctx, "seats", limit)}
+		return &PaywallError{Feature: "seats", PlanRequired: s.planRequiredFor(ctx, "seats", used)}
 	}
 	return nil
 }

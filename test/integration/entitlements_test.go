@@ -93,3 +93,40 @@ func TestEntitlements_QuotaChecks(t *testing.T) {
 	require.Equal(t, 10, u.RFQUsed)
 	require.Equal(t, 10, u.RFQLimit)
 }
+
+func TestEntitlements_PlanRequiredReflectsActualUsage(t *testing.T) {
+	pool := poolOrSkip(t)
+	q := sqlc.New(pool)
+	svc := entitlements.NewService(q, zerolog.Nop())
+	ctx := context.Background()
+
+	co, err := q.CreateCompany(ctx, sqlc.CreateCompanyParams{Name: "OverUseCo", Type: "both"})
+	require.NoError(t, err)
+
+	// 3 catalog items exist.
+	for i := 0; i < 3; i++ {
+		_, err := q.CreateCatalogSummary(ctx, sqlc.CreateCatalogSummaryParams{
+			CompanyID: co.ID, Name: "item", Category: "c",
+		})
+		require.NoError(t, err)
+	}
+	// Free cap 1, Pro cap 2 — actual usage (3) exceeds BOTH, so only Business clears it.
+	_, err = q.UpdatePlanLimits(ctx, sqlc.UpdatePlanLimitsParams{
+		Code: "free", AgentAutonomy: false, CatalogMaxItems: 1, RfqMonthlyLimit: 10, Seats: 2,
+	})
+	require.NoError(t, err)
+	_, err = q.UpdatePlanLimits(ctx, sqlc.UpdatePlanLimitsParams{
+		Code: "pro", AgentAutonomy: true, CatalogMaxItems: 2, RfqMonthlyLimit: 100, Seats: 5,
+	})
+	require.NoError(t, err)
+	svc.InvalidateCache()
+	t.Cleanup(func() {
+		q.UpdatePlanLimits(ctx, sqlc.UpdatePlanLimitsParams{Code: "free", AgentAutonomy: false, CatalogMaxItems: 25, RfqMonthlyLimit: 10, Seats: 2})
+		q.UpdatePlanLimits(ctx, sqlc.UpdatePlanLimitsParams{Code: "pro", AgentAutonomy: true, CatalogMaxItems: 500, RfqMonthlyLimit: 100, Seats: 5})
+	})
+
+	err = svc.CheckCatalogQuota(ctx, co.ID)
+	var pw *entitlements.PaywallError
+	require.ErrorAs(t, err, &pw)
+	require.Equal(t, "business", pw.PlanRequired) // NOT "pro" — 3 > pro's cap of 2
+}
