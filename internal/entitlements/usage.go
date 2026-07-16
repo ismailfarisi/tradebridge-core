@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/tradebridge/core/pkg/db/sqlc"
 )
@@ -86,7 +87,10 @@ func (s *Service) rfqUsed(ctx context.Context, companyID string) int {
 		CompanyID: companyID, Metric: metricRFQ, Period: period(),
 	})
 	if err != nil {
-		return 0 // pgx.ErrNoRows => no usage this period
+		if !errors.Is(err, pgx.ErrNoRows) {
+			s.logger.Warn().Err(err).Str("company", companyID).Msg("entitlements: rfq usage read failed, treating as 0")
+		}
+		return 0
 	}
 	return int(n)
 }

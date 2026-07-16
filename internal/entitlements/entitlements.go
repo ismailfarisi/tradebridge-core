@@ -34,6 +34,7 @@ type Service struct {
 
 	mu    sync.RWMutex
 	cache map[string]sqlc.Plan
+	gen   uint64
 }
 
 // NewService builds the entitlements service.
@@ -45,6 +46,7 @@ func NewService(q *sqlc.Queries, logger zerolog.Logger) *Service {
 func (s *Service) InvalidateCache() {
 	s.mu.Lock()
 	s.cache = map[string]sqlc.Plan{}
+	s.gen++
 	s.mu.Unlock()
 }
 
@@ -77,6 +79,7 @@ func (s *Service) For(ctx context.Context, companyID string) Entitlements {
 func (s *Service) plan(ctx context.Context, code string) (sqlc.Plan, error) {
 	s.mu.RLock()
 	p, ok := s.cache[code]
+	gen := s.gen
 	s.mu.RUnlock()
 	if ok {
 		return p, nil
@@ -86,7 +89,9 @@ func (s *Service) plan(ctx context.Context, code string) (sqlc.Plan, error) {
 		return sqlc.Plan{}, err
 	}
 	s.mu.Lock()
-	s.cache[code] = p
+	if s.gen == gen { // don't cache a row fetched before a concurrent InvalidateCache
+		s.cache[code] = p
+	}
 	s.mu.Unlock()
 	return p, nil
 }
