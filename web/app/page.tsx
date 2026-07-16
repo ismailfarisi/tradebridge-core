@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useToken } from "@/lib/auth";
+import WaitlistForm from "@/components/WaitlistForm";
 
 export default function Landing() {
   const token = useToken();
@@ -40,6 +41,11 @@ export default function Landing() {
             </a>
           </>
         )}
+      </div>
+      <div className="card" style={{ maxWidth: 420, width: "100%" }}>
+        <h2 style={{ marginTop: 0 }}>Get early access</h2>
+        <p className="muted small">Join the waitlist and we&rsquo;ll let you know when a spot opens up.</p>
+        <WaitlistForm />
       </div>
     </main>
   );
