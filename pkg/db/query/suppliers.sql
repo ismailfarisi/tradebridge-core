@@ -28,3 +28,17 @@ WHERE (
 )
 ORDER BY sp.verified DESC, c.name
 LIMIT sqlc.arg(lim) OFFSET sqlc.arg(off);
+
+-- name: GetPublicSeller :one
+-- Tenant-safe storefront projection: explicit public columns only (no SELECT *
+-- of companies, which would leak stripe_customer_id etc.).
+SELECT c.id AS company_id,
+       c.name,
+       c.verification_status,
+       c.verified_domain,
+       sp.description,
+       sp.categories,
+       sp.location
+FROM supplier_profiles sp
+JOIN companies c ON c.id = sp.company_id
+WHERE sp.company_id = @company_id;
