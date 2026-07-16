@@ -76,10 +76,11 @@ type CatalogSummary struct {
 }
 
 type Company struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	Type      string    `json:"type"`
-	CreatedAt time.Time `json:"created_at"`
+	ID               string    `json:"id"`
+	Name             string    `json:"name"`
+	Type             string    `json:"type"`
+	CreatedAt        time.Time `json:"created_at"`
+	StripeCustomerID *string   `json:"stripe_customer_id"`
 }
 
 type CompanySetting struct {
@@ -133,6 +134,16 @@ type Order struct {
 	CreatedAt       time.Time `json:"created_at"`
 }
 
+type Plan struct {
+	Code            string    `json:"code"`
+	Name            string    `json:"name"`
+	AgentAutonomy   bool      `json:"agent_autonomy"`
+	CatalogMaxItems int32     `json:"catalog_max_items"`
+	RfqMonthlyLimit int32     `json:"rfq_monthly_limit"`
+	Seats           int32     `json:"seats"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
 type PlatformAdmin struct {
 	ID           string    `json:"id"`
 	Email        string    `json:"email"`
@@ -150,6 +161,12 @@ type PlatformSetting struct {
 	ExtractionSystemPrompt string    `json:"extraction_system_prompt"`
 	IntakeSystemPrompt     string    `json:"intake_system_prompt"`
 	UpdatedAt              time.Time `json:"updated_at"`
+}
+
+type ProcessedStripeEvent struct {
+	EventID     string    `json:"event_id"`
+	Type        string    `json:"type"`
+	ProcessedAt time.Time `json:"processed_at"`
 }
 
 type Quote struct {
@@ -201,6 +218,20 @@ type RfqMatch struct {
 	CreatedAt       time.Time `json:"created_at"`
 }
 
+type Subscription struct {
+	ID                   string             `json:"id"`
+	CompanyID            string             `json:"company_id"`
+	StripeCustomerID     *string            `json:"stripe_customer_id"`
+	StripeSubscriptionID *string            `json:"stripe_subscription_id"`
+	Plan                 string             `json:"plan"`
+	Interval             string             `json:"interval"`
+	Status               string             `json:"status"`
+	CurrentPeriodEnd     pgtype.Timestamptz `json:"current_period_end"`
+	CancelAtPeriodEnd    bool               `json:"cancel_at_period_end"`
+	CreatedAt            time.Time          `json:"created_at"`
+	UpdatedAt            time.Time          `json:"updated_at"`
+}
+
 type SupplierProfile struct {
 	ID          string    `json:"id"`
 	CompanyID   string    `json:"company_id"`
@@ -210,6 +241,13 @@ type SupplierProfile struct {
 	Verified    bool      `json:"verified"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type UsageCounter struct {
+	CompanyID string `json:"company_id"`
+	Metric    string `json:"metric"`
+	Period    string `json:"period"`
+	Count     int32  `json:"count"`
 }
 
 type User struct {
