@@ -89,3 +89,37 @@ func mustUnread(t *testing.T, q *sqlc.Queries, userID string) int64 {
 	require.NoError(t, err)
 	return c
 }
+
+// panicSender simulates a Sender whose Send method panics, to prove the
+// async email goroutine recovers rather than crashing the process.
+type panicSender struct{}
+
+func (panicSender) Send(context.Context, notify.Email) error {
+	panic("boom")
+}
+
+func TestNotify_PanickingSenderDoesNotCrash(t *testing.T) {
+	pool := poolOrSkip(t)
+	q := sqlc.New(pool)
+	ctx := context.Background()
+
+	co, err := q.CreateCompany(ctx, sqlc.CreateCompanyParams{Name: "Panic Co", Type: "seller"})
+	require.NoError(t, err)
+	u, err := q.CreateUser(ctx, sqlc.CreateUserParams{CompanyID: co.ID, Email: "panic1@x.com", Role: "owner"})
+	require.NoError(t, err)
+
+	n := notify.New(q, panicSender{}, "https://app.example.com", zerolog.Nop())
+	n.NotifyCompany(ctx, co.ID, notify.Event{
+		Type: notify.TypeRFQMatched, Title: "New RFQ matched", Body: "body",
+		Data: map[string]any{"rfq_id": "R1"}, CTALabel: "View", CTAPath: "/rfqs/R1",
+	})
+
+	// In-app row is written synchronously, before the (panicking) email send
+	// is even attempted.
+	require.Equal(t, int64(1), mustUnread(t, q, u.ID))
+
+	// Give the background goroutine time to run Send (and panic) and recover.
+	// Reaching the assertion below proves the test process survived.
+	time.Sleep(200 * time.Millisecond)
+	require.True(t, true, "process survived a panicking Sender")
+}

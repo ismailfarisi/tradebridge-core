@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"maps"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -135,6 +136,8 @@ func (n *Notifier) encodeData(ev Event) []byte {
 	if ev.CTAPath != "" {
 		if data == nil {
 			data = map[string]any{}
+		} else {
+			data = maps.Clone(data)
 		}
 		data["cta_label"] = ev.CTALabel
 		data["cta_path"] = ev.CTAPath
@@ -156,6 +159,11 @@ func (n *Notifier) encodeData(ev Event) []byte {
 // outlive the request.
 func (n *Notifier) dispatchEmail(e Email) {
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				n.logger.Error().Interface("panic", r).Strs("to", e.To).Msg("notify: email send panicked")
+			}
+		}()
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 		if err := n.sender.Send(ctx, e); err != nil {
