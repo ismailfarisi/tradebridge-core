@@ -19,25 +19,34 @@ func TestAdminPlans_ListAndPatch(t *testing.T) {
 	require.Equal(t, http.StatusOK, st)
 	require.Len(t, list["plans"].([]any), 3)
 
-	// Lower Free's RFQ limit to 1 and confirm it round-trips.
-	st, patched := doJSON(t, app, "PATCH", "/admin/v1/plans/free", adminTok, map[string]any{
-		"agent_autonomy": false, "catalog_max_items": 1, "rfq_monthly_limit": 1, "seats": 1,
-	})
-	require.Equal(t, http.StatusOK, st)
-	require.Equal(t, float64(1), patched["rfq_monthly_limit"])
-
-	// A company now sees the edited limit (cache was invalidated).
+	// Register a company and read its summary FIRST — this warms the entitlements
+	// cache with the current Free plan row (rfq_monthly_limit = 10).
 	st, reg := doJSON(t, app, "POST", "/v1/auth/register", "", map[string]any{
 		"company_name": "AdminSeeCo", "company_type": "both",
 		"email": uniqueEmail("asee-"), "password": "supersecret",
 	})
 	require.Equal(t, http.StatusCreated, st)
-	st, sum := doJSON(t, app, "GET", "/v1/billing/summary", reg["token"].(string), nil)
-	require.Equal(t, http.StatusOK, st)
-	require.Equal(t, float64(1), sum["entitlements"].(map[string]any)["rfq_monthly_limit"])
+	token := reg["token"].(string)
 
-	// Restore defaults so other tests are unaffected.
-	doJSON(t, app, "PATCH", "/admin/v1/plans/free", adminTok, map[string]any{
-		"agent_autonomy": false, "catalog_max_items": 25, "rfq_monthly_limit": 10, "seats": 2,
+	st, sumBefore := doJSON(t, app, "GET", "/v1/billing/summary", token, nil)
+	require.Equal(t, http.StatusOK, st)
+	require.Equal(t, float64(10), sumBefore["entitlements"].(map[string]any)["rfq_monthly_limit"]) // cache now warm with old value
+
+	// Lower Free's RFQ limit to 1.
+	st, patched := doJSON(t, app, "PATCH", "/admin/v1/plans/free", adminTok, map[string]any{
+		"agent_autonomy": false, "catalog_max_items": 1, "rfq_monthly_limit": 1, "seats": 1,
 	})
+	require.Equal(t, http.StatusOK, st)
+	require.Equal(t, float64(1), patched["rfq_monthly_limit"])
+	t.Cleanup(func() {
+		doJSON(t, app, "PATCH", "/admin/v1/plans/free", adminTok, map[string]any{
+			"agent_autonomy": false, "catalog_max_items": 25, "rfq_monthly_limit": 10, "seats": 2,
+		})
+	})
+
+	// The SAME company must now see the new limit WITHOUT a restart — this only
+	// passes if PATCH called InvalidateCache(); a stale warm cache would still say 10.
+	st, sumAfter := doJSON(t, app, "GET", "/v1/billing/summary", token, nil)
+	require.Equal(t, http.StatusOK, st)
+	require.Equal(t, float64(1), sumAfter["entitlements"].(map[string]any)["rfq_monthly_limit"])
 }
