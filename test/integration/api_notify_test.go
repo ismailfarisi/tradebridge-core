@@ -190,3 +190,63 @@ func TestNotify_RFQMatchedNotifiesSeller(t *testing.T) {
 	require.NotEmpty(t, rows)
 	require.Equal(t, "rfq.matched", rows[0].Type)
 }
+
+// TestNotify_OrderCreatedNotifiesBothSides exercises the real quote-acceptance
+// pipeline end to end: when a buyer accepts a quote and a purchase order is
+// created, BOTH the buyer's and the seller's users get an in-app order.created
+// notification (Task 8 wiring of Notifier into quotes.Service.Accept).
+func TestNotify_OrderCreatedNotifiesBothSides(t *testing.T) {
+	api := buildAPI(t)
+	gw := buildGateway(t)
+	pool := poolOrSkip(t)
+	q := sqlc.New(pool)
+	ctx := context.Background()
+
+	_, sellerCompany, secret := registerSeller(t, api, "CheapPack")
+	sellers, err := q.ListUsersByCompany(ctx, sellerCompany)
+	require.NoError(t, err)
+	require.NotEmpty(t, sellers)
+	sellerUserID := sellers[0].ID
+
+	st, buyer := doJSON(t, api, "POST", "/v1/auth/register", "", map[string]any{
+		"company_name": "OrderBuyer", "company_type": "buyer",
+		"email": uniqueEmail("ordbuyer-"), "password": "supersecret",
+	})
+	require.Equal(t, http.StatusCreated, st)
+	buyerToken := buyer["token"].(string)
+	buyerUserID := buyer["user_id"].(string)
+	verifyUser(t, pool, buyerUserID)
+
+	st, created := doJSON(t, api, "POST", "/v1/rfqs", buyerToken, map[string]any{
+		"title": "Cartons", "text": "Need 500 cartons for packaging, deliver to Dubai.",
+	})
+	require.Equal(t, http.StatusCreated, st)
+	rfqID := created["rfq"].(map[string]any)["id"].(string)
+
+	st, _ = doJSON(t, gw, "POST", "/agent/v1/commands", secret, map[string]any{
+		"type": "quote.submit", "idempotency_key": "o1", "rfq_id": rfqID,
+		"payload": map[string]any{"price": 1000, "currency": "USD", "delivery_days": 10},
+	})
+	require.Equal(t, http.StatusCreated, st)
+
+	st, listed := doJSON(t, api, "GET", "/v1/rfqs/"+rfqID+"/quotes", buyerToken, nil)
+	require.Equal(t, http.StatusOK, st)
+	winningQuoteID := listed["quotes"].([]any)[0].(map[string]any)["id"].(string)
+
+	st, _ = doJSON(t, api, "POST", "/v1/quotes/"+winningQuoteID+"/accept", buyerToken, nil)
+	require.Equal(t, http.StatusCreated, st)
+
+	require.Eventually(t, func() bool {
+		bc, _ := q.CountUnreadNotifications(ctx, buyerUserID)
+		sc, _ := q.CountUnreadNotifications(ctx, sellerUserID)
+		return bc >= 1 && sc >= 1
+	}, 3*time.Second, 25*time.Millisecond)
+
+	// Assert both newest rows are order.created.
+	brows, _ := q.ListNotificationsByUser(ctx, sqlc.ListNotificationsByUserParams{UserID: buyerUserID, Limit: 1, Offset: 0})
+	require.NotEmpty(t, brows)
+	require.Equal(t, "order.created", brows[0].Type)
+	srows, _ := q.ListNotificationsByUser(ctx, sqlc.ListNotificationsByUserParams{UserID: sellerUserID, Limit: 1, Offset: 0})
+	require.NotEmpty(t, srows)
+	require.Equal(t, "order.created", srows[0].Type)
+}
