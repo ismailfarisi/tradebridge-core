@@ -109,6 +109,11 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 			out["company_name"] = co.Name
 			out["company_type"] = co.Type
 		}
+		// Include email verification status so the frontend verify-banner
+		// knows whether to prompt the user.
+		if u, err := q.GetUserByID(c.Context(), middleware.UserID(c)); err == nil {
+			out["email_verified"] = u.EmailVerifiedAt.Valid
+		}
 		return c.JSON(out)
 	})...)
 
