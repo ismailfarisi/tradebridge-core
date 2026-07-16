@@ -6,22 +6,32 @@ package agent
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/tradebridge/core/internal/identity"
 	"github.com/tradebridge/core/pkg/db/sqlc"
 	"github.com/tradebridge/core/pkg/middleware"
 )
 
+// Config carries the credential-lifecycle policy for issuance + rotation.
+type Config struct {
+	TTLDays   int
+	GraceDays int
+}
+
 // Handler serves agent-credential issuance + management routes.
 type Handler struct {
-	q *sqlc.Queries
+	q   *sqlc.Queries
+	cfg Config
 }
 
 // NewHandler builds the agent-credentials handler over the query layer.
-func NewHandler(q *sqlc.Queries) *Handler {
-	return &Handler{q: q}
+func NewHandler(q *sqlc.Queries, cfg Config) *Handler {
+	return &Handler{q: q, cfg: cfg}
 }
 
 // Register mounts the agent-credential routes under the given tenant guard.
@@ -30,6 +40,7 @@ func (h *Handler) Register(app *fiber.App, guard ...fiber.Handler) {
 	g.Get("/", h.list)
 	g.Post("/", middleware.RequireRole("owner", "admin"), h.issue)
 	g.Post("/:id/revoke", middleware.RequireRole("owner", "admin"), h.revoke)
+	g.Post("/:id/rotate", middleware.RequireRole("owner", "admin"), h.rotate)
 }
 
 type issueReq struct {
@@ -55,6 +66,7 @@ func (h *Handler) issue(c *fiber.Ctx) error {
 		CompanyID:  middleware.CompanyID(c),
 		Label:      req.Label,
 		SecretHash: hash,
+		ExpiresAt:  credExpiry(time.Now(), h.cfg.TTLDays),
 	})
 	if err != nil {
 		return err
@@ -69,10 +81,12 @@ func (h *Handler) issue(c *fiber.Ctx) error {
 }
 
 type credResp struct {
-	ID       string `json:"id"`
-	Label    string `json:"label"`
-	Status   string `json:"status"`
-	LastSeen any    `json:"last_seen"`
+	ID        string `json:"id"`
+	Label     string `json:"label"`
+	Status    string `json:"status"`
+	LastSeen  any    `json:"last_seen"`
+	ExpiresAt any    `json:"expires_at"`
+	CreatedAt any    `json:"created_at"`
 }
 
 func (h *Handler) list(c *fiber.Ctx) error {
@@ -82,11 +96,14 @@ func (h *Handler) list(c *fiber.Ctx) error {
 	}
 	out := make([]credResp, len(creds))
 	for i, cr := range creds {
-		var last any
+		var last, exp any
 		if cr.LastSeen.Valid {
 			last = cr.LastSeen.Time
 		}
-		out[i] = credResp{ID: cr.ID, Label: cr.Label, Status: cr.Status, LastSeen: last}
+		if cr.ExpiresAt.Valid {
+			exp = cr.ExpiresAt.Time
+		}
+		out[i] = credResp{ID: cr.ID, Label: cr.Label, Status: cr.Status, LastSeen: last, ExpiresAt: exp, CreatedAt: cr.CreatedAt}
 	}
 	return c.JSON(fiber.Map{"credentials": out})
 }
@@ -100,6 +117,55 @@ func (h *Handler) revoke(c *fiber.Ctx) error {
 		return err
 	}
 	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// rotate issues a fresh secret (new credential) for the same company/label and
+// puts the old secret on a grace clock, so the operator can update the agent's
+// .env within the grace window with zero downtime. The old secret keeps working
+// until then. Returns the new full secret exactly once.
+func (h *Handler) rotate(c *fiber.Ctx) error {
+	companyID := middleware.CompanyID(c)
+	old, err := h.q.GetAgentCredentialByID(c.Context(), c.Params("id"))
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && old.CompanyID != companyID) {
+		return fiber.NewError(fiber.StatusNotFound, "credential not found")
+	} else if err != nil {
+		return err
+	}
+	if old.Status != "active" {
+		return fiber.NewError(fiber.StatusConflict, "credential is not active")
+	}
+
+	rawSecret, err := randomHex(32)
+	if err != nil {
+		return err
+	}
+	hash, err := identity.HashPassword(rawSecret)
+	if err != nil {
+		return err
+	}
+	newCred, err := h.q.CreateAgentCredential(c.Context(), sqlc.CreateAgentCredentialParams{
+		CompanyID:  companyID,
+		Label:      old.Label,
+		SecretHash: hash,
+		ExpiresAt:  credExpiry(time.Now(), h.cfg.TTLDays),
+	})
+	if err != nil {
+		return err
+	}
+	// Old secret keeps authenticating until now+grace (never extended).
+	if err := h.q.SetAgentCredentialExpiry(c.Context(), sqlc.SetAgentCredentialExpiryParams{
+		ID:        old.ID,
+		CompanyID: companyID,
+		ExpiresAt: graceExpiry(old.ExpiresAt, time.Now(), h.cfg.GraceDays),
+	}); err != nil {
+		return err
+	}
+
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
+		"id":     newCred.ID,
+		"label":  newCred.Label,
+		"secret": newCred.ID + "." + rawSecret,
+	})
 }
 
 func randomHex(n int) (string, error) {

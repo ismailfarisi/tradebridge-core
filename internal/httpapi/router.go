@@ -53,6 +53,11 @@ type Config struct {
 
 	// AttachmentsDir is where RFQ attachment bytes are stored on disk.
 	AttachmentsDir string
+
+	// AgentCredTTLDays is how long an issued agent credential stays valid.
+	AgentCredTTLDays int
+	// AgentCredRotateGraceDays is the grace window for rotated credentials.
+	AgentCredRotateGraceDays int
 }
 
 // New builds the Core API with all Phase 1 routes mounted.
@@ -105,7 +110,7 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	identity.NewHandler(q, tokens).Register(f, guard...)
 	suppliers.NewHandler(q).Register(f, guard...)
 	catalog.NewHandler(q).Register(f, guard...)
-	agent.NewHandler(q).Register(f, guard...)
+	agent.NewHandler(q, agent.Config{TTLDays: cfg.AgentCredTTLDays, GraceDays: cfg.AgentCredRotateGraceDays}).Register(f, guard...)
 
 	pub := eventbus.New(q, cfg.Redis, cfg.Logger)
 

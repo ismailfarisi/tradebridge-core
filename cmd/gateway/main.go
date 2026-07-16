@@ -35,7 +35,11 @@ func main() {
 		panic(err)
 	}
 
-	gateway.NewHandler(app.Queries, app.Redis, store, app.Logger).Register(f)
+	gateway.NewHandler(app.Queries, app.Redis, store, app.Logger, gateway.RateLimitConfig{
+		PerMin:            app.Config.AgentRLPerMin,
+		AuthfailMax:       app.Config.AgentAuthfailMax,
+		AuthfailWindowSec: app.Config.AgentAuthfailWindowSec,
+	}).Register(f)
 
 	addr := ":" + app.Config.GatewayPort
 	log.Info().Str("addr", addr).Msg("agent gateway listening")

@@ -41,6 +41,20 @@ type Config struct {
 	// RFQSweepSeconds is the expiry-sweeper tick interval (Task C4).
 	RFQSweepSeconds int `mapstructure:"RFQ_SWEEP_SECONDS"`
 
+	// AgentCredTTLDays is how long an issued agent credential stays valid
+	// before it expires (<= 0 means never expires).
+	AgentCredTTLDays int `mapstructure:"AGENT_CRED_TTL_DAYS"`
+	// AgentCredRotateGraceDays is the grace window during which a rotated
+	// (superseded) agent credential still authenticates.
+	AgentCredRotateGraceDays int `mapstructure:"AGENT_CRED_ROTATE_GRACE_DAYS"`
+	// AgentRLPerMin is the per-credential agent request rate limit.
+	AgentRLPerMin int `mapstructure:"AGENT_RL_PER_MIN"`
+	// AgentAuthfailMax is the max failed auth attempts allowed within the
+	// AgentAuthfailWindowSec window before lockout.
+	AgentAuthfailMax int `mapstructure:"AGENT_AUTHFAIL_MAX"`
+	// AgentAuthfailWindowSec is the sliding window (seconds) for AgentAuthfailMax.
+	AgentAuthfailWindowSec int `mapstructure:"AGENT_AUTHFAIL_WINDOW_SEC"`
+
 	// AttachmentsDir is where RFQ attachment bytes are stored on disk.
 	// Empty means ~/tradebridge-data/attachments.
 	AttachmentsDir string `mapstructure:"ATTACHMENTS_DIR"`
@@ -67,6 +81,11 @@ func Load() (*Config, error) {
 	v.SetDefault("RFQ_TTL_DAYS", 14)
 	v.SetDefault("RFQ_SWEEP_SECONDS", 300)
 	v.SetDefault("ATTACHMENTS_DIR", "")
+	v.SetDefault("AGENT_CRED_TTL_DAYS", 90)
+	v.SetDefault("AGENT_CRED_ROTATE_GRACE_DAYS", 7)
+	v.SetDefault("AGENT_RL_PER_MIN", 120)
+	v.SetDefault("AGENT_AUTHFAIL_MAX", 20)
+	v.SetDefault("AGENT_AUTHFAIL_WINDOW_SEC", 300)
 
 	v.SetConfigName(".env")
 	v.SetConfigType("env")

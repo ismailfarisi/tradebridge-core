@@ -7,22 +7,30 @@ package sqlc
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createAgentCredential = `-- name: CreateAgentCredential :one
-INSERT INTO agent_credentials (company_id, label, secret_hash)
-VALUES ($1, $2, $3)
-RETURNING id, company_id, label, secret_hash, status, last_seen, created_at
+INSERT INTO agent_credentials (company_id, label, secret_hash, expires_at)
+VALUES ($1, $2, $3, $4)
+RETURNING id, company_id, label, secret_hash, status, last_seen, created_at, expires_at
 `
 
 type CreateAgentCredentialParams struct {
-	CompanyID  string `json:"company_id"`
-	Label      string `json:"label"`
-	SecretHash string `json:"secret_hash"`
+	CompanyID  string             `json:"company_id"`
+	Label      string             `json:"label"`
+	SecretHash string             `json:"secret_hash"`
+	ExpiresAt  pgtype.Timestamptz `json:"expires_at"`
 }
 
 func (q *Queries) CreateAgentCredential(ctx context.Context, arg CreateAgentCredentialParams) (AgentCredential, error) {
-	row := q.db.QueryRow(ctx, createAgentCredential, arg.CompanyID, arg.Label, arg.SecretHash)
+	row := q.db.QueryRow(ctx, createAgentCredential,
+		arg.CompanyID,
+		arg.Label,
+		arg.SecretHash,
+		arg.ExpiresAt,
+	)
 	var i AgentCredential
 	err := row.Scan(
 		&i.ID,
@@ -32,12 +40,13 @@ func (q *Queries) CreateAgentCredential(ctx context.Context, arg CreateAgentCred
 		&i.Status,
 		&i.LastSeen,
 		&i.CreatedAt,
+		&i.ExpiresAt,
 	)
 	return i, err
 }
 
 const getAgentCredentialByID = `-- name: GetAgentCredentialByID :one
-SELECT id, company_id, label, secret_hash, status, last_seen, created_at FROM agent_credentials
+SELECT id, company_id, label, secret_hash, status, last_seen, created_at, expires_at FROM agent_credentials
 WHERE id = $1
 `
 
@@ -52,12 +61,13 @@ func (q *Queries) GetAgentCredentialByID(ctx context.Context, id string) (AgentC
 		&i.Status,
 		&i.LastSeen,
 		&i.CreatedAt,
+		&i.ExpiresAt,
 	)
 	return i, err
 }
 
 const listAgentCredentialsByCompany = `-- name: ListAgentCredentialsByCompany :many
-SELECT id, company_id, label, secret_hash, status, last_seen, created_at FROM agent_credentials
+SELECT id, company_id, label, secret_hash, status, last_seen, created_at, expires_at FROM agent_credentials
 WHERE company_id = $1
 ORDER BY created_at DESC
 `
@@ -79,6 +89,7 @@ func (q *Queries) ListAgentCredentialsByCompany(ctx context.Context, companyID s
 			&i.Status,
 			&i.LastSeen,
 			&i.CreatedAt,
+			&i.ExpiresAt,
 		); err != nil {
 			return nil, err
 		}
@@ -102,6 +113,22 @@ type RevokeAgentCredentialParams struct {
 
 func (q *Queries) RevokeAgentCredential(ctx context.Context, arg RevokeAgentCredentialParams) error {
 	_, err := q.db.Exec(ctx, revokeAgentCredential, arg.ID, arg.CompanyID)
+	return err
+}
+
+const setAgentCredentialExpiry = `-- name: SetAgentCredentialExpiry :exec
+UPDATE agent_credentials SET expires_at = $3
+WHERE id = $1 AND company_id = $2
+`
+
+type SetAgentCredentialExpiryParams struct {
+	ID        string             `json:"id"`
+	CompanyID string             `json:"company_id"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+}
+
+func (q *Queries) SetAgentCredentialExpiry(ctx context.Context, arg SetAgentCredentialExpiryParams) error {
+	_, err := q.db.Exec(ctx, setAgentCredentialExpiry, arg.ID, arg.CompanyID, arg.ExpiresAt)
 	return err
 }
 

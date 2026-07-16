@@ -25,7 +25,7 @@ func buildGateway(t *testing.T) *fiber.App {
 	store, err := attachments.NewStore(t.TempDir())
 	require.NoError(t, err)
 	f := fiber.New()
-	gateway.NewHandler(sqlc.New(pool), nil, store, zerolog.Nop()).Register(f)
+	gateway.NewHandler(sqlc.New(pool), nil, store, zerolog.Nop(), gateway.RateLimitConfig{PerMin: 120, AuthfailMax: 20, AuthfailWindowSec: 300}).Register(f)
 	return f
 }
 
@@ -39,7 +39,7 @@ func buildGatewayWithStore(t *testing.T) (*fiber.App, *sqlc.Queries, *attachment
 	require.NoError(t, err)
 	q := sqlc.New(pool)
 	f := fiber.New()
-	gateway.NewHandler(q, nil, store, zerolog.Nop()).Register(f)
+	gateway.NewHandler(q, nil, store, zerolog.Nop(), gateway.RateLimitConfig{PerMin: 120, AuthfailMax: 20, AuthfailWindowSec: 300}).Register(f)
 	return f, q, store
 }
 

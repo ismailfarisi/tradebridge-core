@@ -1,7 +1,11 @@
 -- name: CreateAgentCredential :one
-INSERT INTO agent_credentials (company_id, label, secret_hash)
-VALUES ($1, $2, $3)
+INSERT INTO agent_credentials (company_id, label, secret_hash, expires_at)
+VALUES ($1, $2, $3, $4)
 RETURNING *;
+
+-- name: SetAgentCredentialExpiry :exec
+UPDATE agent_credentials SET expires_at = $3
+WHERE id = $1 AND company_id = $2;
 
 -- name: GetAgentCredentialByID :one
 SELECT * FROM agent_credentials

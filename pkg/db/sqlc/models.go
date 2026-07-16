@@ -30,6 +30,7 @@ type AgentCredential struct {
 	Status     string             `json:"status"`
 	LastSeen   pgtype.Timestamptz `json:"last_seen"`
 	CreatedAt  time.Time          `json:"created_at"`
+	ExpiresAt  pgtype.Timestamptz `json:"expires_at"`
 }
 
 type AgentEvent struct {
