@@ -87,6 +87,15 @@ type Config struct {
 	VerifyRequiredForMatch bool `mapstructure:"VERIFY_REQUIRED_FOR_MATCH"`
 	// VerifyDNSTimeout bounds each DNS-TXT lookup during domain verification.
 	VerifyDNSTimeout time.Duration `mapstructure:"VERIFY_DNS_TIMEOUT"`
+
+	// Abuse controls (Sprint 3). RateLimitEnabled is the master switch; each
+	// limit is "N/DURATION" (e.g. "5/1h"). All fail OPEN.
+	RateLimitEnabled     bool   `mapstructure:"RATE_LIMIT_ENABLED"`
+	RateLimitSignup      string `mapstructure:"RATE_LIMIT_SIGNUP"`
+	RateLimitRFQ         string `mapstructure:"RATE_LIMIT_RFQ"`
+	RateLimitMessage     string `mapstructure:"RATE_LIMIT_MESSAGE"`
+	RateLimitVerifyCheck string `mapstructure:"RATE_LIMIT_VERIFY_CHECK"`
+	RateLimitReport      string `mapstructure:"RATE_LIMIT_REPORT"`
 }
 
 // Load reads configuration from the environment, falling back to a local
@@ -130,6 +139,13 @@ func Load() (*Config, error) {
 
 	v.SetDefault("VERIFY_REQUIRED_FOR_MATCH", false)
 	v.SetDefault("VERIFY_DNS_TIMEOUT", "5s")
+
+	v.SetDefault("RATE_LIMIT_ENABLED", true)
+	v.SetDefault("RATE_LIMIT_SIGNUP", "5/1h")
+	v.SetDefault("RATE_LIMIT_RFQ", "20/1h")
+	v.SetDefault("RATE_LIMIT_MESSAGE", "120/1h")
+	v.SetDefault("RATE_LIMIT_VERIFY_CHECK", "10/1h")
+	v.SetDefault("RATE_LIMIT_REPORT", "30/1h")
 
 	v.SetConfigName(".env")
 	v.SetConfigType("env")

@@ -32,10 +32,13 @@ func newTestApp(t *testing.T, res TXTResolver) (*fiber.App, *sqlc.Queries, strin
 	app := fiber.New()
 	// verified passthrough (email-verify is exercised elsewhere).
 	verified := func(c *fiber.Ctx) error { return c.Next() }
+	// passRL is a pass-through rate limiter (rate limiting itself is exercised
+	// in pkg/middleware).
+	passRL := func(c *fiber.Ctx) error { return c.Next() }
 	// stubIdentity injects the locals TenantGuard() would derive from real JWT
 	// claims, so it fully replaces the JWT+TenantGuard guard chain here —
 	// chaining a real TenantGuard() after it would 401 (no "claims" local set).
-	NewHandler(svc, q).Register(app, verified, stubIdentity(cid, "owner"))
+	NewHandler(svc, q).Register(app, verified, passRL, stubIdentity(cid, "owner"))
 	return app, q, cid
 }
 

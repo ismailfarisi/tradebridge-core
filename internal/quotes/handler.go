@@ -24,14 +24,15 @@ func NewHandler(svc *Service, q *sqlc.Queries) *Handler {
 	return &Handler{svc: svc, q: q}
 }
 
-// Register mounts quote routes under the tenant guard.
-func (h *Handler) Register(app *fiber.App, guard ...fiber.Handler) {
+// Register mounts quote routes under the tenant guard. messageRL rate-limits
+// the add-message route.
+func (h *Handler) Register(app *fiber.App, messageRL fiber.Handler, guard ...fiber.Handler) {
 	app.Add("GET", "/v1/rfqs/:id/quotes", append(guard, h.listForRFQ)...)
 	g := app.Group("/v1/quotes", guard...)
 	g.Get("/:id", h.get)
 	g.Post("/:id/accept", h.accept)
 	g.Get("/:id/messages", h.listMessages)
-	g.Post("/:id/messages", h.addMessage)
+	g.Post("/:id/messages", messageRL, h.addMessage)
 }
 
 type quoteView struct {

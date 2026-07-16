@@ -57,6 +57,13 @@ func main() {
 
 		VerifyDNSTimeout:       app.Config.VerifyDNSTimeout,
 		VerifyRequiredForMatch: app.Config.VerifyRequiredForMatch,
+
+		RateLimitEnabled:     app.Config.RateLimitEnabled,
+		RateLimitSignup:      app.Config.RateLimitSignup,
+		RateLimitRFQ:         app.Config.RateLimitRFQ,
+		RateLimitMessage:     app.Config.RateLimitMessage,
+		RateLimitVerifyCheck: app.Config.RateLimitVerifyCheck,
+		RateLimitReport:      app.Config.RateLimitReport,
 	})
 
 	sweepCtx, cancelSweep := context.WithCancel(context.Background())

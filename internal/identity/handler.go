@@ -31,10 +31,11 @@ func NewHandler(q *sqlc.Queries, tokens *TokenService, notifier *notify.Notifier
 
 // Register mounts the auth + user routes. Public routes go on the root group;
 // tenant-scoped routes are guarded by the caller-supplied middleware.
-func (h *Handler) Register(app *fiber.App, guard ...fiber.Handler) {
+// signupRL rate-limits register + login (both IP-abuse prone).
+func (h *Handler) Register(app *fiber.App, signupRL fiber.Handler, guard ...fiber.Handler) {
 	auth := app.Group("/v1/auth")
-	auth.Post("/register", h.register)
-	auth.Post("/login", h.login)
+	auth.Post("/register", signupRL, h.register)
+	auth.Post("/login", signupRL, h.login)
 	auth.Post("/accept-invite", h.acceptInvite)
 	auth.Post("/verify-email", h.verifyEmail)
 
