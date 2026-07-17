@@ -13,16 +13,18 @@ export default function RfqsPage() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [tab, setTab] = useState("");
+  const [search, setSearch] = useState("");
 
   const refresh = () => {
     if (!token) return;
-    listRfqs(token).then((r) => setRfqs(r.rfqs)).catch((e) => setErr(e.message));
+    listRfqs(token, { tab, q: search }).then((r) => setRfqs(r.rfqs)).catch((e) => setErr(e.message));
   };
 
   useEffect(() => {
     if (!token) return;
-    listRfqs(token).then((r) => setRfqs(r.rfqs)).catch((e) => setErr(e.message));
-  }, [token]);
+    listRfqs(token, { tab, q: search }).then((r) => setRfqs(r.rfqs)).catch((e) => setErr(e.message));
+  }, [token, tab, search]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -68,6 +70,12 @@ export default function RfqsPage() {
 
       <div className="card">
         <h2>Your RFQs</h2>
+        <div className="row" style={{ gap: "0.5rem", margin: "1rem 0", alignItems: "center", flexWrap: "wrap" }}>
+          {[["", "All"], ["open", "Open"], ["quoted", "Quoted"], ["closed", "Closed"]].map(([val, label]) => (
+            <button key={val} className="btn" aria-pressed={tab === val} onClick={() => setTab(val)}>{label}</button>
+          ))}
+          <input className="input" placeholder="Search RFQs…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ flex: 1, minWidth: 180 }} />
+        </div>
         <table className="tbl" style={{ marginTop: "0.5rem" }}>
           <thead>
             <tr>
@@ -81,7 +89,11 @@ export default function RfqsPage() {
           <tbody>
             {rfqs.map((r) => (
               <tr key={r.id}>
-                <td>{r.title}</td>
+                <td>
+                  {r.title}{" "}
+                  {r.new_quotes && r.new_quotes > 0 ? <span className="badge">{r.new_quotes} new</span> : null}
+                  {typeof r.quote_count === "number" && <span className="muted small"> {r.quote_count} quote{r.quote_count === 1 ? "" : "s"}</span>}
+                </td>
                 <td className="muted">{r.category || "—"}</td>
                 <td><StatusBadge status={r.status} /></td>
                 <td>{r.match_count}</td>
