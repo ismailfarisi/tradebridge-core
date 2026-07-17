@@ -17,6 +17,7 @@ import (
 	"github.com/tradebridge/core/internal/agent"
 	"github.com/tradebridge/core/internal/assist"
 	"github.com/tradebridge/core/internal/attachments"
+	"github.com/tradebridge/core/internal/audit"
 	"github.com/tradebridge/core/internal/billing"
 	"github.com/tradebridge/core/internal/catalog"
 	"github.com/tradebridge/core/internal/dashboard"
@@ -291,7 +292,8 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 
 	// Abuse reports: rate-limited, requires a verified email.
 	rlReport := mkRL("report", cfg.RateLimitReport, middleware.RateLimit{Limit: 30, Window: time.Hour}, middleware.KeyCompanyOrIP)
-	reports := trust.NewReportsHandler(q)
+	auditor := audit.New(q, cfg.Logger)
+	reports := trust.NewReportsHandler(q, auditor)
 	reports.Register(f, append(append([]fiber.Handler{}, guard...), middleware.RequireVerified(q), rlReport)...)
 
 	trust.NewBlocksHandler(q).Register(f, guard...)
@@ -310,10 +312,11 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 		admin.NewHandler(adminSvc, adminTokens).Register(f, adminGuard)
 		settings.NewHandler(settingsSvc).Register(f, adminGuard)
 		entitlements.NewAdminHandler(q, entSvc).Register(f, adminGuard)
-		trust.NewAdminHandler(trustSvc, q).Register(f, adminGuard)
+		trust.NewAdminHandler(trustSvc, q, auditor).Register(f, adminGuard)
 		reports.RegisterAdmin(f, adminGuard)
+		audit.NewAdminHandler(q).Register(f, adminGuard)
 		reviews.NewAdminHandler(reviewsSvc).Register(f, adminGuard)
-		disputes.NewAdminHandler(disputesSvc).RegisterAdmin(f, adminGuard)
+		disputes.NewAdminHandler(disputesSvc, auditor).RegisterAdmin(f, adminGuard)
 	} else {
 		cfg.Logger.Warn().Msg("ADMIN_JWT_SECRET unset — platform admin routes disabled")
 	}

@@ -5,17 +5,20 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
+	"github.com/tradebridge/core/internal/audit"
 	"github.com/tradebridge/core/pkg/db/sqlc"
+	"github.com/tradebridge/core/pkg/middleware"
 )
 
 // AdminHandler is the platform-admin override/revoke surface for verification.
 type AdminHandler struct {
-	svc *Service
-	q   *sqlc.Queries
+	svc     *Service
+	q       *sqlc.Queries
+	auditor *audit.Auditor
 }
 
-func NewAdminHandler(svc *Service, q *sqlc.Queries) *AdminHandler {
-	return &AdminHandler{svc: svc, q: q}
+func NewAdminHandler(svc *Service, q *sqlc.Queries, auditor *audit.Auditor) *AdminHandler {
+	return &AdminHandler{svc: svc, q: q, auditor: auditor}
 }
 
 func (h *AdminHandler) Register(app *fiber.App, adminGuard fiber.Handler) {
@@ -61,6 +64,8 @@ func (h *AdminHandler) setStatus(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
+	h.auditor.Admin(c.Context(), middleware.AdminEmail(c), "company.verification", companyID,
+		map[string]any{"status": req.Status, "reason": req.Reason})
 	return c.JSON(fiber.Map{"company_id": companyID, "verification_status": v.VerificationStatus})
 }
 

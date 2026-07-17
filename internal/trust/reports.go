@@ -3,17 +3,19 @@ package trust
 import (
 	"github.com/gofiber/fiber/v2"
 
+	"github.com/tradebridge/core/internal/audit"
 	"github.com/tradebridge/core/pkg/db/sqlc"
 	"github.com/tradebridge/core/pkg/middleware"
 )
 
 // ReportsHandler serves company-to-company abuse reports + the admin queue.
 type ReportsHandler struct {
-	q *sqlc.Queries
+	q       *sqlc.Queries
+	auditor *audit.Auditor
 }
 
-func NewReportsHandler(q *sqlc.Queries) *ReportsHandler {
-	return &ReportsHandler{q: q}
+func NewReportsHandler(q *sqlc.Queries, auditor *audit.Auditor) *ReportsHandler {
+	return &ReportsHandler{q: q, auditor: auditor}
 }
 
 // Register mounts POST /v1/reports (authed, verified, rate-limited).
@@ -91,5 +93,7 @@ func (h *ReportsHandler) resolve(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
+	h.auditor.Admin(c.Context(), middleware.AdminEmail(c), "report.resolve", rep.ReportedCompanyID,
+		map[string]any{"report_id": rep.ID, "status": rep.Status})
 	return c.JSON(rep)
 }

@@ -7,6 +7,8 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
+
+	"github.com/tradebridge/core/internal/audit"
 )
 
 func TestAdminSetStatusVerifies(t *testing.T) {
@@ -15,7 +17,7 @@ func TestAdminSetStatusVerifies(t *testing.T) {
 	svc := NewService(q, pool, &fakeResolver{}, zerolog.Nop())
 	app := fiber.New()
 	pass := func(c *fiber.Ctx) error { return c.Next() }
-	NewAdminHandler(svc, q).Register(app, pass)
+	NewAdminHandler(svc, q, audit.New(q, zerolog.Nop())).Register(app, pass)
 
 	code, out := doJSON(t, app, "POST", "/admin/v1/companies/"+cid+"/verification", map[string]string{"status": "verified", "reason": "manual"})
 	require.Equal(t, 200, code)
@@ -27,7 +29,7 @@ func TestAdminListFiltersByStatus(t *testing.T) {
 	svc := NewService(q, pool, &fakeResolver{}, zerolog.Nop())
 	app := fiber.New()
 	pass := func(c *fiber.Ctx) error { return c.Next() }
-	NewAdminHandler(svc, q).Register(app, pass)
+	NewAdminHandler(svc, q, audit.New(q, zerolog.Nop())).Register(app, pass)
 
 	// A company we drive to 'verified' must appear under status=verified and be
 	// absent under status=rejected — proving the filter actually filters.
