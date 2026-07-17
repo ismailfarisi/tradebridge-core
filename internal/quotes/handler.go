@@ -41,8 +41,8 @@ type quoteView struct {
 	SellerID                 string  `json:"seller_company_id"`
 	SellerName               string  `json:"seller_name,omitempty"`
 	SellerVerificationStatus string  `json:"seller_verification_status,omitempty"`
-	SellerAvgRating          float64 `json:"seller_avg_rating,omitempty"`
-	SellerReviewCount        int64   `json:"seller_review_count,omitempty"`
+	SellerAvgRating          float64 `json:"seller_avg_rating"`
+	SellerReviewCount        int64   `json:"seller_review_count"`
 	PriceCents               int64   `json:"price_cents"`
 	Currency                 string  `json:"currency"`
 	DeliveryDays             *int32  `json:"delivery_days"`

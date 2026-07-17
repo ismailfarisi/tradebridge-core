@@ -90,8 +90,13 @@ func seedReviewedSeller(t *testing.T, q *sqlc.Queries, tag string) (sellerID str
 	require.NoError(t, err)
 	seller, err := q.CreateCompany(ctx, sqlc.CreateCompanyParams{Name: "pub-seller-" + tag, Type: "seller"})
 	require.NoError(t, err)
+	// Use a unique, non-"widgets" category/description: this fixture asserts
+	// reputation by company id and does not rely on category matching, so keep
+	// it OUT of the shared "%widgets%" MatchSuppliers collision pool (that query
+	// has a LIMIT with no ORDER BY, so accumulating matches flake other packages'
+	// match tests against the persistent test DB).
 	_, err = q.UpsertSupplierProfile(ctx, sqlc.UpsertSupplierProfileParams{
-		CompanyID: seller.ID, Description: sp("we sell widgets"), Categories: []string{"widgets"}, Location: sp("NYC"),
+		CompanyID: seller.ID, Description: sp("reviews fixture seller"), Categories: []string{"revfix-" + tag}, Location: sp("NYC"),
 	})
 	require.NoError(t, err)
 	u, err := q.CreateUser(ctx, sqlc.CreateUserParams{CompanyID: buyer.ID, Email: "u-" + buyer.ID + "@pub.test", Role: "owner"})
