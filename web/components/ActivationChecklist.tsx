@@ -24,19 +24,19 @@ export function ActivationChecklist() {
       </div>
       <div role="progressbar" aria-valuenow={act.percent_complete} aria-valuemin={0} aria-valuemax={100}
         style={{ height: 6, borderRadius: 3, background: "var(--border, #e5e7eb)", margin: "0.6rem 0 1rem", overflow: "hidden" }}>
-        <div style={{ width: `${act.percent_complete}%`, height: "100%", background: "var(--accent, #2563eb)" }} />
+        <div style={{ width: `${act.percent_complete}%`, height: "100%", background: "var(--primary-hover, #2563eb)" }} />
       </div>
       <ul className="col" style={{ listStyle: "none", padding: 0, margin: 0, gap: "0.5rem" }}>
         {act.steps.map((s) => (
           <li key={s.key} className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: "0.75rem" }}>
             <span className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
-              <span aria-hidden style={{ color: s.done ? "var(--ok, #16a34a)" : "var(--muted, #9ca3af)" }}>{s.done ? "✓" : "○"}</span>
+              <span aria-hidden style={{ color: s.done ? "var(--success, #22c55e)" : "var(--muted, #9ca3af)" }}>{s.done ? "✓" : "○"}</span>
               <span style={{ textDecoration: s.done ? "line-through" : "none" }}>
                 {s.label}
                 <span className="muted small" style={{ display: "block" }}>{s.hint}</span>
               </span>
             </span>
-            {!s.done && <Link href={s.cta_href} className="btn small">Do it</Link>}
+            {!s.done && <Link href={s.cta_href} className="btn-sm">Do it</Link>}
           </li>
         ))}
       </ul>

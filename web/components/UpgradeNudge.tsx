@@ -27,7 +27,7 @@ export function UpgradeNudge({
 
   return (
     <>
-      <div className="card" style={{ borderLeft: "3px solid var(--accent, #2563eb)", marginBottom: "1rem" }}>
+      <div className="card" style={{ borderLeft: "3px solid var(--primary-hover, #2563eb)", marginBottom: "1rem" }}>
         <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
           <span className="small">
             {locked
