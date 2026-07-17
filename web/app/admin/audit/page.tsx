@@ -83,19 +83,10 @@ function AuditConsole() {
 }
 
 // formatDetail renders the entry's `detail` payload as readable JSON. The
-// backend stores it as a jsonb column but plain encoding/json serializes a Go
-// []byte field as base64, so the wire value may be either a parsed object or
-// a base64 string depending on backend version — handle both defensively.
+// backend now sends it as a real JSON value (object), so just stringify it.
 function formatDetail(detail: unknown): string {
   if (detail == null) return "—";
-  if (typeof detail === "string") {
-    try {
-      const decoded = atob(detail);
-      return JSON.stringify(JSON.parse(decoded));
-    } catch {
-      return detail;
-    }
-  }
+  if (typeof detail === "string") return detail;
   try {
     return JSON.stringify(detail);
   } catch {

@@ -1,12 +1,44 @@
 package audit
 
 import (
+	"encoding/json"
 	"strconv"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/tradebridge/core/pkg/db/sqlc"
 )
+
+// auditEntry is the viewer's wire representation of a sqlc.AuditLog row.
+// Detail is exposed as json.RawMessage so the stored jsonb bytes are
+// serialized as a real JSON object instead of being base64-encoded (the
+// default encoding/json behavior for []byte).
+type auditEntry struct {
+	ID        string          `json:"id"`
+	CompanyID string          `json:"company_id"`
+	Actor     string          `json:"actor"`
+	Action    string          `json:"action"`
+	TargetID  *string         `json:"target_id"`
+	Detail    json.RawMessage `json:"detail"`
+	CreatedAt time.Time       `json:"created_at"`
+}
+
+func toAuditEntry(row sqlc.AuditLog) auditEntry {
+	detail := row.Detail
+	if len(detail) == 0 {
+		detail = []byte("{}")
+	}
+	return auditEntry{
+		ID:        row.ID,
+		CompanyID: row.CompanyID,
+		Actor:     row.Actor,
+		Action:    row.Action,
+		TargetID:  row.TargetID,
+		Detail:    json.RawMessage(detail),
+		CreatedAt: row.CreatedAt,
+	}
+}
 
 // AdminHandler serves the read-only audit-log viewer.
 type AdminHandler struct {
@@ -45,5 +77,9 @@ func (h *AdminHandler) list(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	return c.JSON(fiber.Map{"entries": rows, "count": len(rows)})
+	entries := make([]auditEntry, len(rows))
+	for i, row := range rows {
+		entries[i] = toAuditEntry(row)
+	}
+	return c.JSON(fiber.Map{"entries": entries, "count": len(entries)})
 }
