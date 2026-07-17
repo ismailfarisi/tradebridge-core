@@ -19,9 +19,15 @@ SELECT * FROM quotes WHERE id = $1;
 SELECT * FROM quotes WHERE rfq_id = $1 AND seller_company_id = $2;
 
 -- name: RankQuotesByRFQ :many
-SELECT q.*, c.name AS seller_name, c.verification_status
+SELECT q.*, c.name AS seller_name, c.verification_status,
+       COALESCE(rep.avg_rating, 0)::float8 AS seller_avg_rating,
+       COALESCE(rep.review_count, 0)::bigint AS seller_review_count
 FROM quotes q
 JOIN companies c ON c.id = q.seller_company_id
+LEFT JOIN LATERAL (
+    SELECT AVG(rating)::float8 AS avg_rating, COUNT(*)::bigint AS review_count
+    FROM reviews WHERE reviewee_company_id = q.seller_company_id AND status = 'visible'
+) rep ON true
 WHERE q.rfq_id = $1
 ORDER BY q.price_cents ASC, q.delivery_days ASC NULLS LAST, q.completeness DESC, q.created_at ASC;
 

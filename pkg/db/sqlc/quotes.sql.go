@@ -260,9 +260,15 @@ func (q *Queries) ListSubmittedQuoteSellersExcept(ctx context.Context, arg ListS
 }
 
 const rankQuotesByRFQ = `-- name: RankQuotesByRFQ :many
-SELECT q.id, q.rfq_id, q.seller_company_id, q.agent_command_id, q.price_cents, q.currency, q.delivery_days, q.notes, q.completeness, q.status, q.created_at, q.updated_at, c.name AS seller_name, c.verification_status
+SELECT q.id, q.rfq_id, q.seller_company_id, q.agent_command_id, q.price_cents, q.currency, q.delivery_days, q.notes, q.completeness, q.status, q.created_at, q.updated_at, c.name AS seller_name, c.verification_status,
+       COALESCE(rep.avg_rating, 0)::float8 AS seller_avg_rating,
+       COALESCE(rep.review_count, 0)::bigint AS seller_review_count
 FROM quotes q
 JOIN companies c ON c.id = q.seller_company_id
+LEFT JOIN LATERAL (
+    SELECT AVG(rating)::float8 AS avg_rating, COUNT(*)::bigint AS review_count
+    FROM reviews WHERE reviewee_company_id = q.seller_company_id AND status = 'visible'
+) rep ON true
 WHERE q.rfq_id = $1
 ORDER BY q.price_cents ASC, q.delivery_days ASC NULLS LAST, q.completeness DESC, q.created_at ASC
 `
@@ -282,6 +288,8 @@ type RankQuotesByRFQRow struct {
 	UpdatedAt          time.Time `json:"updated_at"`
 	SellerName         string    `json:"seller_name"`
 	VerificationStatus string    `json:"verification_status"`
+	SellerAvgRating    float64   `json:"seller_avg_rating"`
+	SellerReviewCount  int64     `json:"seller_review_count"`
 }
 
 func (q *Queries) RankQuotesByRFQ(ctx context.Context, rfqID string) ([]RankQuotesByRFQRow, error) {
@@ -308,6 +316,8 @@ func (q *Queries) RankQuotesByRFQ(ctx context.Context, rfqID string) ([]RankQuot
 			&i.UpdatedAt,
 			&i.SellerName,
 			&i.VerificationStatus,
+			&i.SellerAvgRating,
+			&i.SellerReviewCount,
 		); err != nil {
 			return nil, err
 		}

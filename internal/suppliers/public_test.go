@@ -54,7 +54,10 @@ func TestPublicSellerReturnsSafeFieldsOnly(t *testing.T) {
 	require.Equal(t, "Public Widgets Co", out["name"])
 	require.Equal(t, "unverified", out["verification_status"])
 	require.Contains(t, out, "catalog")
-	require.Nil(t, out["reputation"])
+	rep, ok := out["reputation"].(map[string]any)
+	require.True(t, ok, "reputation must be an object")
+	require.Equal(t, 0.0, rep["avg_rating"])
+	require.Equal(t, 0.0, rep["review_count"]) // JSON numbers decode as float64
 	// Private fields must NOT appear anywhere in the top-level object:
 	for _, banned := range []string{"stripe_customer_id", "email", "users", "type", "created_at", "subscription"} {
 		_, present := out[banned]
@@ -74,6 +77,87 @@ func TestPublicSellerNotFoundWithoutProfile(t *testing.T) {
 	resp, err := app.Test(req, -1)
 	require.NoError(t, err)
 	require.Equal(t, 404, resp.StatusCode)
+}
+
+// seedReviewedSeller creates a buyer + seller company, a supplier profile
+// for the seller, an order between them, and one visible review of the
+// seller, returning the seller company id.
+func seedReviewedSeller(t *testing.T, q *sqlc.Queries, tag string) (sellerID string) {
+	t.Helper()
+	ctx := context.Background()
+
+	buyer, err := q.CreateCompany(ctx, sqlc.CreateCompanyParams{Name: "pub-buyer-" + tag, Type: "buyer"})
+	require.NoError(t, err)
+	seller, err := q.CreateCompany(ctx, sqlc.CreateCompanyParams{Name: "pub-seller-" + tag, Type: "seller"})
+	require.NoError(t, err)
+	_, err = q.UpsertSupplierProfile(ctx, sqlc.UpsertSupplierProfileParams{
+		CompanyID: seller.ID, Description: sp("we sell widgets"), Categories: []string{"widgets"}, Location: sp("NYC"),
+	})
+	require.NoError(t, err)
+	u, err := q.CreateUser(ctx, sqlc.CreateUserParams{CompanyID: buyer.ID, Email: "u-" + buyer.ID + "@pub.test", Role: "owner"})
+	require.NoError(t, err)
+	rfqRow, err := q.CreateRFQ(ctx, sqlc.CreateRFQParams{BuyerCompanyID: buyer.ID, CreatedBy: u.ID, Title: "need widgets", RawText: "widgets"})
+	require.NoError(t, err)
+	quote, err := q.UpsertQuote(ctx, sqlc.UpsertQuoteParams{
+		RfqID: rfqRow.ID, SellerCompanyID: seller.ID, PriceCents: 5000, Currency: "USD", Notes: "", Completeness: 1,
+	})
+	require.NoError(t, err)
+	order, err := q.CreateOrder(ctx, sqlc.CreateOrderParams{
+		RfqID: rfqRow.ID, QuoteID: quote.ID, BuyerCompanyID: buyer.ID, SellerCompanyID: seller.ID,
+		TotalCents: quote.PriceCents, Currency: quote.Currency,
+	})
+	require.NoError(t, err)
+	_, err = q.CreateReview(ctx, sqlc.CreateReviewParams{
+		OrderID: order.ID, ReviewerCompanyID: buyer.ID, RevieweeCompanyID: seller.ID,
+		Direction: "buyer_on_seller", Rating: 5, Body: "excellent",
+	})
+	require.NoError(t, err)
+
+	return seller.ID
+}
+
+func TestPublicSellerReputationReflectsVisibleReviews(t *testing.T) {
+	q := pubQueriesOrSkip(t)
+	sellerID := seedReviewedSeller(t, q, "reputation")
+
+	app := fiber.New()
+	NewPublicHandler(q).RegisterPublic(app)
+
+	req := httptest.NewRequest("GET", "/public/v1/sellers/"+sellerID, nil)
+	resp, err := app.Test(req, -1)
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
+
+	var out map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&out))
+	rep, ok := out["reputation"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, 5.0, rep["avg_rating"])
+	require.Equal(t, 1.0, rep["review_count"])
+}
+
+func TestPublicReviewsRoute(t *testing.T) {
+	q := pubQueriesOrSkip(t)
+	sellerID := seedReviewedSeller(t, q, "reviewslist")
+
+	app := fiber.New()
+	NewPublicHandler(q).RegisterPublic(app)
+
+	req := httptest.NewRequest("GET", "/public/v1/sellers/"+sellerID+"/reviews", nil)
+	resp, err := app.Test(req, -1)
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
+
+	var out map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&out))
+	reviews, ok := out["reviews"].([]any)
+	require.True(t, ok)
+	require.Len(t, reviews, 1)
+	first := reviews[0].(map[string]any)
+	require.Equal(t, 5.0, first["rating"])
+	require.Equal(t, "excellent", first["body"])
+	require.Contains(t, first, "reviewer_name")
+	require.Contains(t, first, "created_at")
 }
 
 func sp(s string) *string { return &s }

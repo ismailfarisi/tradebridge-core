@@ -41,6 +41,8 @@ type quoteView struct {
 	SellerID                 string  `json:"seller_company_id"`
 	SellerName               string  `json:"seller_name,omitempty"`
 	SellerVerificationStatus string  `json:"seller_verification_status,omitempty"`
+	SellerAvgRating          float64 `json:"seller_avg_rating,omitempty"`
+	SellerReviewCount        int64   `json:"seller_review_count,omitempty"`
 	PriceCents               int64   `json:"price_cents"`
 	Currency                 string  `json:"currency"`
 	DeliveryDays             *int32  `json:"delivery_days"`
@@ -70,6 +72,8 @@ func (h *Handler) listForRFQ(c *fiber.Ctx) error {
 		out[i] = quoteView{
 			ID: q.ID, RFQID: q.RfqID, SellerID: q.SellerCompanyID, SellerName: q.SellerName,
 			SellerVerificationStatus: q.VerificationStatus,
+			SellerAvgRating:          q.SellerAvgRating,
+			SellerReviewCount:        q.SellerReviewCount,
 			PriceCents:               q.PriceCents, Currency: q.Currency, DeliveryDays: q.DeliveryDays,
 			Notes: q.Notes, Completeness: q.Completeness, Status: q.Status, Rank: i + 1,
 		}
