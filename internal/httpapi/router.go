@@ -319,7 +319,7 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 		reports.RegisterAdmin(f, adminGuard)
 		audit.NewAdminHandler(q).Register(f, adminGuard)
 		reviews.NewAdminHandler(reviewsSvc).Register(f, adminGuard)
-		disputes.NewAdminHandler(disputesSvc, auditor).RegisterAdmin(f, adminGuard)
+		disputes.NewAdminHandler(disputesSvc).RegisterAdmin(f, adminGuard)
 		adminconsole.NewHandler(q, entSvc, auditor).Register(f, adminGuard)
 		impersonation.NewHandler(q, tokens, auditor).Register(f, adminGuard)
 	} else {

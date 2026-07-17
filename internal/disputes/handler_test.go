@@ -12,7 +12,6 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tradebridge/core/internal/audit"
 	"github.com/tradebridge/core/pkg/db/sqlc"
 	"github.com/tradebridge/core/pkg/middleware"
 )
@@ -118,7 +117,7 @@ func TestAdminListAndResolve(t *testing.T) {
 	require.NoError(t, err)
 
 	app := fiber.New()
-	NewAdminHandler(svc, audit.New(q, zerolog.Nop())).RegisterAdmin(app, stubAdminIdentity("admin-h"))
+	NewAdminHandler(svc).RegisterAdmin(app, stubAdminIdentity("admin-h"))
 
 	code, out := doJSON(t, app, "GET", "/admin/v1/disputes?status=open", nil)
 	require.Equal(t, 200, code, "%v", out)

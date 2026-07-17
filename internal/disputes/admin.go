@@ -3,19 +3,17 @@ package disputes
 import (
 	"github.com/gofiber/fiber/v2"
 
-	"github.com/tradebridge/core/internal/audit"
 	"github.com/tradebridge/core/pkg/middleware"
 )
 
 // AdminHandler is the platform-admin dispute queue + resolution surface.
 type AdminHandler struct {
-	svc     *Service
-	auditor *audit.Auditor
+	svc *Service
 }
 
 // NewAdminHandler builds the disputes admin handler.
-func NewAdminHandler(svc *Service, auditor *audit.Auditor) *AdminHandler {
-	return &AdminHandler{svc: svc, auditor: auditor}
+func NewAdminHandler(svc *Service) *AdminHandler {
+	return &AdminHandler{svc: svc}
 }
 
 // RegisterAdmin mounts the admin dispute queue + resolve routes.
@@ -50,7 +48,5 @@ func (h *AdminHandler) resolve(c *fiber.Ctx) error {
 	if err != nil {
 		return mapErr(err)
 	}
-	h.auditor.Admin(c.Context(), middleware.AdminEmail(c), "dispute.resolve", dispute.RaisedByCompanyID,
-		map[string]any{"dispute_id": dispute.ID, "outcome": req.Outcome})
 	return c.JSON(fiber.Map{"dispute": dispute})
 }

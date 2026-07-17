@@ -141,11 +141,16 @@ func TestE2E08_AdminOpsAllAudited(t *testing.T) {
 	entries, ok := auditResp["entries"].([]any)
 	require.True(t, ok, "expected an entries array, got %v", auditResp)
 
+	// dispute.resolved is the canonical row written transactionally by
+	// disputes.Service.Resolve itself (see internal/disputes/service_test.go's
+	// audit assertion) — its actor is the platform admin's raw id
+	// (middleware.AdminID), not the "admin:"-prefixed email the audit.Auditor
+	// helper writes for the other four actions, so it gets a relaxed check.
 	wantActions := map[string]bool{
 		"company.suspend":      false,
 		"company.unsuspend":    false,
 		"company.verification": false,
-		"dispute.resolve":      false,
+		"dispute.resolved":     false,
 		"support.impersonate":  false,
 	}
 	for _, e := range entries {
@@ -156,6 +161,10 @@ func TestE2E08_AdminOpsAllAudited(t *testing.T) {
 		}
 		wantActions[action] = true
 		actor, _ := m["actor"].(string)
+		if action == "dispute.resolved" {
+			require.NotEmpty(t, actor, "actor for action %q must be set", action)
+			continue
+		}
 		require.True(t, strings.HasPrefix(actor, "admin:"),
 			"actor for action %q must be admin-prefixed, got %q", action, actor)
 	}
