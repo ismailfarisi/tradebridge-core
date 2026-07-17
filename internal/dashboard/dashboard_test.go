@@ -5,6 +5,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
@@ -127,4 +128,26 @@ func TestSellerAnalyticsWinRateAndRevenue(t *testing.T) {
 	require.GreaterOrEqual(t, a.RevenueWonCents, int64(5000))
 	require.NotEmpty(t, a.TopBuyers)
 	require.Equal(t, buyer.ID, a.TopBuyers[0].CompanyID)
+}
+
+// A seller whose agent credential is active and heartbeated within the freshness
+// window reports Online=true with a populated LastSeen. This guards the online
+// branch that depends on the interface{}->time.Time assertion in SellerDashboard.
+func TestSellerDashboardAgentOnline(t *testing.T) {
+	q := queriesOrSkip(t)
+	ctx := context.Background()
+
+	seller, err := q.CreateCompany(ctx, sqlc.CreateCompanyParams{Name: "sd-online-co", Type: "seller"})
+	require.NoError(t, err)
+	cred, err := q.CreateAgentCredential(ctx, sqlc.CreateAgentCredentialParams{
+		CompanyID: seller.ID, Label: "gw", SecretHash: "x", ExpiresAt: pgtype.Timestamptz{},
+	})
+	require.NoError(t, err)
+	// Fresh heartbeat (NOW()) -> within the 5-minute window.
+	require.NoError(t, q.TouchAgentCredentialLastSeen(ctx, cred.ID))
+
+	d, err := newSvc(t, q).SellerDashboard(ctx, seller.ID)
+	require.NoError(t, err)
+	require.True(t, d.Agent.Online, "fresh heartbeat on an active credential => online")
+	require.NotNil(t, d.Agent.LastSeen, "online agent has a last_seen timestamp")
 }
