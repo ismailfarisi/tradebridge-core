@@ -17,6 +17,7 @@ import (
 	"github.com/tradebridge/core/internal/attachments"
 	"github.com/tradebridge/core/internal/billing"
 	"github.com/tradebridge/core/internal/catalog"
+	"github.com/tradebridge/core/internal/disputes"
 	"github.com/tradebridge/core/internal/entitlements"
 	"github.com/tradebridge/core/internal/eventbus"
 	"github.com/tradebridge/core/internal/identity"
@@ -257,6 +258,11 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	reviewsSvc := reviews.NewService(q, notifier, cfg.Logger)
 	reviews.NewHandler(reviewsSvc).Register(f, guard...)
 
+	// Disputes: party raise/list under the tenant guard; admin queue +
+	// resolve registered in the admin block below.
+	disputesSvc := disputes.NewService(q, cfg.Pool, notifier, cfg.Logger)
+	disputes.NewHandler(disputesSvc).Register(f, guard...)
+
 	// Abuse reports: rate-limited, requires a verified email.
 	rlReport := mkRL("report", cfg.RateLimitReport, middleware.RateLimit{Limit: 30, Window: time.Hour}, middleware.KeyCompanyOrIP)
 	reports := trust.NewReportsHandler(q)
@@ -281,6 +287,7 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 		trust.NewAdminHandler(trustSvc, q).Register(f, adminGuard)
 		reports.RegisterAdmin(f, adminGuard)
 		reviews.NewAdminHandler(reviewsSvc).Register(f, adminGuard)
+		disputes.NewAdminHandler(disputesSvc).RegisterAdmin(f, adminGuard)
 	} else {
 		cfg.Logger.Warn().Msg("ADMIN_JWT_SECRET unset — platform admin routes disabled")
 	}
