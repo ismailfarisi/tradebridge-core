@@ -146,6 +146,23 @@ func TestTransitionRejectsDisputedTarget(t *testing.T) {
 	require.ErrorAs(t, err, &conflict)
 }
 
+func TestTransitionBlockedWhenDisputed(t *testing.T) {
+	q, pool := testQueriesOrSkip(t)
+	svc := NewService(q, pool, nil, zerolog.Nop())
+	ctx := context.Background()
+	order, buyerID, sellerID := seedOrder(t, q, "disputedlock")
+	// Force the order into disputed directly (dispute service does this in Plan 4).
+	_, err := q.SetOrderStatus(ctx, sqlc.SetOrderStatusParams{ID: order.ID, Status: "disputed", FromStatus: order.Status})
+	require.NoError(t, err)
+	// Neither party may drive any transition while disputed.
+	_, err = svc.Transition(ctx, order.ID, buyerID, "completed", "")
+	require.Error(t, err)
+	var conflict ConflictError
+	require.ErrorAs(t, err, &conflict)
+	_, err = svc.Transition(ctx, order.ID, sellerID, "cancelled", "")
+	require.ErrorAs(t, err, &conflict)
+}
+
 func TestTransitionNonParty(t *testing.T) {
 	q, pool := testQueriesOrSkip(t)
 	svc := NewService(q, pool, nil, zerolog.Nop())

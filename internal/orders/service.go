@@ -105,6 +105,9 @@ func (s *Service) Transition(ctx context.Context, orderID, actorCompanyID, to, n
 		// Not a party to this order — don't leak existence across tenants.
 		return sqlc.Order{}, ErrNotFound
 	}
+	if order.Status == "disputed" {
+		return sqlc.Order{}, ConflictError{Msg: "order is under dispute; resolution is admin-only"}
+	}
 	if !PartyTargets[to] {
 		return sqlc.Order{}, ConflictError{Msg: "unsupported transition target"}
 	}
