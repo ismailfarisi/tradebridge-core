@@ -30,8 +30,12 @@ func New(q auditWriter, logger zerolog.Logger) *Auditor {
 // Admin writes one append-only row for a platform-admin action against a target
 // company. Best-effort: a write failure is logged, never returned.
 func (a *Auditor) Admin(ctx context.Context, adminEmail, action, targetCompanyID string, detail map[string]any) {
-	payload, err := json.Marshal(detail)
-	if err != nil || payload == nil {
+	var payload []byte
+	if detail == nil {
+		payload = []byte("{}")
+	} else if p, err := json.Marshal(detail); err == nil {
+		payload = p
+	} else {
 		payload = []byte("{}")
 	}
 	target := targetCompanyID

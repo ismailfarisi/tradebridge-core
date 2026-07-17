@@ -46,3 +46,11 @@ func TestAdminSwallowsWriteError(t *testing.T) {
 		t.Fatalf("want attempted write")
 	}
 }
+
+func TestAdminNilDetailIsEmptyObject(t *testing.T) {
+	fw := &fakeWriter{}
+	New(fw, zerolog.Nop()).Admin(context.Background(), "ops@x.com", "x", "co_1", nil)
+	if string(fw.last.Detail) != "{}" {
+		t.Fatalf("detail = %q, want %q", string(fw.last.Detail), "{}")
+	}
+}
