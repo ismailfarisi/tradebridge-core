@@ -51,13 +51,25 @@ func (q *Queries) GetPublicSeller(ctx context.Context, companyID string) (GetPub
 }
 
 const getSupplierProfileByCompany = `-- name: GetSupplierProfileByCompany :one
-SELECT id, company_id, description, categories, location, verified, created_at, updated_at, search_vector FROM supplier_profiles
+SELECT id, company_id, description, categories, location, verified, created_at, updated_at
+FROM supplier_profiles
 WHERE company_id = $1
 `
 
-func (q *Queries) GetSupplierProfileByCompany(ctx context.Context, companyID string) (SupplierProfile, error) {
+type GetSupplierProfileByCompanyRow struct {
+	ID          string    `json:"id"`
+	CompanyID   string    `json:"company_id"`
+	Description *string   `json:"description"`
+	Categories  []string  `json:"categories"`
+	Location    *string   `json:"location"`
+	Verified    bool      `json:"verified"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+func (q *Queries) GetSupplierProfileByCompany(ctx context.Context, companyID string) (GetSupplierProfileByCompanyRow, error) {
 	row := q.db.QueryRow(ctx, getSupplierProfileByCompany, companyID)
-	var i SupplierProfile
+	var i GetSupplierProfileByCompanyRow
 	err := row.Scan(
 		&i.ID,
 		&i.CompanyID,
@@ -67,13 +79,14 @@ func (q *Queries) GetSupplierProfileByCompany(ctx context.Context, companyID str
 		&i.Verified,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.SearchVector,
 	)
 	return i, err
 }
 
 const searchSuppliers = `-- name: SearchSuppliers :many
-SELECT sp.id, sp.company_id, sp.description, sp.categories, sp.location, sp.verified, sp.created_at, sp.updated_at, sp.search_vector, c.name AS company_name, c.verification_status
+SELECT sp.id, sp.company_id, sp.description, sp.categories, sp.location, sp.verified,
+       sp.created_at, sp.updated_at,
+       c.name AS company_name, c.verification_status
 FROM supplier_profiles sp
 JOIN companies c ON c.id = sp.company_id
 WHERE (
@@ -97,17 +110,16 @@ type SearchSuppliersParams struct {
 }
 
 type SearchSuppliersRow struct {
-	ID                 string      `json:"id"`
-	CompanyID          string      `json:"company_id"`
-	Description        *string     `json:"description"`
-	Categories         []string    `json:"categories"`
-	Location           *string     `json:"location"`
-	Verified           bool        `json:"verified"`
-	CreatedAt          time.Time   `json:"created_at"`
-	UpdatedAt          time.Time   `json:"updated_at"`
-	SearchVector       interface{} `json:"search_vector"`
-	CompanyName        string      `json:"company_name"`
-	VerificationStatus string      `json:"verification_status"`
+	ID                 string    `json:"id"`
+	CompanyID          string    `json:"company_id"`
+	Description        *string   `json:"description"`
+	Categories         []string  `json:"categories"`
+	Location           *string   `json:"location"`
+	Verified           bool      `json:"verified"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
+	CompanyName        string    `json:"company_name"`
+	VerificationStatus string    `json:"verification_status"`
 }
 
 func (q *Queries) SearchSuppliers(ctx context.Context, arg SearchSuppliersParams) ([]SearchSuppliersRow, error) {
@@ -128,7 +140,6 @@ func (q *Queries) SearchSuppliers(ctx context.Context, arg SearchSuppliersParams
 			&i.Verified,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-			&i.SearchVector,
 			&i.CompanyName,
 			&i.VerificationStatus,
 		); err != nil {
@@ -150,7 +161,7 @@ SET description = EXCLUDED.description,
     categories  = EXCLUDED.categories,
     location    = EXCLUDED.location,
     updated_at  = NOW()
-RETURNING id, company_id, description, categories, location, verified, created_at, updated_at, search_vector
+RETURNING id, company_id, description, categories, location, verified, created_at, updated_at
 `
 
 type UpsertSupplierProfileParams struct {
@@ -160,14 +171,25 @@ type UpsertSupplierProfileParams struct {
 	Location    *string  `json:"location"`
 }
 
-func (q *Queries) UpsertSupplierProfile(ctx context.Context, arg UpsertSupplierProfileParams) (SupplierProfile, error) {
+type UpsertSupplierProfileRow struct {
+	ID          string    `json:"id"`
+	CompanyID   string    `json:"company_id"`
+	Description *string   `json:"description"`
+	Categories  []string  `json:"categories"`
+	Location    *string   `json:"location"`
+	Verified    bool      `json:"verified"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+func (q *Queries) UpsertSupplierProfile(ctx context.Context, arg UpsertSupplierProfileParams) (UpsertSupplierProfileRow, error) {
 	row := q.db.QueryRow(ctx, upsertSupplierProfile,
 		arg.CompanyID,
 		arg.Description,
 		arg.Categories,
 		arg.Location,
 	)
-	var i SupplierProfile
+	var i UpsertSupplierProfileRow
 	err := row.Scan(
 		&i.ID,
 		&i.CompanyID,
@@ -177,7 +199,6 @@ func (q *Queries) UpsertSupplierProfile(ctx context.Context, arg UpsertSupplierP
 		&i.Verified,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.SearchVector,
 	)
 	return i, err
 }

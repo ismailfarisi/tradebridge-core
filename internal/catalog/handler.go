@@ -73,7 +73,7 @@ func (h *Handler) list(c *fiber.Ctx) error {
 }
 
 // mustOwn fetches a catalog item and enforces tenant ownership.
-func (h *Handler) mustOwn(c *fiber.Ctx) (sqlc.CatalogSummary, error) {
+func (h *Handler) mustOwn(c *fiber.Ctx) (sqlc.GetCatalogSummaryRow, error) {
 	item, err := h.q.GetCatalogSummary(c.Context(), c.Params("id"))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return item, fiber.NewError(fiber.StatusNotFound, "catalog item not found")

@@ -6,14 +6,17 @@ SET description = EXCLUDED.description,
     categories  = EXCLUDED.categories,
     location    = EXCLUDED.location,
     updated_at  = NOW()
-RETURNING *;
+RETURNING id, company_id, description, categories, location, verified, created_at, updated_at;
 
 -- name: GetSupplierProfileByCompany :one
-SELECT * FROM supplier_profiles
+SELECT id, company_id, description, categories, location, verified, created_at, updated_at
+FROM supplier_profiles
 WHERE company_id = $1;
 
 -- name: SearchSuppliers :many
-SELECT sp.*, c.name AS company_name, c.verification_status
+SELECT sp.id, sp.company_id, sp.description, sp.categories, sp.location, sp.verified,
+       sp.created_at, sp.updated_at,
+       c.name AS company_name, c.verification_status
 FROM supplier_profiles sp
 JOIN companies c ON c.id = sp.company_id
 WHERE (

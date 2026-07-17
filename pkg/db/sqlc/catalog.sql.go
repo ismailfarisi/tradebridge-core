@@ -13,7 +13,7 @@ import (
 const createCatalogSummary = `-- name: CreateCatalogSummary :one
 INSERT INTO catalog_summaries (company_id, name, category, summary)
 VALUES ($1, $2, $3, $4)
-RETURNING id, company_id, name, category, summary, created_at, updated_at, search_vector
+RETURNING id, company_id, name, category, summary, created_at, updated_at
 `
 
 type CreateCatalogSummaryParams struct {
@@ -23,14 +23,24 @@ type CreateCatalogSummaryParams struct {
 	Summary   *string `json:"summary"`
 }
 
-func (q *Queries) CreateCatalogSummary(ctx context.Context, arg CreateCatalogSummaryParams) (CatalogSummary, error) {
+type CreateCatalogSummaryRow struct {
+	ID        string    `json:"id"`
+	CompanyID string    `json:"company_id"`
+	Name      string    `json:"name"`
+	Category  string    `json:"category"`
+	Summary   *string   `json:"summary"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+func (q *Queries) CreateCatalogSummary(ctx context.Context, arg CreateCatalogSummaryParams) (CreateCatalogSummaryRow, error) {
 	row := q.db.QueryRow(ctx, createCatalogSummary,
 		arg.CompanyID,
 		arg.Name,
 		arg.Category,
 		arg.Summary,
 	)
-	var i CatalogSummary
+	var i CreateCatalogSummaryRow
 	err := row.Scan(
 		&i.ID,
 		&i.CompanyID,
@@ -39,7 +49,6 @@ func (q *Queries) CreateCatalogSummary(ctx context.Context, arg CreateCatalogSum
 		&i.Summary,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.SearchVector,
 	)
 	return i, err
 }
@@ -55,13 +64,24 @@ func (q *Queries) DeleteCatalogSummary(ctx context.Context, id string) error {
 }
 
 const getCatalogSummary = `-- name: GetCatalogSummary :one
-SELECT id, company_id, name, category, summary, created_at, updated_at, search_vector FROM catalog_summaries
+SELECT id, company_id, name, category, summary, created_at, updated_at
+FROM catalog_summaries
 WHERE id = $1
 `
 
-func (q *Queries) GetCatalogSummary(ctx context.Context, id string) (CatalogSummary, error) {
+type GetCatalogSummaryRow struct {
+	ID        string    `json:"id"`
+	CompanyID string    `json:"company_id"`
+	Name      string    `json:"name"`
+	Category  string    `json:"category"`
+	Summary   *string   `json:"summary"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+func (q *Queries) GetCatalogSummary(ctx context.Context, id string) (GetCatalogSummaryRow, error) {
 	row := q.db.QueryRow(ctx, getCatalogSummary, id)
-	var i CatalogSummary
+	var i GetCatalogSummaryRow
 	err := row.Scan(
 		&i.ID,
 		&i.CompanyID,
@@ -70,26 +90,36 @@ func (q *Queries) GetCatalogSummary(ctx context.Context, id string) (CatalogSumm
 		&i.Summary,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.SearchVector,
 	)
 	return i, err
 }
 
 const listCatalogByCompany = `-- name: ListCatalogByCompany :many
-SELECT id, company_id, name, category, summary, created_at, updated_at, search_vector FROM catalog_summaries
+SELECT id, company_id, name, category, summary, created_at, updated_at
+FROM catalog_summaries
 WHERE company_id = $1
 ORDER BY created_at DESC
 `
 
-func (q *Queries) ListCatalogByCompany(ctx context.Context, companyID string) ([]CatalogSummary, error) {
+type ListCatalogByCompanyRow struct {
+	ID        string    `json:"id"`
+	CompanyID string    `json:"company_id"`
+	Name      string    `json:"name"`
+	Category  string    `json:"category"`
+	Summary   *string   `json:"summary"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+func (q *Queries) ListCatalogByCompany(ctx context.Context, companyID string) ([]ListCatalogByCompanyRow, error) {
 	rows, err := q.db.Query(ctx, listCatalogByCompany, companyID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []CatalogSummary
+	var items []ListCatalogByCompanyRow
 	for rows.Next() {
-		var i CatalogSummary
+		var i ListCatalogByCompanyRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.CompanyID,
@@ -98,7 +128,6 @@ func (q *Queries) ListCatalogByCompany(ctx context.Context, companyID string) ([
 			&i.Summary,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-			&i.SearchVector,
 		); err != nil {
 			return nil, err
 		}
@@ -111,7 +140,8 @@ func (q *Queries) ListCatalogByCompany(ctx context.Context, companyID string) ([
 }
 
 const searchCatalog = `-- name: SearchCatalog :many
-SELECT cs.id, cs.company_id, cs.name, cs.category, cs.summary, cs.created_at, cs.updated_at, cs.search_vector, c.name AS company_name
+SELECT cs.id, cs.company_id, cs.name, cs.category, cs.summary, cs.created_at, cs.updated_at,
+       c.name AS company_name
 FROM catalog_summaries cs
 JOIN companies c ON c.id = cs.company_id
 WHERE (
@@ -131,15 +161,14 @@ type SearchCatalogParams struct {
 }
 
 type SearchCatalogRow struct {
-	ID           string      `json:"id"`
-	CompanyID    string      `json:"company_id"`
-	Name         string      `json:"name"`
-	Category     string      `json:"category"`
-	Summary      *string     `json:"summary"`
-	CreatedAt    time.Time   `json:"created_at"`
-	UpdatedAt    time.Time   `json:"updated_at"`
-	SearchVector interface{} `json:"search_vector"`
-	CompanyName  string      `json:"company_name"`
+	ID          string    `json:"id"`
+	CompanyID   string    `json:"company_id"`
+	Name        string    `json:"name"`
+	Category    string    `json:"category"`
+	Summary     *string   `json:"summary"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	CompanyName string    `json:"company_name"`
 }
 
 func (q *Queries) SearchCatalog(ctx context.Context, arg SearchCatalogParams) ([]SearchCatalogRow, error) {
@@ -159,7 +188,6 @@ func (q *Queries) SearchCatalog(ctx context.Context, arg SearchCatalogParams) ([
 			&i.Summary,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-			&i.SearchVector,
 			&i.CompanyName,
 		); err != nil {
 			return nil, err
@@ -176,7 +204,7 @@ const updateCatalogSummary = `-- name: UpdateCatalogSummary :one
 UPDATE catalog_summaries
 SET name = $2, category = $3, summary = $4, updated_at = NOW()
 WHERE id = $1
-RETURNING id, company_id, name, category, summary, created_at, updated_at, search_vector
+RETURNING id, company_id, name, category, summary, created_at, updated_at
 `
 
 type UpdateCatalogSummaryParams struct {
@@ -186,14 +214,24 @@ type UpdateCatalogSummaryParams struct {
 	Summary  *string `json:"summary"`
 }
 
-func (q *Queries) UpdateCatalogSummary(ctx context.Context, arg UpdateCatalogSummaryParams) (CatalogSummary, error) {
+type UpdateCatalogSummaryRow struct {
+	ID        string    `json:"id"`
+	CompanyID string    `json:"company_id"`
+	Name      string    `json:"name"`
+	Category  string    `json:"category"`
+	Summary   *string   `json:"summary"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+func (q *Queries) UpdateCatalogSummary(ctx context.Context, arg UpdateCatalogSummaryParams) (UpdateCatalogSummaryRow, error) {
 	row := q.db.QueryRow(ctx, updateCatalogSummary,
 		arg.ID,
 		arg.Name,
 		arg.Category,
 		arg.Summary,
 	)
-	var i CatalogSummary
+	var i UpdateCatalogSummaryRow
 	err := row.Scan(
 		&i.ID,
 		&i.CompanyID,
@@ -202,7 +240,6 @@ func (q *Queries) UpdateCatalogSummary(ctx context.Context, arg UpdateCatalogSum
 		&i.Summary,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.SearchVector,
 	)
 	return i, err
 }
