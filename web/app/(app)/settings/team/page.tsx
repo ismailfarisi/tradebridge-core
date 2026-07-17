@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/AppShell";
 import UpgradeModal from "@/components/UpgradeModal";
+import { UpgradeNudge } from "@/components/UpgradeNudge";
 import UsageMeter from "@/components/UsageMeter";
 import { useToken } from "@/lib/auth";
 import {
@@ -69,6 +70,9 @@ export default function TeamPage() {
         <div className="card" style={{ marginBottom: "1.25rem" }}>
           <UsageMeter label="Seats used" used={summary.usage.seats_used} limit={summary.usage.seats_limit} />
         </div>
+      )}
+      {summary && (
+        <UpgradeNudge feature="seats" used={summary.usage.seats_used} limit={summary.usage.seats_limit} />
       )}
 
       <form onSubmit={invite} className="card" style={{ marginBottom: "1.25rem" }}>

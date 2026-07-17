@@ -3,8 +3,10 @@
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/AppShell";
 import { EmptyState } from "@/components/EmptyState";
+import { UpgradeNudge } from "@/components/UpgradeNudge";
 import { useToken } from "@/lib/auth";
 import { createCatalog, deleteCatalog, listCatalog, type CatalogItem } from "@/lib/api";
+import { getBillingSummary, type BillingSummary } from "@/lib/billing";
 
 export default function CatalogPage() {
   const token = useToken();
@@ -14,6 +16,7 @@ export default function CatalogPage() {
   const [summary, setSummary] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [billing, setBilling] = useState<BillingSummary | null>(null);
 
   const refresh = () => {
     if (!token) return;
@@ -23,6 +26,11 @@ export default function CatalogPage() {
   useEffect(() => {
     if (!token) return;
     listCatalog(token).then((r) => setItems(r.items)).catch((e) => setErr(e.message));
+  }, [token]);
+
+  useEffect(() => {
+    if (!token) return;
+    getBillingSummary(token).then(setBilling).catch(() => {});
   }, [token]);
 
   const add = async (e: React.FormEvent) => {
@@ -63,6 +71,10 @@ export default function CatalogPage() {
         </form>
         {err && <p className="err" style={{ marginTop: "0.5rem" }}>{err}</p>}
       </div>
+
+      {billing && (
+        <UpgradeNudge feature="catalog_max_items" used={billing.usage.catalog_used} limit={billing.usage.catalog_limit} />
+      )}
 
       <div className="card">
         <h2>Items ({items.length})</h2>
