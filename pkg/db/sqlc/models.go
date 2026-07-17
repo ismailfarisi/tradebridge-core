@@ -10,6 +10,15 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type ActivationEvent struct {
+	ID        string    `json:"id"`
+	CompanyID string    `json:"company_id"`
+	UserID    *string   `json:"user_id"`
+	Event     string    `json:"event"`
+	Props     []byte    `json:"props"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type AgentCommand struct {
 	ID                string    `json:"id"`
 	AgentCredentialID string    `json:"agent_credential_id"`
