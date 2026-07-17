@@ -194,7 +194,9 @@ func TestNotify_RFQMatchedNotifiesSeller(t *testing.T) {
 // TestNotify_OrderCreatedNotifiesBothSides exercises the real quote-acceptance
 // pipeline end to end: when a buyer accepts a quote and a purchase order is
 // created, BOTH the buyer's and the seller's users get an in-app order.created
-// notification (Task 8 wiring of Notifier into quotes.Service.Accept).
+// notification (Task 8 wiring of Notifier into quotes.Service.Accept). The
+// buyer additionally gets an invoice.issued notification once the order's
+// invoice is generated (Sprint 4 Plan 2).
 func TestNotify_OrderCreatedNotifiesBothSides(t *testing.T) {
 	api := buildAPI(t)
 	gw := buildGateway(t)
@@ -237,15 +239,18 @@ func TestNotify_OrderCreatedNotifiesBothSides(t *testing.T) {
 	require.Equal(t, http.StatusCreated, st)
 
 	require.Eventually(t, func() bool {
+		// Buyer gets order.created + invoice.issued; seller gets order.created only.
 		bc, _ := q.CountUnreadNotifications(ctx, buyerUserID)
 		sc, _ := q.CountUnreadNotifications(ctx, sellerUserID)
-		return bc >= 1 && sc >= 1
+		return bc >= 2 && sc >= 1
 	}, 3*time.Second, 25*time.Millisecond)
 
-	// Assert both newest rows are order.created.
-	brows, _ := q.ListNotificationsByUser(ctx, sqlc.ListNotificationsByUserParams{UserID: buyerUserID, Limit: 1, Offset: 0})
-	require.NotEmpty(t, brows)
-	require.Equal(t, "order.created", brows[0].Type)
+	// Buyer's two newest notifications are order.created and invoice.issued
+	// (order doesn't matter — both fire after commit).
+	brows, _ := q.ListNotificationsByUser(ctx, sqlc.ListNotificationsByUserParams{UserID: buyerUserID, Limit: 2, Offset: 0})
+	require.Len(t, brows, 2)
+	require.ElementsMatch(t, []string{"order.created", "invoice.issued"}, []string{brows[0].Type, brows[1].Type})
+
 	srows, _ := q.ListNotificationsByUser(ctx, sqlc.ListNotificationsByUserParams{UserID: sellerUserID, Limit: 1, Offset: 0})
 	require.NotEmpty(t, srows)
 	require.Equal(t, "order.created", srows[0].Type)
