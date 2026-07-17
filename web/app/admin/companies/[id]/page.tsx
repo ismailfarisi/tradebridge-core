@@ -30,6 +30,7 @@ function CompanyDetail() {
   const [notFound, setNotFound] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [popupBlocked, setPopupBlocked] = useState(false);
 
   const load = () => {
     if (!token || !id) return;
@@ -73,12 +74,20 @@ function CompanyDetail() {
 
   const doImpersonate = async () => {
     if (!token || !company) return;
+    // Open the tab synchronously, in direct response to the click — a
+    // pop-up opened only after the `await impersonate(...)` below is no
+    // longer treated as user-gesture-triggered by Safari/Firefox and gets
+    // silently blocked (the token would then install with nothing opening).
+    const win = window.open("", "_blank");
     setBusy("impersonate");
     setErr(null);
+    setPopupBlocked(false);
     try {
       const res = await impersonate(token, id);
-      startImpersonation(res.token, company.name);
+      const opened = startImpersonation(win, res.token, company.name);
+      if (!opened) setPopupBlocked(true);
     } catch (e) {
+      win?.close();
       setErr(e instanceof Error ? e.message : "impersonate failed");
     } finally {
       setBusy(null);
@@ -112,6 +121,12 @@ function CompanyDetail() {
       </div>
 
       {err && <p className="err">{err}</p>}
+      {popupBlocked && (
+        <p className="err">
+          Pop-up blocked — the read-only session was installed anyway.{" "}
+          <a href="/dashboard" target="_blank" rel="noreferrer">Open /dashboard manually</a> to view as this company.
+        </p>
+      )}
 
       <div className="card">
         <div className="row" style={{ gap: "1.5rem", flexWrap: "wrap" }}>

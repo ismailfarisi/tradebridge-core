@@ -83,7 +83,12 @@ function VerificationRow({ company, token, onResolved }: { company: Verification
 
   const resolve = async (status: "verified" | "rejected") => {
     if (!token) return;
-    const reason = status === "rejected" ? (window.prompt("Reason for rejecting?") ?? "") : "";
+    let reason = "";
+    if (status === "rejected") {
+      const input = window.prompt("Reason for rejecting?");
+      if (input === null) return; // cancelled — abort, don't reject
+      reason = input;
+    }
     setBusy(status);
     setErr(null);
     try {
