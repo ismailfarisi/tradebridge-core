@@ -103,6 +103,19 @@ type CompanySetting struct {
 	UpdatedAt             time.Time `json:"updated_at"`
 }
 
+type Dispute struct {
+	ID                string             `json:"id"`
+	OrderID           string             `json:"order_id"`
+	RaisedByCompanyID string             `json:"raised_by_company_id"`
+	Reason            string             `json:"reason"`
+	Detail            string             `json:"detail"`
+	Status            string             `json:"status"`
+	Resolution        string             `json:"resolution"`
+	ResolvedByAdminID *string            `json:"resolved_by_admin_id"`
+	CreatedAt         time.Time          `json:"created_at"`
+	ResolvedAt        pgtype.Timestamptz `json:"resolved_at"`
+}
+
 type DomainVerification struct {
 	ID            string             `json:"id"`
 	CompanyID     string             `json:"company_id"`

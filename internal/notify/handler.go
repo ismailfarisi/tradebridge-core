@@ -164,7 +164,7 @@ func validEventType(t string) bool {
 	switch t {
 	case TypeRFQMatched, TypeQuoteSubmitted, TypeOrderCreated,
 		TypeOrderConfirmed, TypeOrderFulfilled, TypeOrderCompleted, TypeOrderCancelled,
-		TypeInvoiceIssued, TypeReviewReceived:
+		TypeInvoiceIssued, TypeReviewReceived, TypeDisputeOpened, TypeDisputeResolved:
 		return true
 	default:
 		return false

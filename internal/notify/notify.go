@@ -39,6 +39,12 @@ const (
 	// TypeReviewReceived fires when a company receives a review from its
 	// counterparty on a completed order.
 	TypeReviewReceived = "review.received"
+	// TypeDisputeOpened fires when a party raises a dispute on an order,
+	// notifying the counterparty.
+	TypeDisputeOpened = "dispute.opened"
+	// TypeDisputeResolved fires when an admin resolves a dispute, notifying
+	// both parties.
+	TypeDisputeResolved = "dispute.resolved"
 )
 
 // Event is a single thing worth telling a company about.
