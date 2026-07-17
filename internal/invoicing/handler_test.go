@@ -2,6 +2,7 @@ package invoicing
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -39,7 +40,7 @@ func TestHandlerPDFForParty(t *testing.T) {
 	require.Equal(t, 200, resp.StatusCode)
 	require.Equal(t, "application/pdf", resp.Header.Get("Content-Type"))
 	buf := make([]byte, 5)
-	_, err = resp.Body.Read(buf)
+	_, err = io.ReadFull(resp.Body, buf)
 	require.NoError(t, err)
 	require.Equal(t, "%PDF-", string(buf))
 }

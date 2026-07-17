@@ -15,6 +15,20 @@ type Party struct {
 	Name string
 }
 
+// truncate bounds a string to at most max runes (ellipsizing longer ones) so a
+// long, user-controlled description or name can't overflow its fixed PDF cell
+// into the neighboring columns.
+func truncate(s string, max int) string {
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	if max <= 1 {
+		return string(r[:max])
+	}
+	return string(r[:max-1]) + "…"
+}
+
 // Render draws a simple A4 invoice PDF: header, seller/buyer blocks, a
 // line-items table, and subtotal/total. It is pure — no I/O, no DB — so it
 // is trivially unit-testable and reusable by both the download handler and
@@ -40,8 +54,8 @@ func Render(inv sqlc.Invoice, lines []sqlc.InvoiceLineItem, seller, buyer Party)
 	pdf.Cell(95, 6, "Bill to")
 	pdf.Ln(6)
 	pdf.SetFont("Helvetica", "", 11)
-	pdf.Cell(95, 6, seller.Name)
-	pdf.Cell(95, 6, buyer.Name)
+	pdf.Cell(95, 6, truncate(seller.Name, 55))
+	pdf.Cell(95, 6, truncate(buyer.Name, 55))
 	pdf.Ln(12)
 
 	// Table header
@@ -55,7 +69,7 @@ func Render(inv sqlc.Invoice, lines []sqlc.InvoiceLineItem, seller, buyer Party)
 	pdf.SetFont("Helvetica", "", 10)
 	money := func(c int64) string { return fmt.Sprintf("%s %.2f", inv.Currency, float64(c)/100) }
 	for _, li := range lines {
-		pdf.Cell(100, 8, li.Description)
+		pdf.Cell(100, 8, truncate(li.Description, 60))
 		pdf.Cell(20, 8, fmt.Sprintf("%d", li.Quantity))
 		pdf.Cell(35, 8, money(li.UnitPriceCents))
 		pdf.Cell(35, 8, money(li.AmountCents))
