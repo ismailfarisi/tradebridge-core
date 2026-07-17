@@ -278,3 +278,15 @@ table.tbl {
   text-align: center;
   color: var(--faint);
 }
+
+/* Marketplace search: facet sidebar beside results, stacked on narrow screens. */
+.discovery-layout {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 1.5rem;
+}
+@media (max-width: 640px) {
+  .discovery-layout {
+    grid-template-columns: 1fr;
+  }
+}

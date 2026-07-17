@@ -28,7 +28,7 @@ export function DiscoveryResults({ initialCategory }: { initialCategory?: string
   useEffect(() => { run(); }, [run]);
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: "1.5rem" }}>
+    <div className="discovery-layout">
       <aside className="col" style={{ gap: "1rem" }}>
         <div className="field">
           <label>Category</label>
