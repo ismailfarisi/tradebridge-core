@@ -12,6 +12,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 
+	"github.com/tradebridge/core/internal/activation"
 	"github.com/tradebridge/core/internal/admin"
 	"github.com/tradebridge/core/internal/agent"
 	"github.com/tradebridge/core/internal/assist"
@@ -195,6 +196,7 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	suppliers.NewHandler(q).Register(f, guard...)
 	discoveryHandler.Register(f, guard...)
 	dashboard.NewHandler(dashboard.NewService(q, entSvc)).Register(f, guard...)
+	activation.NewHandler(activation.NewService(q)).Register(f, guard...)
 	trustSvc := trust.NewService(q, cfg.Pool, trust.NewNetResolver(cfg.VerifyDNSTimeout), cfg.Logger)
 	trust.NewHandler(trustSvc, q).Register(f, middleware.RequireVerified(q), rlVerify, guard...)
 	catalog.NewHandler(q, entSvc).Register(f, guard...)
