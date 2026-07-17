@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"io"
 	"net/http/httptest"
 	"testing"
@@ -54,4 +55,29 @@ func TestTenantGuardInjectsCompany(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 	require.Contains(t, string(body), "cmp_123")
 	require.Contains(t, string(body), "usr_456")
+}
+
+func TestRequireActiveCompany(t *testing.T) {
+	newApp := func(status string, statusErr error) *fiber.App {
+		app := fiber.New()
+		app.Use(func(c *fiber.Ctx) error { c.Locals(LocalCompanyID, "co_1"); return c.Next() })
+		app.Use(RequireActiveCompany(func(context.Context, string) (string, error) {
+			return status, statusErr
+		}))
+		app.Get("/x", func(c *fiber.Ctx) error { return c.SendString("ok") })
+		return app
+	}
+
+	t.Run("active passes", func(t *testing.T) {
+		res, _ := newApp("active", nil).Test(httptest.NewRequest("GET", "/x", nil))
+		if res.StatusCode != 200 {
+			t.Fatalf("want 200, got %d", res.StatusCode)
+		}
+	})
+	t.Run("suspended blocked 403", func(t *testing.T) {
+		res, _ := newApp("suspended", nil).Test(httptest.NewRequest("GET", "/x", nil))
+		if res.StatusCode != 403 {
+			t.Fatalf("want 403, got %d", res.StatusCode)
+		}
+	})
 }

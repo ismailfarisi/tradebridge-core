@@ -136,6 +136,7 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	guard := []fiber.Handler{
 		middleware.JWT(cfg.JWTSecret),
 		middleware.TenantGuard(),
+		middleware.RequireActiveCompany(q.GetCompanyStatus),
 	}
 
 	f.Get("/v1/me", append(guard, func(c *fiber.Ctx) error {

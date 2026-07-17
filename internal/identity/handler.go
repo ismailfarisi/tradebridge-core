@@ -130,6 +130,9 @@ func (h *Handler) login(c *fiber.Ctx) error {
 	if user.PasswordHash == nil || !CheckPassword(*user.PasswordHash, req.Password) {
 		return fiber.NewError(fiber.StatusUnauthorized, "invalid credentials")
 	}
+	if st, err := h.q.GetCompanyStatus(c.Context(), user.CompanyID); err == nil && st == "suspended" {
+		return fiber.NewError(fiber.StatusForbidden, "company suspended")
+	}
 	return h.issue(c, fiber.StatusOK, user)
 }
 

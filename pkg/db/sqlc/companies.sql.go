@@ -12,7 +12,7 @@ import (
 const createCompany = `-- name: CreateCompany :one
 INSERT INTO companies (name, type)
 VALUES ($1, $2)
-RETURNING id, name, type, created_at, stripe_customer_id, verification_status, verified_domain, verified_at
+RETURNING id, name, type, created_at, stripe_customer_id, verification_status, verified_domain, verified_at, status
 `
 
 type CreateCompanyParams struct {
@@ -32,12 +32,13 @@ func (q *Queries) CreateCompany(ctx context.Context, arg CreateCompanyParams) (C
 		&i.VerificationStatus,
 		&i.VerifiedDomain,
 		&i.VerifiedAt,
+		&i.Status,
 	)
 	return i, err
 }
 
 const getCompanyByID = `-- name: GetCompanyByID :one
-SELECT id, name, type, created_at, stripe_customer_id, verification_status, verified_domain, verified_at FROM companies
+SELECT id, name, type, created_at, stripe_customer_id, verification_status, verified_domain, verified_at, status FROM companies
 WHERE id = $1
 `
 
@@ -53,6 +54,32 @@ func (q *Queries) GetCompanyByID(ctx context.Context, id string) (Company, error
 		&i.VerificationStatus,
 		&i.VerifiedDomain,
 		&i.VerifiedAt,
+		&i.Status,
 	)
 	return i, err
+}
+
+const getCompanyStatus = `-- name: GetCompanyStatus :one
+SELECT status FROM companies WHERE id = $1
+`
+
+func (q *Queries) GetCompanyStatus(ctx context.Context, id string) (string, error) {
+	row := q.db.QueryRow(ctx, getCompanyStatus, id)
+	var status string
+	err := row.Scan(&status)
+	return status, err
+}
+
+const setCompanyStatus = `-- name: SetCompanyStatus :exec
+UPDATE companies SET status = $2 WHERE id = $1
+`
+
+type SetCompanyStatusParams struct {
+	ID     string `json:"id"`
+	Status string `json:"status"`
+}
+
+func (q *Queries) SetCompanyStatus(ctx context.Context, arg SetCompanyStatusParams) error {
+	_, err := q.db.Exec(ctx, setCompanyStatus, arg.ID, arg.Status)
+	return err
 }
