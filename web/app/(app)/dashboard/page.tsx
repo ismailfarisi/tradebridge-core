@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/AppShell";
 import { useMe } from "@/lib/auth";
 import { getBuyerDashboard, getSellerDashboard, type BuyerDashboard, type SellerDashboard } from "@/lib/dashboard";
 import { SellerAnalyticsPanel } from "@/components/SellerAnalytics";
+import { ActivationChecklist } from "@/components/ActivationChecklist";
 
 export default function Dashboard() {
   const { token, me } = useMe();
@@ -26,6 +27,7 @@ export default function Dashboard() {
   return (
     <>
       <PageHeader title={`Welcome, ${me.company_name ?? "there"}`} subtitle="Your marketplace at a glance." />
+      <ActivationChecklist />
 
       {isBuyer && buyer && (
         <section>

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/AppShell";
+import { EmptyState } from "@/components/EmptyState";
 import { useToken } from "@/lib/auth";
 import { issueAgentCred, listAgentCreds, revokeAgentCred, type AgentCred } from "@/lib/api";
 
@@ -51,7 +52,7 @@ export default function AgentPage() {
     <>
       <PageHeader title="Agent credentials" subtitle="Your seller agent connects to the Gateway with one of these secrets." />
 
-      <div className="card" style={{ marginBottom: "1.5rem" }}>
+      <div className="card" id="issue" style={{ marginBottom: "1.5rem" }}>
         <h2>Issue a credential</h2>
         <form className="row" onSubmit={issue} style={{ marginTop: "0.75rem", alignItems: "flex-end" }}>
           <div className="field grow"><label>Label</label><input className="input" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="production" /></div>
@@ -82,9 +83,15 @@ export default function AgentPage() {
                 </td>
               </tr>
             ))}
-            {creds.length === 0 && <tr><td colSpan={4} className="muted">No credentials yet.</td></tr>}
           </tbody>
         </table>
+        {creds.length === 0 && (
+          <EmptyState
+            title="No agent connected yet"
+            body="Issue a credential above, then start your seller agent with it to go live."
+            cta={{ label: "How to connect", href: "#issue" }}
+          />
+        )}
       </div>
     </>
   );

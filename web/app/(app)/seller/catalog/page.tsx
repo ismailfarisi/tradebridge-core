@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/AppShell";
+import { EmptyState } from "@/components/EmptyState";
 import { useToken } from "@/lib/auth";
 import { createCatalog, deleteCatalog, listCatalog, type CatalogItem } from "@/lib/api";
 
@@ -52,7 +53,7 @@ export default function CatalogPage() {
     <>
       <PageHeader title="Catalog" subtitle="Public catalog entries buyers can search and your agent can quote from." />
 
-      <div className="card" style={{ marginBottom: "1.5rem" }}>
+      <div className="card" id="add-item" style={{ marginBottom: "1.5rem" }}>
         <h2>Add item</h2>
         <form className="row wrap" onSubmit={add} style={{ marginTop: "0.75rem", alignItems: "flex-end" }}>
           <div className="field grow"><label>Name</label><input className="input" value={name} onChange={(e) => setName(e.target.value)} required /></div>
@@ -78,7 +79,15 @@ export default function CatalogPage() {
                 </td>
               </tr>
             ))}
-            {items.length === 0 && <tr><td colSpan={4} className="muted">No items yet.</td></tr>}
+            {items.length === 0 && (
+              <tr><td colSpan={4}>
+                <EmptyState
+                  title="No catalog items yet"
+                  body="Add products so buyers can find you and your agent can quote accurately."
+                  cta={{ label: "Add your first item", href: "#add-item" }}
+                />
+              </td></tr>
+            )}
           </tbody>
         </table>
         <p className="notice" style={{ marginTop: "1rem" }}>
