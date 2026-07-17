@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { PageHeader } from "@/components/AppShell";
 import { StatusBadge } from "../page";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { StarRating } from "@/components/StarRating";
+import { AssistExplain } from "@/components/AssistExplain";
+import { NegotiationThread } from "@/components/NegotiationThread";
 import { useToken } from "@/lib/auth";
-import { acceptQuote, getRfq, rfqQuotes, type QuoteRow, type RFQ } from "@/lib/api";
+import { getRfq, rfqQuotes, type QuoteRow, type RFQ } from "@/lib/api";
 
 export default function RfqDetail() {
   const token = useToken();
@@ -20,7 +22,7 @@ export default function RfqDetail() {
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [acceptedOrderId, setAcceptedOrderId] = useState<string | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
+  const [openThread, setOpenThread] = useState<string | null>(null);
 
   const load = () => {
     if (!token || !id) return;
@@ -34,20 +36,11 @@ export default function RfqDetail() {
     rfqQuotes(token, id).then((r) => setQuotes(r.quotes)).catch(() => {});
   }, [token, id]);
 
-  const accept = async (quoteId: string) => {
-    if (!token) return;
-    setBusy(quoteId);
-    setMsg(null);
-    try {
-      const { order_id, total_cents } = await acceptQuote(token, quoteId);
-      setMsg(`Accepted — purchase order created for $${(total_cents / 100).toFixed(2)}.`);
-      setAcceptedOrderId(order_id);
-      load();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "accept failed");
-    } finally {
-      setBusy(null);
-    }
+  const accepted = (orderId: string) => {
+    setMsg("Accepted — purchase order created.");
+    setAcceptedOrderId(orderId);
+    setOpenThread(null);
+    load();
   };
 
   if (err) return <p className="err">{err}</p>;
@@ -83,6 +76,8 @@ export default function RfqDetail() {
         </p>
       )}
 
+      {token && <AssistExplain rfqId={id} token={token} />}
+
       <div className="card">
         <h2>Quotes</h2>
         <table className="tbl" style={{ marginTop: "0.5rem" }}>
@@ -98,32 +93,44 @@ export default function RfqDetail() {
           </thead>
           <tbody>
             {quotes.map((q, i) => (
-              <tr key={q.id}>
-                <td>{q.rank ?? i + 1}</td>
-                <td>
-                  {q.seller_name ?? q.seller_company_id.slice(0, 8)}{" "}
-                  <VerifiedBadge status={q.seller_verification_status} />{" "}
-                  {q.seller_review_count ? (
-                    <StarRating value={q.seller_avg_rating ?? 0} count={q.seller_review_count} />
-                  ) : (
-                    <span className="muted">No ratings</span>
-                  )}
-                </td>
-                <td><strong>{q.currency} {(q.price_cents / 100).toFixed(2)}</strong></td>
-                <td className="muted">{q.delivery_days != null ? `${q.delivery_days} days` : "—"}</td>
-                <td className="muted small">{q.notes}</td>
-                <td style={{ textAlign: "right" }}>
-                  {q.status === "accepted" ? (
-                    <span className="badge badge-success">accepted</span>
-                  ) : q.status === "rejected" ? (
-                    <span className="badge">rejected</span>
-                  ) : rfq.status !== "closed" ? (
-                    <button className="btn btn-sm btn-primary" disabled={busy === q.id} onClick={() => accept(q.id)}>
-                      {busy === q.id ? "…" : "Accept"}
-                    </button>
-                  ) : null}
-                </td>
-              </tr>
+              <Fragment key={q.id}>
+                <tr>
+                  <td>{q.rank ?? i + 1}</td>
+                  <td>
+                    {q.seller_name ?? q.seller_company_id.slice(0, 8)}{" "}
+                    <VerifiedBadge status={q.seller_verification_status} />{" "}
+                    {q.seller_review_count ? (
+                      <StarRating value={q.seller_avg_rating ?? 0} count={q.seller_review_count} />
+                    ) : (
+                      <span className="muted">No ratings</span>
+                    )}
+                  </td>
+                  <td><strong>{q.currency} {(q.price_cents / 100).toFixed(2)}</strong></td>
+                  <td className="muted">{q.delivery_days != null ? `${q.delivery_days} days` : "—"}</td>
+                  <td className="muted small">{q.notes}</td>
+                  <td style={{ textAlign: "right" }}>
+                    {q.status === "accepted" ? (
+                      <span className="badge badge-success">accepted</span>
+                    ) : q.status === "rejected" ? (
+                      <span className="badge">rejected</span>
+                    ) : rfq.status !== "closed" ? (
+                      <button
+                        className="btn btn-sm btn-ghost"
+                        onClick={() => setOpenThread(openThread === q.id ? null : q.id)}
+                      >
+                        {openThread === q.id ? "Hide" : "Negotiate"}
+                      </button>
+                    ) : null}
+                  </td>
+                </tr>
+                {openThread === q.id && token && (
+                  <tr>
+                    <td colSpan={6} style={{ background: "var(--surface-2)" }}>
+                      <NegotiationThread quoteId={q.id} token={token} onAccepted={accepted} />
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             ))}
             {quotes.length === 0 && (
               <tr><td colSpan={6} className="muted">No quotes yet — sellers&apos; agents respond automatically.</td></tr>
