@@ -140,7 +140,7 @@ func (h *Handler) command(c *fiber.Ctx) error {
 	// Side effects by command type.
 	switch req.Type {
 	case "quote.submit":
-		if _, err := quotes.Record(c.Context(), h.q, *rfqID, agent.CompanyID, cmd.ID, normalized); err != nil {
+		if _, err := quotes.Record(c.Context(), h.q, h.pool, *rfqID, agent.CompanyID, cmd.ID, normalized); err != nil {
 			return err
 		}
 		h.maybeQuote(c.Context(), *rfqID)

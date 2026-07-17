@@ -86,12 +86,19 @@ func Normalize(payload []byte) (Normalized, error) {
 // Record upserts the seller's quote for an RFQ (one live quote per seller),
 // keeping version 1 of its immutable history current (a resubmit before any
 // counter-offer overwrites v1 rather than appending a new version row).
-func Record(ctx context.Context, q *sqlc.Queries, rfqID, sellerCompanyID, commandID string, n Normalized) (sqlc.Quote, error) {
+func Record(ctx context.Context, q *sqlc.Queries, pool *pgxpool.Pool, rfqID, sellerCompanyID, commandID string, n Normalized) (sqlc.Quote, error) {
 	var cmd *string
 	if commandID != "" {
 		cmd = &commandID
 	}
-	quote, err := q.UpsertQuote(ctx, sqlc.UpsertQuoteParams{
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return sqlc.Quote{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	qtx := q.WithTx(tx)
+
+	quote, err := qtx.UpsertQuote(ctx, sqlc.UpsertQuoteParams{
 		RfqID:           rfqID,
 		SellerCompanyID: sellerCompanyID,
 		AgentCommandID:  cmd,
@@ -104,12 +111,28 @@ func Record(ctx context.Context, q *sqlc.Queries, rfqID, sellerCompanyID, comman
 	if err != nil {
 		return sqlc.Quote{}, err
 	}
-	// Keep version 1 (the seller's current submit) in the immutable history.
-	if _, err := q.UpsertQuoteVersion(ctx, sqlc.UpsertQuoteVersionParams{
+	// If a counter chain already exists (head past version 1), a fresh seller
+	// submit is a NEW immutable version — never overwrite the counter's row.
+	// Bump the head so the appended seller version lands above the counter.
+	if quote.Version > 1 {
+		quote, err = qtx.BumpQuoteHead(ctx, sqlc.BumpQuoteHeadParams{
+			ID: quote.ID, PriceCents: n.PriceCents, Currency: n.Currency,
+			DeliveryDays: n.DeliveryDays, Notes: n.Notes, Completeness: n.Completeness,
+		})
+		if err != nil {
+			return sqlc.Quote{}, err
+		}
+	}
+	// Keep this seller version current: v1 in the normal pre-counter case (a
+	// resubmit overwrites v1 in place), or the freshly bumped version otherwise.
+	if _, err := qtx.UpsertQuoteVersion(ctx, sqlc.UpsertQuoteVersionParams{
 		QuoteID: quote.ID, Version: quote.Version, PriceCents: quote.PriceCents, Currency: quote.Currency,
 		DeliveryDays: quote.DeliveryDays, Notes: quote.Notes, Completeness: quote.Completeness,
 		Source: "seller", AgentCommandID: cmd,
 	}); err != nil {
+		return sqlc.Quote{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return sqlc.Quote{}, err
 	}
 	return quote, nil

@@ -32,7 +32,7 @@ func TestRecordCounter_BumpsHeadAndAppendsVersion(t *testing.T) {
 
 	// Version 1: the seller's initial submit, via Record.
 	n1 := Normalized{PriceCents: 5000, Currency: "USD", Notes: "initial", Completeness: 1}
-	head, err := Record(ctx, q, r.ID, seller.ID, "", n1)
+	head, err := Record(ctx, q, pool, r.ID, seller.ID, "", n1)
 	require.NoError(t, err)
 	require.Equal(t, int32(1), head.Version)
 	require.Equal(t, int64(5000), head.PriceCents)
@@ -65,13 +65,30 @@ func TestRecordCounter_BumpsHeadAndAppendsVersion(t *testing.T) {
 	require.Equal(t, int32(2), versions[1].Version)
 	require.Equal(t, "counter", versions[1].Source)
 	require.Equal(t, int64(4500), versions[1].PriceCents)
+
+	// A seller re-submit AFTER a counter must NOT overwrite the immutable
+	// counter row (v2); it appends a new seller version (v3) and bumps the head.
+	n3 := Normalized{PriceCents: 4600, Currency: "USD", Notes: "seller re-submit post-counter", Completeness: 1}
+	head3, err := Record(ctx, q, pool, r.ID, seller.ID, "", n3)
+	require.NoError(t, err)
+	require.Equal(t, int32(3), head3.Version, "post-counter submit appends a new version, never overwrites the counter")
+	require.Equal(t, int64(4600), head3.PriceCents)
+
+	versions, err = q.ListQuoteVersions(ctx, head.ID)
+	require.NoError(t, err)
+	require.Len(t, versions, 3)
+	require.Equal(t, "counter", versions[1].Source, "the counter row (v2) is untouched")
+	require.Equal(t, int64(4500), versions[1].PriceCents)
+	require.Equal(t, int32(3), versions[2].Version)
+	require.Equal(t, "seller", versions[2].Source)
+	require.Equal(t, int64(4600), versions[2].PriceCents)
 }
 
 // TestRecord_ResubmitKeepsVersion1Current verifies that a seller resubmitting
 // their quote (before any counter) upserts version 1 in place rather than
 // appending a new version row.
 func TestRecord_ResubmitKeepsVersion1Current(t *testing.T) {
-	q, _ := testQueriesOrSkip(t)
+	q, pool := testQueriesOrSkip(t)
 	ctx := context.Background()
 
 	buyer, err := q.CreateCompany(ctx, sqlc.CreateCompanyParams{Name: "resubmit-buyer", Type: "buyer"})
@@ -88,12 +105,12 @@ func TestRecord_ResubmitKeepsVersion1Current(t *testing.T) {
 	require.NoError(t, err)
 
 	n1 := Normalized{PriceCents: 5000, Currency: "USD", Notes: "v1", Completeness: 1}
-	head, err := Record(ctx, q, r.ID, seller.ID, "", n1)
+	head, err := Record(ctx, q, pool, r.ID, seller.ID, "", n1)
 	require.NoError(t, err)
 	require.Equal(t, int32(1), head.Version)
 
 	n1b := Normalized{PriceCents: 4800, Currency: "USD", Notes: "v1 revised", Completeness: 1}
-	head2, err := Record(ctx, q, r.ID, seller.ID, "", n1b)
+	head2, err := Record(ctx, q, pool, r.ID, seller.ID, "", n1b)
 	require.NoError(t, err)
 	require.Equal(t, int32(1), head2.Version, "resubmit before any counter keeps version 1")
 
