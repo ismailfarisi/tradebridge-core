@@ -247,7 +247,7 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	invSvc := invoicing.NewService(cfg.Logger)
 	quotes.NewHandler(quotes.NewService(q, cfg.Pool, pub, attLoader, cfg.Logger, notifier, invSvc), q).Register(f, rlMessage, guard...)
 	orders.NewHandler(orders.NewService(q, cfg.Pool, notifier, cfg.Logger), q).Register(f, guard...)
-	// invoicing.NewHandler is registered in Task 4 below.
+	invoicing.NewHandler(invSvc, q).Register(f, guard...)
 
 	// Abuse reports: rate-limited, requires a verified email.
 	rlReport := mkRL("report", cfg.RateLimitReport, middleware.RateLimit{Limit: 30, Window: time.Hour}, middleware.KeyCompanyOrIP)
