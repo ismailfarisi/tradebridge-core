@@ -124,6 +124,27 @@ type EmailVerification struct {
 	CreatedAt  time.Time          `json:"created_at"`
 }
 
+type Invoice struct {
+	ID              string    `json:"id"`
+	OrderID         string    `json:"order_id"`
+	InvoiceNumber   string    `json:"invoice_number"`
+	BuyerCompanyID  string    `json:"buyer_company_id"`
+	SellerCompanyID string    `json:"seller_company_id"`
+	Currency        string    `json:"currency"`
+	SubtotalCents   int64     `json:"subtotal_cents"`
+	TotalCents      int64     `json:"total_cents"`
+	IssuedAt        time.Time `json:"issued_at"`
+}
+
+type InvoiceLineItem struct {
+	ID             string `json:"id"`
+	InvoiceID      string `json:"invoice_id"`
+	Description    string `json:"description"`
+	Quantity       int64  `json:"quantity"`
+	UnitPriceCents int64  `json:"unit_price_cents"`
+	AmountCents    int64  `json:"amount_cents"`
+}
+
 type Notification struct {
 	ID        string             `json:"id"`
 	UserID    string             `json:"user_id"`
