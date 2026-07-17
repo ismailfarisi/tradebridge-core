@@ -141,3 +141,54 @@ func (s *Service) SellerDashboard(ctx context.Context, companyID string) (Seller
 		},
 	}, nil
 }
+
+// TopBuyer is a buyer ranked by revenue won from this seller.
+type TopBuyer struct {
+	CompanyID    string `json:"company_id"`
+	Name         string `json:"name"`
+	Orders       int64  `json:"orders"`
+	RevenueCents int64  `json:"revenue_cents"`
+}
+
+// SellerAnalytics is the seller's quote/order performance summary.
+type SellerAnalytics struct {
+	QuotesSubmitted  int64      `json:"quotes_submitted"`
+	QuotesWon        int64      `json:"quotes_won"`
+	WinRate          float64    `json:"win_rate"` // 0..1; quotes_won / decided
+	RevenueWonCents  int64      `json:"revenue_won_cents"`
+	AvgResponseHours float64    `json:"avg_response_hours"`
+	TopBuyers        []TopBuyer `json:"top_buyers"`
+}
+
+// SellerAnalytics computes win rate, revenue, response time, and top buyers.
+func (s *Service) SellerAnalytics(ctx context.Context, companyID string) (SellerAnalytics, error) {
+	a, err := s.q.SellerAnalytics(ctx, companyID)
+	if err != nil {
+		return SellerAnalytics{}, err
+	}
+	buyers, err := s.q.SellerTopBuyers(ctx, companyID)
+	if err != nil {
+		return SellerAnalytics{}, err
+	}
+	winRate := 0.0
+	if a.Decided > 0 {
+		winRate = float64(a.QuotesWon) / float64(a.Decided)
+	}
+	out := SellerAnalytics{
+		QuotesSubmitted:  a.QuotesSubmitted,
+		QuotesWon:        a.QuotesWon,
+		WinRate:          winRate,
+		RevenueWonCents:  a.RevenueWonCents,
+		AvgResponseHours: a.AvgResponseHours,
+		TopBuyers:        make([]TopBuyer, 0, len(buyers)),
+	}
+	for _, b := range buyers {
+		out.TopBuyers = append(out.TopBuyers, TopBuyer{
+			CompanyID:    b.CompanyID,
+			Name:         b.Name,
+			Orders:       b.Orders,
+			RevenueCents: b.RevenueCents,
+		})
+	}
+	return out, nil
+}

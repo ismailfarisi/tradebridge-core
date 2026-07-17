@@ -96,3 +96,35 @@ func TestSellerDashboardCountsAndAgent(t *testing.T) {
 	require.False(t, d.Agent.Online, "no heartbeat => offline")
 	require.NotEmpty(t, d.PlanUsage.Plan)
 }
+
+func TestSellerAnalyticsWinRateAndRevenue(t *testing.T) {
+	q := queriesOrSkip(t)
+	ctx := context.Background()
+
+	seller, err := q.CreateCompany(ctx, sqlc.CreateCompanyParams{Name: "sa-seller-co", Type: "seller"})
+	require.NoError(t, err)
+	buyer, err := q.CreateCompany(ctx, sqlc.CreateCompanyParams{Name: "sa-buyer-co", Type: "buyer"})
+	require.NoError(t, err)
+	user, err := q.CreateUser(ctx, sqlc.CreateUserParams{CompanyID: buyer.ID, Email: "sa-" + buyer.ID + "@ex.com", Role: "owner"})
+	require.NoError(t, err)
+	rfq, err := q.CreateRFQ(ctx, sqlc.CreateRFQParams{BuyerCompanyID: buyer.ID, CreatedBy: user.ID, Title: "SA", RawText: "need X"})
+	require.NoError(t, err)
+	quote, err := q.UpsertQuote(ctx, sqlc.UpsertQuoteParams{RfqID: rfq.ID, SellerCompanyID: seller.ID, PriceCents: 5000, Currency: "USD"})
+	require.NoError(t, err)
+	// Mark the quote accepted + create the order (a won deal).
+	_, err = q.AcceptQuote(ctx, quote.ID) // AcceptQuote(ctx, id string), not a params struct
+	require.NoError(t, err)
+	_, err = q.CreateOrder(ctx, sqlc.CreateOrderParams{
+		RfqID: rfq.ID, QuoteID: quote.ID, BuyerCompanyID: buyer.ID, SellerCompanyID: seller.ID,
+		TotalCents: 5000, Currency: "USD",
+	})
+	require.NoError(t, err)
+
+	a, err := newSvc(t, q).SellerAnalytics(ctx, seller.ID)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), a.QuotesWon)
+	require.InDelta(t, 1.0, a.WinRate, 0.001, "1 accepted / 1 decided = 100%")
+	require.GreaterOrEqual(t, a.RevenueWonCents, int64(5000))
+	require.NotEmpty(t, a.TopBuyers)
+	require.Equal(t, buyer.ID, a.TopBuyers[0].CompanyID)
+}

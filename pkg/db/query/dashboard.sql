@@ -56,3 +56,29 @@ SELECT
     EXISTS (SELECT 1 FROM agent_credentials ac
        WHERE ac.company_id = @company_id AND ac.status = 'active'
          AND (ac.expires_at IS NULL OR ac.expires_at > NOW())) AS has_valid;
+
+-- name: SellerAnalytics :one
+-- Aggregate quote/order performance for a seller. win_rate is computed in Go
+-- from quotes_won / decided (avoids divide-by-zero in SQL).
+SELECT
+    (SELECT COUNT(*) FROM quotes q WHERE q.seller_company_id = @company_id)::bigint AS quotes_submitted,
+    (SELECT COUNT(*) FROM quotes q WHERE q.seller_company_id = @company_id AND q.status = 'accepted')::bigint AS quotes_won,
+    (SELECT COUNT(*) FROM quotes q WHERE q.seller_company_id = @company_id AND q.status IN ('accepted','rejected'))::bigint AS decided,
+    (SELECT COALESCE(SUM(o.total_cents), 0) FROM orders o
+       WHERE o.seller_company_id = @company_id AND o.status <> 'cancelled')::bigint AS revenue_won_cents,
+    (SELECT COALESCE(AVG(EXTRACT(EPOCH FROM (q.created_at - r.created_at)) / 3600.0), 0)::float8
+       FROM quotes q JOIN rfqs r ON r.id = q.rfq_id
+       WHERE q.seller_company_id = @company_id) AS avg_response_hours;
+
+-- name: SellerTopBuyers :many
+-- Top buyers by revenue won from this seller (excludes cancelled orders).
+SELECT o.buyer_company_id AS company_id,
+       c.name             AS name,
+       COUNT(*)::bigint   AS orders,
+       COALESCE(SUM(o.total_cents), 0)::bigint AS revenue_cents
+FROM orders o
+JOIN companies c ON c.id = o.buyer_company_id
+WHERE o.seller_company_id = @company_id AND o.status <> 'cancelled'
+GROUP BY o.buyer_company_id, c.name
+ORDER BY revenue_cents DESC, orders DESC
+LIMIT 5;

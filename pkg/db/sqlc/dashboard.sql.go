@@ -124,6 +124,41 @@ func (q *Queries) ListBuyerRecentRFQs(ctx context.Context, arg ListBuyerRecentRF
 	return items, nil
 }
 
+const sellerAnalytics = `-- name: SellerAnalytics :one
+SELECT
+    (SELECT COUNT(*) FROM quotes q WHERE q.seller_company_id = $1)::bigint AS quotes_submitted,
+    (SELECT COUNT(*) FROM quotes q WHERE q.seller_company_id = $1 AND q.status = 'accepted')::bigint AS quotes_won,
+    (SELECT COUNT(*) FROM quotes q WHERE q.seller_company_id = $1 AND q.status IN ('accepted','rejected'))::bigint AS decided,
+    (SELECT COALESCE(SUM(o.total_cents), 0) FROM orders o
+       WHERE o.seller_company_id = $1 AND o.status <> 'cancelled')::bigint AS revenue_won_cents,
+    (SELECT COALESCE(AVG(EXTRACT(EPOCH FROM (q.created_at - r.created_at)) / 3600.0), 0)::float8
+       FROM quotes q JOIN rfqs r ON r.id = q.rfq_id
+       WHERE q.seller_company_id = $1) AS avg_response_hours
+`
+
+type SellerAnalyticsRow struct {
+	QuotesSubmitted  int64   `json:"quotes_submitted"`
+	QuotesWon        int64   `json:"quotes_won"`
+	Decided          int64   `json:"decided"`
+	RevenueWonCents  int64   `json:"revenue_won_cents"`
+	AvgResponseHours float64 `json:"avg_response_hours"`
+}
+
+// Aggregate quote/order performance for a seller. win_rate is computed in Go
+// from quotes_won / decided (avoids divide-by-zero in SQL).
+func (q *Queries) SellerAnalytics(ctx context.Context, companyID string) (SellerAnalyticsRow, error) {
+	row := q.db.QueryRow(ctx, sellerAnalytics, companyID)
+	var i SellerAnalyticsRow
+	err := row.Scan(
+		&i.QuotesSubmitted,
+		&i.QuotesWon,
+		&i.Decided,
+		&i.RevenueWonCents,
+		&i.AvgResponseHours,
+	)
+	return i, err
+}
+
 const sellerDashboardCounts = `-- name: SellerDashboardCounts :one
 SELECT
     (SELECT COUNT(*) FROM rfq_matches m JOIN rfqs r ON r.id = m.rfq_id
@@ -150,6 +185,52 @@ func (q *Queries) SellerDashboardCounts(ctx context.Context, companyID string) (
 	var i SellerDashboardCountsRow
 	err := row.Scan(&i.IncomingRfqs, &i.ReviewQueue, &i.ActiveOrders)
 	return i, err
+}
+
+const sellerTopBuyers = `-- name: SellerTopBuyers :many
+SELECT o.buyer_company_id AS company_id,
+       c.name             AS name,
+       COUNT(*)::bigint   AS orders,
+       COALESCE(SUM(o.total_cents), 0)::bigint AS revenue_cents
+FROM orders o
+JOIN companies c ON c.id = o.buyer_company_id
+WHERE o.seller_company_id = $1 AND o.status <> 'cancelled'
+GROUP BY o.buyer_company_id, c.name
+ORDER BY revenue_cents DESC, orders DESC
+LIMIT 5
+`
+
+type SellerTopBuyersRow struct {
+	CompanyID    string `json:"company_id"`
+	Name         string `json:"name"`
+	Orders       int64  `json:"orders"`
+	RevenueCents int64  `json:"revenue_cents"`
+}
+
+// Top buyers by revenue won from this seller (excludes cancelled orders).
+func (q *Queries) SellerTopBuyers(ctx context.Context, companyID string) ([]SellerTopBuyersRow, error) {
+	rows, err := q.db.Query(ctx, sellerTopBuyers, companyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SellerTopBuyersRow
+	for rows.Next() {
+		var i SellerTopBuyersRow
+		if err := rows.Scan(
+			&i.CompanyID,
+			&i.Name,
+			&i.Orders,
+			&i.RevenueCents,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const upsertRFQView = `-- name: UpsertRFQView :exec
