@@ -123,8 +123,12 @@ func (s *Service) Transition(ctx context.Context, orderID, actorCompanyID, to, n
 	qtx := s.q.WithTx(tx)
 
 	fromStatus := order.Status
-	updated, err := qtx.SetOrderStatus(ctx, sqlc.SetOrderStatusParams{ID: orderID, Status: to})
-	if err != nil {
+	updated, err := qtx.SetOrderStatus(ctx, sqlc.SetOrderStatusParams{ID: orderID, Status: to, FromStatus: fromStatus})
+	if errors.Is(err, pgx.ErrNoRows) {
+		// A concurrent transition moved the order out of fromStatus between our
+		// read and this write — the validated read is stale.
+		return sqlc.Order{}, ConflictError{Msg: "order was concurrently modified"}
+	} else if err != nil {
 		return sqlc.Order{}, err
 	}
 	if _, err := qtx.CreateOrderEvent(ctx, sqlc.CreateOrderEventParams{

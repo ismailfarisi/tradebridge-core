@@ -1,5 +1,8 @@
 -- name: SetOrderStatus :one
-UPDATE orders SET status = @status WHERE id = @id RETURNING *;
+-- Conditional on the expected current status so a concurrent transition (which
+-- would have moved the order out of @from) cannot be silently overwritten:
+-- 0 rows updated => the caller's validated read is stale (treat as conflict).
+UPDATE orders SET status = @status WHERE id = @id AND status = @from_status RETURNING *;
 
 -- name: ListOrdersByCompany :many
 SELECT * FROM orders

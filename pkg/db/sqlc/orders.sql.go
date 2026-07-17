@@ -117,16 +117,20 @@ func (q *Queries) ListOrdersByCompany(ctx context.Context, companyID string) ([]
 }
 
 const setOrderStatus = `-- name: SetOrderStatus :one
-UPDATE orders SET status = $1 WHERE id = $2 RETURNING id, rfq_id, quote_id, buyer_company_id, seller_company_id, total_cents, currency, status, created_at
+UPDATE orders SET status = $1 WHERE id = $2 AND status = $3 RETURNING id, rfq_id, quote_id, buyer_company_id, seller_company_id, total_cents, currency, status, created_at
 `
 
 type SetOrderStatusParams struct {
-	Status string `json:"status"`
-	ID     string `json:"id"`
+	Status     string `json:"status"`
+	ID         string `json:"id"`
+	FromStatus string `json:"from_status"`
 }
 
+// Conditional on the expected current status so a concurrent transition (which
+// would have moved the order out of @from) cannot be silently overwritten:
+// 0 rows updated => the caller's validated read is stale (treat as conflict).
 func (q *Queries) SetOrderStatus(ctx context.Context, arg SetOrderStatusParams) (Order, error) {
-	row := q.db.QueryRow(ctx, setOrderStatus, arg.Status, arg.ID)
+	row := q.db.QueryRow(ctx, setOrderStatus, arg.Status, arg.ID, arg.FromStatus)
 	var i Order
 	err := row.Scan(
 		&i.ID,

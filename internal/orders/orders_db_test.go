@@ -130,6 +130,22 @@ func TestTransitionIllegal(t *testing.T) {
 	require.ErrorAs(t, err, &conflict)
 }
 
+func TestTransitionRejectsDisputedTarget(t *testing.T) {
+	q, pool := testQueriesOrSkip(t)
+	svc := NewService(q, pool, nil, zerolog.Nop())
+	ctx := context.Background()
+
+	order, buyerID, _ := seedOrder(t, q, "disputedtarget")
+
+	// disputed is a legal machine edge from created, but NOT a party-driven
+	// target — it must go through the dispute endpoint (Plan 4), so the generic
+	// transition endpoint rejects it as a conflict for a party.
+	_, err := svc.Transition(ctx, order.ID, buyerID, "disputed", "")
+	require.Error(t, err)
+	var conflict ConflictError
+	require.ErrorAs(t, err, &conflict)
+}
+
 func TestTransitionNonParty(t *testing.T) {
 	q, pool := testQueriesOrSkip(t)
 	svc := NewService(q, pool, nil, zerolog.Nop())
