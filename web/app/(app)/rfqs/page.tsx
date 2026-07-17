@@ -4,10 +4,14 @@ import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/AppShell";
 import { useToken } from "@/lib/auth";
 import { createRfq, listRfqs, type RFQ } from "@/lib/api";
+import { EmptyState } from "@/components/EmptyState";
+import { UpgradeNudge } from "@/components/UpgradeNudge";
+import { getBillingSummary, type BillingSummary } from "@/lib/billing";
 
 export default function RfqsPage() {
   const token = useToken();
   const [rfqs, setRfqs] = useState<RFQ[]>([]);
+  const [billing, setBilling] = useState<BillingSummary | null>(null);
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -25,6 +29,11 @@ export default function RfqsPage() {
     if (!token) return;
     listRfqs(token, { tab, q: search }).then((r) => setRfqs(r.rfqs)).catch((e) => setErr(e.message));
   }, [token, tab, search]);
+
+  useEffect(() => {
+    if (!token) return;
+    getBillingSummary(token).then(setBilling).catch(() => {});
+  }, [token]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -68,6 +77,10 @@ export default function RfqsPage() {
         </form>
       </div>
 
+      {billing && (
+        <UpgradeNudge feature="rfq_monthly_limit" used={billing.usage.rfq_used} limit={billing.usage.rfq_limit} />
+      )}
+
       <div className="card">
         <h2>Your RFQs</h2>
         <div className="row" style={{ gap: "0.5rem", margin: "1rem 0", alignItems: "center", flexWrap: "wrap" }}>
@@ -101,7 +114,13 @@ export default function RfqsPage() {
               </tr>
             ))}
             {rfqs.length === 0 && (
-              <tr><td colSpan={5} className="muted">No RFQs yet.</td></tr>
+              <tr><td colSpan={5}>
+                <EmptyState
+                  title={tab || search ? "No RFQs match this filter" : "No RFQs yet"}
+                  body={tab || search ? "Try a different tab or clear your search." : "Post your first request and Core will match sellers and collect quotes."}
+                  cta={tab || search ? { label: "Clear filters", href: "/rfqs" } : { label: "Post an RFQ", href: "/chat" }}
+                />
+              </td></tr>
             )}
           </tbody>
         </table>

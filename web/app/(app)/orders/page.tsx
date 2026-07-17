@@ -5,6 +5,7 @@ import Link from "next/link";
 import { PageHeader } from "@/components/AppShell";
 import { useMe } from "@/lib/auth";
 import { listOrders, type Order } from "@/lib/orders";
+import { EmptyState } from "@/components/EmptyState";
 
 export default function OrdersPage() {
   const { token, me } = useMe();
@@ -46,7 +47,13 @@ export default function OrdersPage() {
               );
             })}
             {orders.length === 0 && (
-              <tr><td colSpan={5} className="muted">No orders yet.</td></tr>
+              <tr><td colSpan={5}>
+                <EmptyState
+                  title="No orders yet"
+                  body="When you accept a quote, the purchase order shows up here."
+                  cta={{ label: "Browse suppliers", href: "/marketplace" }}
+                />
+              </td></tr>
             )}
           </tbody>
         </table>
