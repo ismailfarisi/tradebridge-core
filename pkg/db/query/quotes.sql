@@ -63,3 +63,26 @@ SELECT * FROM orders WHERE id = $1;
 
 -- name: CountSubmittedQuotesByRFQ :one
 SELECT COUNT(*) FROM quotes WHERE rfq_id = $1 AND status = 'submitted';
+
+-- name: UpsertQuoteVersion :one
+-- Idempotent per (quote_id, version): a seller resubmit keeps v1 current.
+INSERT INTO quote_versions (quote_id, version, price_cents, currency, delivery_days, notes, completeness, source, agent_command_id)
+VALUES (@quote_id, @version, @price_cents, @currency, @delivery_days, @notes, @completeness, @source, sqlc.narg(agent_command_id))
+ON CONFLICT (quote_id, version) DO UPDATE
+SET price_cents = EXCLUDED.price_cents, currency = EXCLUDED.currency,
+    delivery_days = EXCLUDED.delivery_days, notes = EXCLUDED.notes,
+    completeness = EXCLUDED.completeness, source = EXCLUDED.source,
+    agent_command_id = EXCLUDED.agent_command_id
+RETURNING *;
+
+-- name: BumpQuoteHead :one
+-- Applies a counter's terms to the head and increments the version atomically.
+UPDATE quotes
+SET price_cents = @price_cents, currency = @currency, delivery_days = @delivery_days,
+    notes = @notes, completeness = @completeness, version = version + 1,
+    status = 'submitted', updated_at = NOW()
+WHERE id = @id
+RETURNING *;
+
+-- name: ListQuoteVersions :many
+SELECT * FROM quote_versions WHERE quote_id = @quote_id ORDER BY version ASC;

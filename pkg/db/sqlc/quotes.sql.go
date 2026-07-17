@@ -13,7 +13,7 @@ import (
 const acceptQuote = `-- name: AcceptQuote :one
 UPDATE quotes SET status = 'accepted', updated_at = NOW()
 WHERE id = $1
-RETURNING id, rfq_id, seller_company_id, agent_command_id, price_cents, currency, delivery_days, notes, completeness, status, created_at, updated_at
+RETURNING id, rfq_id, seller_company_id, agent_command_id, price_cents, currency, delivery_days, notes, completeness, status, created_at, updated_at, version
 `
 
 func (q *Queries) AcceptQuote(ctx context.Context, id string) (Quote, error) {
@@ -32,6 +32,54 @@ func (q *Queries) AcceptQuote(ctx context.Context, id string) (Quote, error) {
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Version,
+	)
+	return i, err
+}
+
+const bumpQuoteHead = `-- name: BumpQuoteHead :one
+UPDATE quotes
+SET price_cents = $1, currency = $2, delivery_days = $3,
+    notes = $4, completeness = $5, version = version + 1,
+    status = 'submitted', updated_at = NOW()
+WHERE id = $6
+RETURNING id, rfq_id, seller_company_id, agent_command_id, price_cents, currency, delivery_days, notes, completeness, status, created_at, updated_at, version
+`
+
+type BumpQuoteHeadParams struct {
+	PriceCents   int64   `json:"price_cents"`
+	Currency     string  `json:"currency"`
+	DeliveryDays *int32  `json:"delivery_days"`
+	Notes        string  `json:"notes"`
+	Completeness float64 `json:"completeness"`
+	ID           string  `json:"id"`
+}
+
+// Applies a counter's terms to the head and increments the version atomically.
+func (q *Queries) BumpQuoteHead(ctx context.Context, arg BumpQuoteHeadParams) (Quote, error) {
+	row := q.db.QueryRow(ctx, bumpQuoteHead,
+		arg.PriceCents,
+		arg.Currency,
+		arg.DeliveryDays,
+		arg.Notes,
+		arg.Completeness,
+		arg.ID,
+	)
+	var i Quote
+	err := row.Scan(
+		&i.ID,
+		&i.RfqID,
+		&i.SellerCompanyID,
+		&i.AgentCommandID,
+		&i.PriceCents,
+		&i.Currency,
+		&i.DeliveryDays,
+		&i.Notes,
+		&i.Completeness,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Version,
 	)
 	return i, err
 }
@@ -140,7 +188,7 @@ func (q *Queries) GetOrder(ctx context.Context, id string) (Order, error) {
 }
 
 const getQuote = `-- name: GetQuote :one
-SELECT id, rfq_id, seller_company_id, agent_command_id, price_cents, currency, delivery_days, notes, completeness, status, created_at, updated_at FROM quotes WHERE id = $1
+SELECT id, rfq_id, seller_company_id, agent_command_id, price_cents, currency, delivery_days, notes, completeness, status, created_at, updated_at, version FROM quotes WHERE id = $1
 `
 
 func (q *Queries) GetQuote(ctx context.Context, id string) (Quote, error) {
@@ -159,12 +207,13 @@ func (q *Queries) GetQuote(ctx context.Context, id string) (Quote, error) {
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Version,
 	)
 	return i, err
 }
 
 const getQuoteBySeller = `-- name: GetQuoteBySeller :one
-SELECT id, rfq_id, seller_company_id, agent_command_id, price_cents, currency, delivery_days, notes, completeness, status, created_at, updated_at FROM quotes WHERE rfq_id = $1 AND seller_company_id = $2
+SELECT id, rfq_id, seller_company_id, agent_command_id, price_cents, currency, delivery_days, notes, completeness, status, created_at, updated_at, version FROM quotes WHERE rfq_id = $1 AND seller_company_id = $2
 `
 
 type GetQuoteBySellerParams struct {
@@ -188,6 +237,7 @@ func (q *Queries) GetQuoteBySeller(ctx context.Context, arg GetQuoteBySellerPara
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Version,
 	)
 	return i, err
 }
@@ -212,6 +262,42 @@ func (q *Queries) ListQuoteMessages(ctx context.Context, quoteID string) ([]Quot
 			&i.Body,
 			&i.CreatedAt,
 			&i.Attachments,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listQuoteVersions = `-- name: ListQuoteVersions :many
+SELECT id, quote_id, version, price_cents, currency, delivery_days, notes, completeness, source, agent_command_id, created_at FROM quote_versions WHERE quote_id = $1 ORDER BY version ASC
+`
+
+func (q *Queries) ListQuoteVersions(ctx context.Context, quoteID string) ([]QuoteVersion, error) {
+	rows, err := q.db.Query(ctx, listQuoteVersions, quoteID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []QuoteVersion
+	for rows.Next() {
+		var i QuoteVersion
+		if err := rows.Scan(
+			&i.ID,
+			&i.QuoteID,
+			&i.Version,
+			&i.PriceCents,
+			&i.Currency,
+			&i.DeliveryDays,
+			&i.Notes,
+			&i.Completeness,
+			&i.Source,
+			&i.AgentCommandID,
+			&i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -260,7 +346,7 @@ func (q *Queries) ListSubmittedQuoteSellersExcept(ctx context.Context, arg ListS
 }
 
 const rankQuotesByRFQ = `-- name: RankQuotesByRFQ :many
-SELECT q.id, q.rfq_id, q.seller_company_id, q.agent_command_id, q.price_cents, q.currency, q.delivery_days, q.notes, q.completeness, q.status, q.created_at, q.updated_at, c.name AS seller_name, c.verification_status,
+SELECT q.id, q.rfq_id, q.seller_company_id, q.agent_command_id, q.price_cents, q.currency, q.delivery_days, q.notes, q.completeness, q.status, q.created_at, q.updated_at, q.version, c.name AS seller_name, c.verification_status,
        COALESCE(rep.avg_rating, 0)::float8 AS seller_avg_rating,
        COALESCE(rep.review_count, 0)::bigint AS seller_review_count
 FROM quotes q
@@ -286,6 +372,7 @@ type RankQuotesByRFQRow struct {
 	Status             string    `json:"status"`
 	CreatedAt          time.Time `json:"created_at"`
 	UpdatedAt          time.Time `json:"updated_at"`
+	Version            int32     `json:"version"`
 	SellerName         string    `json:"seller_name"`
 	VerificationStatus string    `json:"verification_status"`
 	SellerAvgRating    float64   `json:"seller_avg_rating"`
@@ -314,6 +401,7 @@ func (q *Queries) RankQuotesByRFQ(ctx context.Context, rfqID string) ([]RankQuot
 			&i.Status,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Version,
 			&i.SellerName,
 			&i.VerificationStatus,
 			&i.SellerAvgRating,
@@ -356,7 +444,7 @@ SET agent_command_id = EXCLUDED.agent_command_id,
     completeness     = EXCLUDED.completeness,
     status           = 'submitted',
     updated_at       = NOW()
-RETURNING id, rfq_id, seller_company_id, agent_command_id, price_cents, currency, delivery_days, notes, completeness, status, created_at, updated_at
+RETURNING id, rfq_id, seller_company_id, agent_command_id, price_cents, currency, delivery_days, notes, completeness, status, created_at, updated_at, version
 `
 
 type UpsertQuoteParams struct {
@@ -395,6 +483,60 @@ func (q *Queries) UpsertQuote(ctx context.Context, arg UpsertQuoteParams) (Quote
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Version,
+	)
+	return i, err
+}
+
+const upsertQuoteVersion = `-- name: UpsertQuoteVersion :one
+INSERT INTO quote_versions (quote_id, version, price_cents, currency, delivery_days, notes, completeness, source, agent_command_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+ON CONFLICT (quote_id, version) DO UPDATE
+SET price_cents = EXCLUDED.price_cents, currency = EXCLUDED.currency,
+    delivery_days = EXCLUDED.delivery_days, notes = EXCLUDED.notes,
+    completeness = EXCLUDED.completeness, source = EXCLUDED.source,
+    agent_command_id = EXCLUDED.agent_command_id
+RETURNING id, quote_id, version, price_cents, currency, delivery_days, notes, completeness, source, agent_command_id, created_at
+`
+
+type UpsertQuoteVersionParams struct {
+	QuoteID        string  `json:"quote_id"`
+	Version        int32   `json:"version"`
+	PriceCents     int64   `json:"price_cents"`
+	Currency       string  `json:"currency"`
+	DeliveryDays   *int32  `json:"delivery_days"`
+	Notes          string  `json:"notes"`
+	Completeness   float64 `json:"completeness"`
+	Source         string  `json:"source"`
+	AgentCommandID *string `json:"agent_command_id"`
+}
+
+// Idempotent per (quote_id, version): a seller resubmit keeps v1 current.
+func (q *Queries) UpsertQuoteVersion(ctx context.Context, arg UpsertQuoteVersionParams) (QuoteVersion, error) {
+	row := q.db.QueryRow(ctx, upsertQuoteVersion,
+		arg.QuoteID,
+		arg.Version,
+		arg.PriceCents,
+		arg.Currency,
+		arg.DeliveryDays,
+		arg.Notes,
+		arg.Completeness,
+		arg.Source,
+		arg.AgentCommandID,
+	)
+	var i QuoteVersion
+	err := row.Scan(
+		&i.ID,
+		&i.QuoteID,
+		&i.Version,
+		&i.PriceCents,
+		&i.Currency,
+		&i.DeliveryDays,
+		&i.Notes,
+		&i.Completeness,
+		&i.Source,
+		&i.AgentCommandID,
+		&i.CreatedAt,
 	)
 	return i, err
 }

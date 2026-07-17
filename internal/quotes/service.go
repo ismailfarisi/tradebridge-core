@@ -80,13 +80,15 @@ func Normalize(payload []byte) (Normalized, error) {
 	return n, nil
 }
 
-// Record upserts the seller's quote for an RFQ (one live quote per seller).
+// Record upserts the seller's quote for an RFQ (one live quote per seller),
+// keeping version 1 of its immutable history current (a resubmit before any
+// counter-offer overwrites v1 rather than appending a new version row).
 func Record(ctx context.Context, q *sqlc.Queries, rfqID, sellerCompanyID, commandID string, n Normalized) (sqlc.Quote, error) {
 	var cmd *string
 	if commandID != "" {
 		cmd = &commandID
 	}
-	return q.UpsertQuote(ctx, sqlc.UpsertQuoteParams{
+	quote, err := q.UpsertQuote(ctx, sqlc.UpsertQuoteParams{
 		RfqID:           rfqID,
 		SellerCompanyID: sellerCompanyID,
 		AgentCommandID:  cmd,
@@ -96,6 +98,52 @@ func Record(ctx context.Context, q *sqlc.Queries, rfqID, sellerCompanyID, comman
 		Notes:           n.Notes,
 		Completeness:    n.Completeness,
 	})
+	if err != nil {
+		return sqlc.Quote{}, err
+	}
+	// Keep version 1 (the seller's current submit) in the immutable history.
+	if _, err := q.UpsertQuoteVersion(ctx, sqlc.UpsertQuoteVersionParams{
+		QuoteID: quote.ID, Version: quote.Version, PriceCents: quote.PriceCents, Currency: quote.Currency,
+		DeliveryDays: quote.DeliveryDays, Notes: quote.Notes, Completeness: quote.Completeness,
+		Source: "seller", AgentCommandID: cmd,
+	}); err != nil {
+		return sqlc.Quote{}, err
+	}
+	return quote, nil
+}
+
+// RecordCounter applies a seller-agent counter to the quote head (new version)
+// and appends the immutable version row, atomically in one transaction.
+func RecordCounter(ctx context.Context, q *sqlc.Queries, pool *pgxpool.Pool, quoteID, commandID string, n Normalized) (sqlc.Quote, sqlc.QuoteVersion, error) {
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return sqlc.Quote{}, sqlc.QuoteVersion{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	qtx := q.WithTx(tx)
+	head, err := qtx.BumpQuoteHead(ctx, sqlc.BumpQuoteHeadParams{
+		ID: quoteID, PriceCents: n.PriceCents, Currency: n.Currency,
+		DeliveryDays: n.DeliveryDays, Notes: n.Notes, Completeness: n.Completeness,
+	})
+	if err != nil {
+		return sqlc.Quote{}, sqlc.QuoteVersion{}, err
+	}
+	var cmd *string
+	if commandID != "" {
+		cmd = &commandID
+	}
+	ver, err := qtx.UpsertQuoteVersion(ctx, sqlc.UpsertQuoteVersionParams{
+		QuoteID: head.ID, Version: head.Version, PriceCents: head.PriceCents, Currency: head.Currency,
+		DeliveryDays: head.DeliveryDays, Notes: head.Notes, Completeness: head.Completeness,
+		Source: "counter", AgentCommandID: cmd,
+	})
+	if err != nil {
+		return sqlc.Quote{}, sqlc.QuoteVersion{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return sqlc.Quote{}, sqlc.QuoteVersion{}, err
+	}
+	return head, ver, nil
 }
 
 // Service serves buyer-facing ranking and acceptance.

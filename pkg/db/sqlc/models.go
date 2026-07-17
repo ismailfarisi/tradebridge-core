@@ -249,6 +249,7 @@ type Quote struct {
 	Status          string    `json:"status"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
+	Version         int32     `json:"version"`
 }
 
 type QuoteMessage struct {
@@ -258,6 +259,20 @@ type QuoteMessage struct {
 	Body        string    `json:"body"`
 	CreatedAt   time.Time `json:"created_at"`
 	Attachments []byte    `json:"attachments"`
+}
+
+type QuoteVersion struct {
+	ID             string    `json:"id"`
+	QuoteID        string    `json:"quote_id"`
+	Version        int32     `json:"version"`
+	PriceCents     int64     `json:"price_cents"`
+	Currency       string    `json:"currency"`
+	DeliveryDays   *int32    `json:"delivery_days"`
+	Notes          string    `json:"notes"`
+	Completeness   float64   `json:"completeness"`
+	Source         string    `json:"source"`
+	AgentCommandID *string   `json:"agent_command_id"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 type Report struct {

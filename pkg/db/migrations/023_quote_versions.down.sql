@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS quote_versions;
+ALTER TABLE quotes DROP COLUMN IF EXISTS version;
