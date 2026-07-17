@@ -1,63 +1,89 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { PageHeader } from "@/components/AppShell";
 import { useMe } from "@/lib/auth";
-import { listCatalog, listRfqs } from "@/lib/api";
+import { getBuyerDashboard, getSellerDashboard, type BuyerDashboard, type SellerDashboard } from "@/lib/dashboard";
+import { SellerAnalyticsPanel } from "@/components/SellerAnalytics";
 
 export default function Dashboard() {
   const { token, me } = useMe();
-  const [rfqCount, setRfqCount] = useState<number | null>(null);
-  const [catCount, setCatCount] = useState<number | null>(null);
+  const [buyer, setBuyer] = useState<BuyerDashboard | null>(null);
+  const [seller, setSeller] = useState<SellerDashboard | null>(null);
+
+  const isSeller = me?.company_type === "seller" || me?.company_type === "both";
+  const isBuyer = me ? me.company_type !== "seller" : false;
 
   useEffect(() => {
     if (!token || !me) return;
-    const buyer = me.company_type !== "seller";
-    const seller = me.company_type === "seller" || me.company_type === "both";
-    if (buyer) listRfqs(token).then((r) => setRfqCount(r.count)).catch(() => {});
-    if (seller) listCatalog(token).then((r) => setCatCount(r.count)).catch(() => {});
-  }, [token, me]);
+    if (isBuyer) getBuyerDashboard(token).then(setBuyer).catch(() => {});
+    if (isSeller) getSellerDashboard(token).then(setSeller).catch(() => {});
+  }, [token, me, isBuyer, isSeller]);
 
   if (!me) return null;
-  const seller = me.company_type === "seller" || me.company_type === "both";
-  const buyer = me.company_type !== "seller";
 
   return (
     <>
       <PageHeader title={`Welcome, ${me.company_name ?? "there"}`} subtitle="Your marketplace at a glance." />
 
-      <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", marginBottom: "1.5rem" }}>
-        {buyer && <Stat n={rfqCount} label="Your RFQs" />}
-        {seller && <Stat n={catCount} label="Catalog items" />}
-        <div className="stat">
-          <div className="n" style={{ textTransform: "capitalize" }}>{me.company_type ?? "—"}</div>
-          <div className="l">Account type</div>
-        </div>
-      </div>
+      {isBuyer && buyer && (
+        <section>
+          <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", marginBottom: "1rem" }}>
+            <Stat n={buyer.active_rfqs} label="Active RFQs" />
+            <Stat n={buyer.quotes_received} label="Quotes received" badge={buyer.new_quotes} />
+            <Stat n={buyer.orders_in_progress} label="Orders in progress" />
+          </div>
+          <div className="card">
+            <h2 style={{ marginTop: 0 }}>Recent RFQs</h2>
+            {buyer.recent_rfqs.length === 0 ? <p className="muted">No RFQs yet.</p> : (
+              <table className="tbl"><tbody>
+                {buyer.recent_rfqs.map((r) => (
+                  <tr key={r.id}>
+                    <td><Link href={`/rfqs/${r.id}`}>{r.title}</Link></td>
+                    <td><span className="badge">{r.status}</span></td>
+                    <td>{r.quote_count} quote{r.quote_count === 1 ? "" : "s"}{r.new_quotes > 0 ? ` · ${r.new_quotes} new` : ""}</td>
+                  </tr>
+                ))}
+              </tbody></table>
+            )}
+          </div>
+        </section>
+      )}
 
-      <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))" }}>
-        {buyer && <Action href="/chat" title="Post an RFQ" body="Describe what you need in plain language and get ranked quotes." />}
-        {seller && <Action href="/seller/catalog" title="Manage catalog" body="Upload products so your agent can quote accurately." />}
-        {seller && <Action href="/seller/agent" title="Agent credentials" body="Issue a credential so your seller agent can connect." />}
-      </div>
+      {isSeller && seller && (
+        <section style={{ marginTop: isBuyer ? "1.5rem" : 0 }}>
+          <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", marginBottom: "1rem" }}>
+            <Stat n={seller.incoming_rfqs} label="Incoming RFQs" />
+            <Stat n={seller.review_queue} label="Review queue" />
+            <Stat n={seller.active_orders} label="Active orders" />
+            <div className="stat">
+              <div className="n" style={{ color: seller.agent.online ? "var(--ok, green)" : "var(--muted, gray)" }}>
+                {seller.agent.online ? "Online" : "Offline"}
+              </div>
+              <div className="l">Agent{seller.agent.autonomy ? " · autonomous" : ""}</div>
+            </div>
+          </div>
+          <div className="card">
+            <h2 style={{ marginTop: 0 }}>Plan usage — {seller.plan_usage.plan}</h2>
+            <p className="small">RFQs: {usage(seller.plan_usage.rfq_used, seller.plan_usage.rfq_limit)} · Catalog: {usage(seller.plan_usage.catalog_used, seller.plan_usage.catalog_limit)} · Seats: {usage(seller.plan_usage.seats_used, seller.plan_usage.seats_limit)}</p>
+          </div>
+          {token && <SellerAnalyticsPanel token={token} />}
+        </section>
+      )}
     </>
   );
 }
 
-function Stat({ n, label }: { n: number | null; label: string }) {
-  return (
-    <div className="stat">
-      <div className="n">{n ?? "—"}</div>
-      <div className="l">{label}</div>
-    </div>
-  );
+function usage(used: number, limit: number): string {
+  return limit < 0 ? `${used} / ∞` : `${used} / ${limit}`;
 }
 
-function Action({ href, title, body }: { href: string; title: string; body: string }) {
+function Stat({ n, label, badge }: { n: number | string; label: string; badge?: number }) {
   return (
-    <a href={href} className="card" style={{ display: "block" }}>
-      <strong style={{ color: "var(--text)" }}>{title}</strong>
-      <p className="muted small" style={{ margin: "0.35rem 0 0" }}>{body}</p>
-    </a>
+    <div className="stat">
+      <div className="n">{n}{badge && badge > 0 ? <span className="badge" style={{ marginLeft: "0.4rem" }}>{badge} new</span> : null}</div>
+      <div className="l">{label}</div>
+    </div>
   );
 }
