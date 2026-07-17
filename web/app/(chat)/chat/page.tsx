@@ -9,6 +9,12 @@ import { Composer } from "@/components/Composer";
 import { AttachmentView } from "@/components/AttachmentView";
 import { AssistImprove } from "@/components/AssistImprove";
 
+const SAMPLE_RFQS = [
+  "Need 500 corrugated shipping cartons (30×30×30cm), delivered to Dubai within 3 weeks.",
+  "Looking for 1,000 stainless steel M8 bolts, grade 8.8 — quote per unit and lead time.",
+  "Sourcing 200 reams of A4 80gsm copy paper for a Riyadh office, recurring monthly.",
+];
+
 export default function NewChat() {
   const token = useToken();
   const router = useRouter();
@@ -47,11 +53,26 @@ export default function NewChat() {
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
       <div style={{ flex: 1, overflowY: "auto", padding: "1.5rem", maxWidth: 760, width: "100%", margin: "0 auto" }}>
         {empty ? (
-          <div style={{ textAlign: "center", marginTop: "18vh" }}>
+          <div style={{ textAlign: "center", marginTop: "12vh" }}>
             <h1 style={{ fontSize: "1.5rem" }}>What do you need to source?</h1>
             <p className="muted" style={{ marginTop: "0.5rem" }}>
-              Describe it in plain language — I&apos;ll match sellers and collect quotes.
+              Describe it in plain language — I&apos;ll match sellers and collect quotes. Include quantity,
+              specs, destination, and any deadline.
             </p>
+            <div className="col" style={{ gap: "0.5rem", maxWidth: 560, margin: "1.5rem auto 0" }}>
+              <p className="muted small" style={{ margin: 0 }}>Try an example:</p>
+              {SAMPLE_RFQS.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  className="card"
+                  onClick={() => setDraft(s)}
+                  style={{ textAlign: "left", cursor: "pointer", border: "1px solid var(--border)", background: "var(--surface)" }}
+                >
+                  <span className="small">{s}</span>
+                </button>
+              ))}
+            </div>
           </div>
         ) : (
           <div className="col" style={{ gap: "0.75rem" }}>
