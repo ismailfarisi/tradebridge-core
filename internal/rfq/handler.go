@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/valyala/fasthttp"
 
+	"github.com/tradebridge/core/internal/activation"
 	"github.com/tradebridge/core/internal/entitlements"
 	"github.com/tradebridge/core/pkg/db/sqlc"
 	"github.com/tradebridge/core/pkg/middleware"
@@ -109,6 +110,7 @@ func (h *Handler) create(c *fiber.Ctx) error {
 		return err
 	}
 	h.ent.IncrementRFQUsage(c.Context(), middleware.CompanyID(c))
+	activation.Emit(c.Context(), h.q, middleware.CompanyID(c), middleware.UserID(c), activation.EventFirstRFQ, nil)
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"rfq":         view(rfq),
 		"match_count": len(matches),

@@ -10,6 +10,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/tradebridge/core/internal/activation"
 	"github.com/tradebridge/core/internal/entitlements"
 	"github.com/tradebridge/core/internal/notify"
 	"github.com/tradebridge/core/pkg/db/sqlc"
@@ -104,6 +105,8 @@ func (h *Handler) register(c *fiber.Ctx) error {
 	}
 
 	h.sendVerification(ctx, user)
+
+	activation.Emit(ctx, h.q, company.ID, user.ID, activation.EventSignup, map[string]any{"company_type": req.CompanyType})
 
 	return h.issue(c, fiber.StatusCreated, user)
 }

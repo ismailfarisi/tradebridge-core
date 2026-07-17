@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
 
+	"github.com/tradebridge/core/internal/activation"
 	"github.com/tradebridge/core/internal/attachments"
 	"github.com/tradebridge/core/internal/entitlements"
 	"github.com/tradebridge/core/internal/eventbus"
@@ -148,6 +149,7 @@ func Record(ctx context.Context, q *sqlc.Queries, pool *pgxpool.Pool, rfqID, sel
 	if err := tx.Commit(ctx); err != nil {
 		return sqlc.Quote{}, err
 	}
+	activation.Emit(ctx, q, sellerCompanyID, "", activation.EventFirstQuote, nil)
 	return quote, nil
 }
 
@@ -512,6 +514,7 @@ func (s *Service) Accept(ctx context.Context, buyerCompanyID, quoteID string) (s
 	if err := tx.Commit(ctx); err != nil {
 		return sqlc.Order{}, err
 	}
+	activation.Emit(ctx, s.q, order.BuyerCompanyID, "", activation.EventFirstOrder, nil)
 
 	// Live publish only after the durable state is committed.
 	s.pub.PublishExisting(ctx, ev)

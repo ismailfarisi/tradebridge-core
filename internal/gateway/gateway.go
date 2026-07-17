@@ -16,6 +16,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 
+	"github.com/tradebridge/core/internal/activation"
 	"github.com/tradebridge/core/internal/attachments"
 	"github.com/tradebridge/core/internal/entitlements"
 	"github.com/tradebridge/core/internal/identity"
@@ -130,6 +131,7 @@ func (h *Handler) heartbeat(c *fiber.Ctx) error {
 	if err := h.q.TouchAgentCredentialLastSeen(c.Context(), agent.CredentialID); err != nil {
 		return err
 	}
+	activation.Emit(c.Context(), h.q, agent.CompanyID, "", activation.EventAgentConnected, nil)
 	return c.JSON(fiber.Map{"status": "ok"})
 }
 

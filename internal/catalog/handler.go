@@ -8,6 +8,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/tradebridge/core/internal/activation"
 	"github.com/tradebridge/core/internal/entitlements"
 	"github.com/tradebridge/core/pkg/db/sqlc"
 	"github.com/tradebridge/core/pkg/middleware"
@@ -61,6 +62,7 @@ func (h *Handler) create(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
+	activation.Emit(c.Context(), h.q, middleware.CompanyID(c), middleware.UserID(c), activation.EventCatalogAdded, nil)
 	return c.Status(fiber.StatusCreated).JSON(item)
 }
 

@@ -96,7 +96,7 @@ func TestSellerReaches100(t *testing.T) {
 	buyer, err := q.CreateCompany(ctx, sqlc.CreateCompanyParams{Name: "act-seller-100-buyer", Type: "buyer"})
 	require.NoError(t, err)
 	buyerUser, err := q.CreateUserWithPassword(ctx, sqlc.CreateUserWithPasswordParams{
-		CompanyID: buyer.ID, Email: "act-100-buyer@example.com", Role: "owner",
+		CompanyID: buyer.ID, Email: "act-100-buyer-" + buyer.ID + "@example.com", Role: "owner",
 	})
 	require.NoError(t, err)
 
@@ -116,7 +116,7 @@ func TestSellerReaches100(t *testing.T) {
 	require.NoError(t, err)
 
 	// verified
-	domain := "act-seller-100.example.com"
+	domain := "act-seller-100-" + co.ID + ".example.com"
 	require.NoError(t, q.SetCompanyVerified(ctx, sqlc.SetCompanyVerifiedParams{ID: co.ID, VerifiedDomain: &domain}))
 
 	// agent connected

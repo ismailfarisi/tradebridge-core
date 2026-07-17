@@ -18,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
 
+	"github.com/tradebridge/core/internal/activation"
 	"github.com/tradebridge/core/pkg/db/sqlc"
 )
 
@@ -194,6 +195,7 @@ func (s *Service) Check(ctx context.Context, companyID, rawDomain string) (Resul
 		return Result{}, err
 	}
 	s.logger.Info().Str("company_id", companyID).Str("domain", domain).Msg("company verified via DNS-TXT")
+	activation.Emit(ctx, s.q, companyID, "", activation.EventVerified, nil)
 	return Result{Status: "verified", Verified: true}, nil
 }
 
@@ -261,5 +263,8 @@ func (s *Service) SetStatus(ctx context.Context, companyID, status, reason strin
 		return err
 	}
 	s.logger.Info().Str("company_id", companyID).Str("status", status).Str("reason", reason).Msg("admin set verification status")
+	if status == "verified" {
+		activation.Emit(ctx, s.q, companyID, "", activation.EventVerified, nil)
+	}
 	return nil
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/rs/zerolog"
 
+	"github.com/tradebridge/core/internal/activation"
 	"github.com/tradebridge/core/pkg/db/sqlc"
 )
 
@@ -99,7 +100,13 @@ func (s *Service) applyState(ctx context.Context, ev WebhookEvent) error {
 		CurrentPeriodEnd:     periodEnd,
 		CancelAtPeriodEnd:    ev.CancelAtPeriodEnd,
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	if plan == "pro" || plan == "business" {
+		activation.Emit(ctx, s.q, companyID, "", activation.EventUpgrade, map[string]any{"plan": plan})
+	}
+	return nil
 }
 
 // resolveCompany prefers the event's explicit company id, falling back to a
