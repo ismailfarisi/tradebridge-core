@@ -258,6 +258,18 @@ type Report struct {
 	ResolvedAt        pgtype.Timestamptz `json:"resolved_at"`
 }
 
+type Review struct {
+	ID                string    `json:"id"`
+	OrderID           string    `json:"order_id"`
+	ReviewerCompanyID string    `json:"reviewer_company_id"`
+	RevieweeCompanyID string    `json:"reviewee_company_id"`
+	Direction         string    `json:"direction"`
+	Rating            int32     `json:"rating"`
+	Body              string    `json:"body"`
+	Status            string    `json:"status"`
+	CreatedAt         time.Time `json:"created_at"`
+}
+
 type Rfq struct {
 	ID             string             `json:"id"`
 	BuyerCompanyID string             `json:"buyer_company_id"`
