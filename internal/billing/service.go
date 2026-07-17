@@ -103,7 +103,11 @@ func (s *Service) applyState(ctx context.Context, ev WebhookEvent) error {
 	if err != nil {
 		return err
 	}
-	if plan == "pro" || plan == "business" {
+	// Only a paid plan on an active-ish subscription is an "upgrade" — never a
+	// cancellation/past_due event (which also flows through applyState with the
+	// plan still set). Idempotent per (company, upgrade), so the legitimate
+	// first paid activation records once.
+	if (plan == "pro" || plan == "business") && (status == "active" || status == "trialing") {
 		activation.Emit(ctx, s.q, companyID, "", activation.EventUpgrade, map[string]any{"plan": plan})
 	}
 	return nil

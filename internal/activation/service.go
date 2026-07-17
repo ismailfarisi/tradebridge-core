@@ -2,6 +2,7 @@ package activation
 
 import (
 	"context"
+	"math"
 
 	"github.com/tradebridge/core/pkg/db/sqlc"
 )
@@ -52,7 +53,7 @@ func (s *Service) Status(ctx context.Context, companyID string) (Status, error) 
 	}
 	pct := 0
 	if len(steps) > 0 {
-		pct = int(float64(done) / float64(len(steps)) * 100.0)
+		pct = int(math.Round(float64(done) / float64(len(steps)) * 100.0))
 	}
 	return Status{Role: role, PercentComplete: pct, Steps: steps}, nil
 }
