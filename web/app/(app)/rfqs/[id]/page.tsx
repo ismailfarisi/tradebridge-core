@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { PageHeader } from "@/components/AppShell";
 import { StatusBadge } from "../page";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
+import { StarRating } from "@/components/StarRating";
 import { useToken } from "@/lib/auth";
 import { acceptQuote, getRfq, rfqQuotes, type QuoteRow, type RFQ } from "@/lib/api";
 
@@ -18,6 +19,7 @@ export default function RfqDetail() {
   const [quotes, setQuotes] = useState<QuoteRow[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [acceptedOrderId, setAcceptedOrderId] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
   const load = () => {
@@ -38,7 +40,8 @@ export default function RfqDetail() {
     setMsg(null);
     try {
       const { order_id, total_cents } = await acceptQuote(token, quoteId);
-      setMsg(`Accepted — purchase order ${order_id} created for $${(total_cents / 100).toFixed(2)}.`);
+      setMsg(`Accepted — purchase order created for $${(total_cents / 100).toFixed(2)}.`);
+      setAcceptedOrderId(order_id);
       load();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "accept failed");
@@ -73,7 +76,12 @@ export default function RfqDetail() {
         <p className="muted small" style={{ marginTop: "0.75rem" }}>{rfq.raw_text}</p>
       </div>
 
-      {msg && <p className="ok" style={{ marginBottom: "1rem" }}>{msg}</p>}
+      {msg && (
+        <p className="ok" style={{ marginBottom: "1rem" }}>
+          {msg}{" "}
+          {acceptedOrderId && <Link href={`/orders/${acceptedOrderId}`}>View order →</Link>}
+        </p>
+      )}
 
       <div className="card">
         <h2>Quotes</h2>
@@ -94,7 +102,12 @@ export default function RfqDetail() {
                 <td>{q.rank ?? i + 1}</td>
                 <td>
                   {q.seller_name ?? q.seller_company_id.slice(0, 8)}{" "}
-                  <VerifiedBadge status={q.seller_verification_status} />
+                  <VerifiedBadge status={q.seller_verification_status} />{" "}
+                  {q.seller_review_count ? (
+                    <StarRating value={q.seller_avg_rating ?? 0} count={q.seller_review_count} />
+                  ) : (
+                    <span className="muted">No ratings</span>
+                  )}
                 </td>
                 <td><strong>{q.currency} {(q.price_cents / 100).toFixed(2)}</strong></td>
                 <td className="muted">{q.delivery_days != null ? `${q.delivery_days} days` : "—"}</td>

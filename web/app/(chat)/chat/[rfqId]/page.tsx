@@ -6,6 +6,8 @@ import { useToken } from "@/lib/auth";
 import { acceptQuote, getRfq, rfqQuotes, type QuoteRow, type RFQ } from "@/lib/api";
 import { AttachmentView } from "@/components/AttachmentView";
 import { QuoteThread } from "@/components/QuoteThread";
+import { VerifiedBadge } from "@/components/VerifiedBadge";
+import { StarRating } from "@/components/StarRating";
 
 const POLL_MS = 4000;
 
@@ -98,7 +100,16 @@ export default function ChatThread() {
                   <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
                     <div style={{ minWidth: 0 }}>
                       <strong>{q.currency} {(q.price_cents / 100).toFixed(2)}</strong>
-                      <span className="muted small"> · {q.seller_name ?? q.seller_company_id.slice(0, 8)} · {q.delivery_days != null ? `${q.delivery_days}d` : "—"}</span>
+                      <span className="muted small">
+                        {" "}· {q.seller_name ?? q.seller_company_id.slice(0, 8)}{" "}
+                        <VerifiedBadge status={q.seller_verification_status} />{" "}
+                        {q.seller_review_count ? (
+                          <StarRating value={q.seller_avg_rating ?? 0} count={q.seller_review_count} />
+                        ) : (
+                          <span className="muted">No ratings</span>
+                        )}{" "}
+                        · {q.delivery_days != null ? `${q.delivery_days}d` : "—"}
+                      </span>
                       {q.notes && <div className="muted small">{q.notes}</div>}
                     </div>
                     <div className="row" style={{ gap: "0.4rem", alignItems: "center" }}>

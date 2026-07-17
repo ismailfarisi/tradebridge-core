@@ -16,7 +16,10 @@ const isBuyer = (m: Me) => m.company_type === "buyer" || m.company_type === "bot
 const NAV: { group: string; items: NavItem[] }[] = [
   {
     group: "",
-    items: [{ href: "/dashboard", label: "Overview", show: () => true }],
+    items: [
+      { href: "/dashboard", label: "Overview", show: () => true },
+      { href: "/orders", label: "Orders", show: () => true },
+    ],
   },
   {
     group: "Buyer",
