@@ -20,6 +20,7 @@ var supportedCommands = map[string]bool{
 	"quote.submit":          true,
 	"clarification.request": true,
 	"no_bid":                true,
+	"quote.counter":         true,
 }
 
 type commandReq struct {
@@ -49,10 +50,47 @@ func (h *Handler) command(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "idempotency_key required")
 	}
 
+	payload := req.Payload
+	if len(payload) == 0 {
+		payload = []byte("{}")
+	}
+
 	// Authorization: any command naming an RFQ requires the agent's company to
-	// be a matched seller for it. quote.submit must name an RFQ.
+	// be a matched seller for it. quote.submit must name an RFQ. quote.counter
+	// carries a quote_id (not rfq_id) in its payload, so its RFQ — and the
+	// stronger check that the quote actually belongs to this agent's
+	// company — must be derived from the quote itself.
 	var rfqID *string
-	if req.RFQID != "" {
+	var counterQuote sqlc.Quote
+	if req.Type == "quote.counter" {
+		var qp struct {
+			QuoteID string `json:"quote_id"`
+		}
+		if err := json.Unmarshal(payload, &qp); err != nil || qp.QuoteID == "" {
+			return fiber.NewError(fiber.StatusBadRequest, "quote.counter requires quote_id")
+		}
+		counterQuote, err = h.q.GetQuote(c.Context(), qp.QuoteID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fiber.NewError(fiber.StatusNotFound, "quote not found")
+		} else if err != nil {
+			return err
+		}
+		if counterQuote.SellerCompanyID != agent.CompanyID {
+			// Never trust the client-set quote_id to belong to this agent.
+			return fiber.NewError(fiber.StatusForbidden, "not your quote")
+		}
+		matched, err := h.q.RFQMatchExists(c.Context(), sqlc.RFQMatchExistsParams{
+			RfqID: counterQuote.RfqID, SellerCompanyID: agent.CompanyID,
+		})
+		if err != nil {
+			return err
+		}
+		if !matched {
+			return fiber.NewError(fiber.StatusForbidden, "not matched to this rfq")
+		}
+		rfqID = &counterQuote.RfqID
+		req.RFQID = counterQuote.RfqID // so the audit trail records the derived rfq_id
+	} else if req.RFQID != "" {
 		matched, err := h.q.RFQMatchExists(c.Context(), sqlc.RFQMatchExistsParams{
 			RfqID: req.RFQID, SellerCompanyID: agent.CompanyID,
 		})
@@ -67,15 +105,10 @@ func (h *Handler) command(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "quote.submit requires rfq_id")
 	}
 
-	payload := req.Payload
-	if len(payload) == 0 {
-		payload = []byte("{}")
-	}
-
 	// Validate the quote body up front so a malformed quote is rejected before
 	// any command row is written.
 	var normalized quotes.Normalized
-	if req.Type == "quote.submit" {
+	if req.Type == "quote.submit" || req.Type == "quote.counter" {
 		normalized, err = quotes.Normalize(payload)
 		if err != nil {
 			return fiber.NewError(fiber.StatusBadRequest, err.Error())
@@ -127,6 +160,34 @@ func (h *Handler) command(c *fiber.Ctx) error {
 	case "clarification.request":
 		if rfqID != nil {
 			h.threadClarification(c.Context(), *rfqID, agent.CompanyID, payload)
+		}
+	case "quote.counter":
+		head, _, err := quotes.RecordCounter(c.Context(), h.q, h.pool, counterQuote.ID, cmd.ID, normalized)
+		if err != nil {
+			return err
+		}
+		// Thread the seller's counter as a message too, so the buyer sees the
+		// human-readable ask alongside the new head terms.
+		sellerBody := normalized.Notes
+		if sellerBody == "" {
+			sellerBody = fmt.Sprintf("New offer: %.2f %s", float64(normalized.PriceCents)/100, normalized.Currency)
+		}
+		if _, err := h.q.CreateQuoteMessage(c.Context(), sqlc.CreateQuoteMessageParams{
+			QuoteID: head.ID, Author: "seller", Body: sellerBody, Attachments: nil,
+		}); err != nil {
+			h.logger.Warn().Err(err).Str("quote_id", head.ID).Msg("failed to thread seller counter")
+		}
+		if h.notifier != nil {
+			if r, err := h.q.GetRFQ(c.Context(), head.RfqID); err == nil {
+				h.notifier.NotifyCompany(c.Context(), r.BuyerCompanyID, notify.Event{
+					Type:     notify.TypeQuoteCountered,
+					Title:    "Seller sent a counter-offer",
+					Body:     "The seller revised their quote.",
+					Data:     map[string]any{"rfq_id": r.ID, "quote_id": head.ID},
+					CTALabel: "View thread",
+					CTAPath:  "/rfqs/" + r.ID,
+				})
+			}
 		}
 	}
 

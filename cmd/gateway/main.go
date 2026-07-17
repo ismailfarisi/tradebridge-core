@@ -45,7 +45,7 @@ func main() {
 		PerMin:            app.Config.AgentRLPerMin,
 		AuthfailMax:       app.Config.AgentAuthfailMax,
 		AuthfailWindowSec: app.Config.AgentAuthfailWindowSec,
-	}, notifier, entSvc).Register(f)
+	}, notifier, entSvc, app.Pool).Register(f)
 
 	addr := ":" + app.Config.GatewayPort
 	log.Info().Str("addr", addr).Msg("agent gateway listening")

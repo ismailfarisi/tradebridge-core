@@ -22,6 +22,9 @@ const (
 	TypeRFQMatched = "rfq.matched"
 	// TypeQuoteSubmitted fires when a seller submits a quote on an RFQ.
 	TypeQuoteSubmitted = "quote.submitted"
+	// TypeQuoteCountered fires when a seller's agent sends a quote.counter,
+	// revising the terms of a quote the buyer countered on.
+	TypeQuoteCountered = "quote.countered"
 	// TypeOrderCreated fires when an order is created from an accepted quote.
 	TypeOrderCreated = "order.created"
 	// TypeOrderConfirmed fires when a seller confirms an order.

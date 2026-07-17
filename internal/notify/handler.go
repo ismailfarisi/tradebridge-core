@@ -162,7 +162,7 @@ func clampInt(v, lo, hi int) int {
 // validEventType reports whether t is a user-configurable event type.
 func validEventType(t string) bool {
 	switch t {
-	case TypeRFQMatched, TypeQuoteSubmitted, TypeOrderCreated,
+	case TypeRFQMatched, TypeQuoteSubmitted, TypeQuoteCountered, TypeOrderCreated,
 		TypeOrderConfirmed, TypeOrderFulfilled, TypeOrderCompleted, TypeOrderCancelled,
 		TypeInvoiceIssued, TypeReviewReceived, TypeDisputeOpened, TypeDisputeResolved:
 		return true

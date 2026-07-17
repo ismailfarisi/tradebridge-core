@@ -12,6 +12,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 
@@ -38,11 +39,12 @@ type Handler struct {
 	rl       *rateLimiter
 	notifier *notify.Notifier // may be nil; notifications are then skipped
 	ent      *entitlements.Service
+	pool     *pgxpool.Pool // used by quote.counter to atomically bump the quote head + append a version
 }
 
 // NewHandler builds the gateway handler. notifier may be nil, in which case
 // domain events (e.g. quote.submitted) do not notify anyone.
-func NewHandler(q *sqlc.Queries, rdb *redis.Client, store *attachments.Store, logger zerolog.Logger, rlc RateLimitConfig, notifier *notify.Notifier, ent *entitlements.Service) *Handler {
+func NewHandler(q *sqlc.Queries, rdb *redis.Client, store *attachments.Store, logger zerolog.Logger, rlc RateLimitConfig, notifier *notify.Notifier, ent *entitlements.Service, pool *pgxpool.Pool) *Handler {
 	var c counter
 	if rdb != nil {
 		c = redisCounter{rdb: rdb}
@@ -56,7 +58,7 @@ func NewHandler(q *sqlc.Queries, rdb *redis.Client, store *attachments.Store, lo
 		failWin: time.Duration(rlc.AuthfailWindowSec) * time.Second,
 		logger:  logger,
 	}
-	return &Handler{q: q, redis: rdb, store: store, logger: logger, rl: rl, notifier: notifier, ent: ent}
+	return &Handler{q: q, redis: rdb, store: store, logger: logger, rl: rl, notifier: notifier, ent: ent, pool: pool}
 }
 
 // Register mounts the gateway routes.
