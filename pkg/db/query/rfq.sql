@@ -12,6 +12,25 @@ WHERE buyer_company_id = $1
 ORDER BY created_at DESC
 LIMIT sqlc.arg(lim) OFFSET sqlc.arg(off);
 
+-- name: ListRFQsByBuyerFiltered :many
+-- Buyer RFQ list with tab filter (open|quoted|closed), text search, and per-RFQ
+-- quote_count + new_quotes (quotes since the buyer last viewed the RFQ).
+SELECT r.id, r.title, r.raw_text, r.requirements, r.category, r.status, r.match_count, r.created_at,
+    (SELECT COUNT(*) FROM quotes q WHERE q.rfq_id = r.id)::bigint AS quote_count,
+    (SELECT COUNT(*) FROM quotes q
+       WHERE q.rfq_id = r.id
+         AND q.created_at > COALESCE(v.last_viewed_at, 'epoch'::timestamptz))::bigint AS new_quotes
+FROM rfqs r
+LEFT JOIN rfq_views v ON v.rfq_id = r.id AND v.company_id = r.buyer_company_id
+WHERE r.buyer_company_id = @company_id
+  AND (@tab::text = ''
+       OR (@tab::text = 'open'   AND r.status = 'open')
+       OR (@tab::text = 'quoted' AND r.status = 'quoted')
+       OR (@tab::text = 'closed' AND r.status IN ('closed','expired')))
+  AND (@q::text = '' OR r.title ILIKE '%' || @q::text || '%' OR r.raw_text ILIKE '%' || @q::text || '%')
+ORDER BY r.created_at DESC
+LIMIT @lim OFFSET @off;
+
 -- name: MarkRFQMatched :one
 UPDATE rfqs
 SET requirements = sqlc.arg(requirements)::jsonb,

@@ -59,6 +59,8 @@ type rfqView struct {
 	MatchCount   int32         `json:"match_count"`
 	Messages     []ChatMessage `json:"messages,omitempty"`
 	CreatedAt    string        `json:"created_at"`
+	QuoteCount   int64         `json:"quote_count,omitempty"`
+	NewQuotes    int64         `json:"new_quotes,omitempty"`
 }
 
 func view(r sqlc.Rfq) rfqView {
@@ -115,17 +117,34 @@ func (h *Handler) create(c *fiber.Ctx) error {
 }
 
 func (h *Handler) list(c *fiber.Ctx) error {
-	rfqs, err := h.q.ListRFQsByBuyer(c.Context(), sqlc.ListRFQsByBuyerParams{
-		BuyerCompanyID: middleware.CompanyID(c),
-		Lim:            50,
-		Off:            0,
+	rows, err := h.q.ListRFQsByBuyerFiltered(c.Context(), sqlc.ListRFQsByBuyerFilteredParams{
+		CompanyID: middleware.CompanyID(c),
+		Tab:       c.Query("tab"),
+		Q:         c.Query("q"),
+		Lim:       50,
+		Off:       0,
 	})
 	if err != nil {
 		return err
 	}
-	out := make([]rfqView, len(rfqs))
-	for i, r := range rfqs {
-		out[i] = view(r)
+	out := make([]rfqView, 0, len(rows))
+	for _, r := range rows {
+		var req Requirements
+		if len(r.Requirements) > 0 {
+			_ = json.Unmarshal(r.Requirements, &req)
+		}
+		out = append(out, rfqView{
+			ID:           r.ID,
+			Title:        r.Title,
+			RawText:      r.RawText,
+			Requirements: req,
+			Category:     r.Category,
+			Status:       r.Status,
+			MatchCount:   r.MatchCount,
+			CreatedAt:    r.CreatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
+			QuoteCount:   r.QuoteCount,
+			NewQuotes:    r.NewQuotes,
+		})
 	}
 	return c.JSON(fiber.Map{"rfqs": out, "count": len(out)})
 }
@@ -150,6 +169,10 @@ func (h *Handler) get(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
+	_ = h.q.UpsertRFQView(c.Context(), sqlc.UpsertRFQViewParams{
+		CompanyID: middleware.CompanyID(c),
+		RfqID:     rfq.ID,
+	})
 	rows, err := h.q.ListMatchesByRFQ(c.Context(), rfq.ID)
 	if err != nil {
 		return err

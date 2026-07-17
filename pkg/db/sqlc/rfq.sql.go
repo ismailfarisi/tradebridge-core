@@ -258,6 +258,84 @@ func (q *Queries) ListRFQsByBuyer(ctx context.Context, arg ListRFQsByBuyerParams
 	return items, nil
 }
 
+const listRFQsByBuyerFiltered = `-- name: ListRFQsByBuyerFiltered :many
+SELECT r.id, r.title, r.raw_text, r.requirements, r.category, r.status, r.match_count, r.created_at,
+    (SELECT COUNT(*) FROM quotes q WHERE q.rfq_id = r.id)::bigint AS quote_count,
+    (SELECT COUNT(*) FROM quotes q
+       WHERE q.rfq_id = r.id
+         AND q.created_at > COALESCE(v.last_viewed_at, 'epoch'::timestamptz))::bigint AS new_quotes
+FROM rfqs r
+LEFT JOIN rfq_views v ON v.rfq_id = r.id AND v.company_id = r.buyer_company_id
+WHERE r.buyer_company_id = $1
+  AND ($2::text = ''
+       OR ($2::text = 'open'   AND r.status = 'open')
+       OR ($2::text = 'quoted' AND r.status = 'quoted')
+       OR ($2::text = 'closed' AND r.status IN ('closed','expired')))
+  AND ($3::text = '' OR r.title ILIKE '%' || $3::text || '%' OR r.raw_text ILIKE '%' || $3::text || '%')
+ORDER BY r.created_at DESC
+LIMIT $5 OFFSET $4
+`
+
+type ListRFQsByBuyerFilteredParams struct {
+	CompanyID string `json:"company_id"`
+	Tab       string `json:"tab"`
+	Q         string `json:"q"`
+	Off       int32  `json:"off"`
+	Lim       int32  `json:"lim"`
+}
+
+type ListRFQsByBuyerFilteredRow struct {
+	ID           string    `json:"id"`
+	Title        string    `json:"title"`
+	RawText      string    `json:"raw_text"`
+	Requirements []byte    `json:"requirements"`
+	Category     string    `json:"category"`
+	Status       string    `json:"status"`
+	MatchCount   int32     `json:"match_count"`
+	CreatedAt    time.Time `json:"created_at"`
+	QuoteCount   int64     `json:"quote_count"`
+	NewQuotes    int64     `json:"new_quotes"`
+}
+
+// Buyer RFQ list with tab filter (open|quoted|closed), text search, and per-RFQ
+// quote_count + new_quotes (quotes since the buyer last viewed the RFQ).
+func (q *Queries) ListRFQsByBuyerFiltered(ctx context.Context, arg ListRFQsByBuyerFilteredParams) ([]ListRFQsByBuyerFilteredRow, error) {
+	rows, err := q.db.Query(ctx, listRFQsByBuyerFiltered,
+		arg.CompanyID,
+		arg.Tab,
+		arg.Q,
+		arg.Off,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListRFQsByBuyerFilteredRow
+	for rows.Next() {
+		var i ListRFQsByBuyerFilteredRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.RawText,
+			&i.Requirements,
+			&i.Category,
+			&i.Status,
+			&i.MatchCount,
+			&i.CreatedAt,
+			&i.QuoteCount,
+			&i.NewQuotes,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markRFQMatched = `-- name: MarkRFQMatched :one
 UPDATE rfqs
 SET requirements = $1::jsonb,
