@@ -4,6 +4,7 @@ package adminconsole
 
 import (
 	"context"
+	"time"
 
 	"github.com/tradebridge/core/internal/entitlements"
 	"github.com/tradebridge/core/pkg/db/sqlc"
@@ -25,8 +26,18 @@ type CompanyDetail struct {
 	Status             string        `json:"status"`
 	VerificationStatus string        `json:"verification_status"`
 	PlanCode           string        `json:"plan_code"`
-	Users              []sqlc.User   `json:"users"`
+	Users              []UserSummary `json:"users"`
 	Counts             CompanyCounts `json:"counts"`
+}
+
+// UserSummary is the admin-safe projection of sqlc.User — it deliberately
+// omits PasswordHash (and EmailVerifiedAt, not needed here) so the admin
+// company-detail endpoint never serializes a credential.
+type UserSummary struct {
+	ID        string    `json:"id"`
+	Email     string    `json:"email"`
+	Role      string    `json:"role"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type CompanyCounts struct {
@@ -45,7 +56,10 @@ func (s *Service) Detail(ctx context.Context, id string) (CompanyDetail, error) 
 		d.VerificationStatus = v.VerificationStatus
 	}
 	if users, err := s.q.ListUsersByCompany(ctx, id); err == nil {
-		d.Users = users
+		d.Users = make([]UserSummary, 0, len(users))
+		for _, u := range users {
+			d.Users = append(d.Users, UserSummary{ID: u.ID, Email: u.Email, Role: u.Role, CreatedAt: u.CreatedAt})
+		}
 	}
 	if cnt, err := s.q.AdminCompanyCounts(ctx, id); err == nil {
 		d.Counts = CompanyCounts{RFQs: cnt.Rfqs, Quotes: cnt.Quotes, Orders: cnt.Orders}

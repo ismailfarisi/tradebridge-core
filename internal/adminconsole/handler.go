@@ -68,6 +68,9 @@ type suspendReq struct {
 
 func (h *Handler) setStatus(c *fiber.Ctx, status, action string) error {
 	id := c.Params("id")
+	if _, err := h.q.GetCompanyByID(c.Context(), id); err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "company not found")
+	}
 	var req suspendReq
 	_ = c.BodyParser(&req)
 	if err := h.q.SetCompanyStatus(c.Context(), sqlc.SetCompanyStatusParams{ID: id, Status: status}); err != nil {

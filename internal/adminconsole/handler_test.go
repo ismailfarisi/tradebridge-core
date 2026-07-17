@@ -97,12 +97,28 @@ func TestSearchReturnsSeededCompany(t *testing.T) {
 func TestDetailReturnsStatusPlanAndCounts(t *testing.T) {
 	q := testQueriesOrSkip(t)
 	cid := makeCompany(t, q, "detail-co")
+	_, err := q.CreateUser(context.Background(), sqlc.CreateUserParams{
+		CompanyID: cid, Email: "owner-" + cid + "@detail.test", Role: "owner",
+	})
+	require.NoError(t, err)
 
 	app := fiber.New()
 	newTestHandler(q).Register(app, stubAdminIdentity("admin-1", "ops@x.com"))
 
-	code, out := doJSON(t, app, "GET", "/admin/v1/companies/"+cid, nil)
-	require.Equal(t, 200, code, "%v", out)
+	req := httptest.NewRequest("GET", "/admin/v1/companies/"+cid, http.NoBody)
+	resp, err := app.Test(req, -1)
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
+	rawBody := new(bytes.Buffer)
+	_, err = rawBody.ReadFrom(resp.Body)
+	require.NoError(t, err)
+	body := rawBody.String()
+
+	// The response must never leak a user's password hash.
+	require.NotContains(t, body, "password_hash", "detail response must not include password_hash")
+
+	var out map[string]any
+	require.NoError(t, json.Unmarshal(rawBody.Bytes(), &out))
 	require.Equal(t, "active", out["status"])
 	require.Equal(t, "free", out["plan_code"])
 	counts, ok := out["counts"].(map[string]any)
@@ -110,6 +126,30 @@ func TestDetailReturnsStatusPlanAndCounts(t *testing.T) {
 	require.Equal(t, float64(0), counts["rfqs"])
 	require.Equal(t, float64(0), counts["quotes"])
 	require.Equal(t, float64(0), counts["orders"])
+
+	users, ok := out["users"].([]any)
+	require.True(t, ok)
+	require.Len(t, users, 1)
+	u, ok := users[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "owner-"+cid+"@detail.test", u["email"])
+	require.Equal(t, "owner", u["role"])
+	require.NotContains(t, u, "password_hash")
+}
+
+func TestSuspendOnUnknownCompanyReturns404(t *testing.T) {
+	q := testQueriesOrSkip(t)
+
+	app := fiber.New()
+	newTestHandler(q).Register(app, stubAdminIdentity("admin-1", "ops@x.com"))
+
+	unknownID := "co_does_not_exist"
+	code, _ := doJSON(t, app, "POST", "/admin/v1/companies/"+unknownID+"/suspend", map[string]string{"reason": "fraud"})
+	require.Equal(t, 404, code)
+
+	logs, err := q.ListAuditLogs(context.Background(), sqlc.ListAuditLogsParams{CompanyID: &unknownID, Lim: 10})
+	require.NoError(t, err)
+	require.Len(t, logs, 0, "no audit row should be written for a nonexistent company")
 }
 
 func TestSuspendFlipsStatusAndWritesAuditRow(t *testing.T) {
