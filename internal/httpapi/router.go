@@ -24,6 +24,7 @@ import (
 	"github.com/tradebridge/core/internal/notify"
 	"github.com/tradebridge/core/internal/orders"
 	"github.com/tradebridge/core/internal/quotes"
+	"github.com/tradebridge/core/internal/reviews"
 	"github.com/tradebridge/core/internal/rfq"
 	"github.com/tradebridge/core/internal/settings"
 	"github.com/tradebridge/core/internal/suppliers"
@@ -249,6 +250,13 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	orders.NewHandler(orders.NewService(q, cfg.Pool, notifier, cfg.Logger), q).Register(f, guard...)
 	invoicing.NewHandler(invSvc, q).Register(f, guard...)
 
+	// Reviews: party routes (create/list) under the tenant guard; the public
+	// GET /public/v1/sellers/:id/reviews route lives inside
+	// suppliers.RegisterPublic above. Admin remove is registered in the admin
+	// block below.
+	reviewsSvc := reviews.NewService(q, notifier, cfg.Logger)
+	reviews.NewHandler(reviewsSvc).Register(f, guard...)
+
 	// Abuse reports: rate-limited, requires a verified email.
 	rlReport := mkRL("report", cfg.RateLimitReport, middleware.RateLimit{Limit: 30, Window: time.Hour}, middleware.KeyCompanyOrIP)
 	reports := trust.NewReportsHandler(q)
@@ -272,6 +280,7 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 		entitlements.NewAdminHandler(q, entSvc).Register(f, adminGuard)
 		trust.NewAdminHandler(trustSvc, q).Register(f, adminGuard)
 		reports.RegisterAdmin(f, adminGuard)
+		reviews.NewAdminHandler(reviewsSvc).Register(f, adminGuard)
 	} else {
 		cfg.Logger.Warn().Msg("ADMIN_JWT_SECRET unset — platform admin routes disabled")
 	}
