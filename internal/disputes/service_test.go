@@ -177,3 +177,129 @@ func TestListForOrderPartyOnly(t *testing.T) {
 	_, err = svc.ListForOrder(ctx, order.ID, stranger.ID)
 	require.ErrorIs(t, err, ErrNotFound)
 }
+
+func TestResolveMovesOrderAndLogsAudit(t *testing.T) {
+	q, pool := testQueriesOrSkip(t)
+	svc := NewService(q, pool, nil, zerolog.Nop())
+	ctx := context.Background()
+
+	order, buyerID, _ := seedOrder(t, q, "resolve")
+	d, err := svc.Raise(ctx, order.ID, buyerID, "not_delivered", "never showed up")
+	require.NoError(t, err)
+
+	resolved, err := svc.Resolve(ctx, d.ID, "admin-x", "resolved", "completed", "shipped, closed")
+	require.NoError(t, err)
+	require.Equal(t, "resolved", resolved.Status)
+	require.NotNil(t, resolved.ResolvedByAdminID)
+	require.Equal(t, "admin-x", *resolved.ResolvedByAdminID)
+
+	got, err := q.GetOrder(ctx, order.ID)
+	require.NoError(t, err)
+	require.Equal(t, "completed", got.Status)
+
+	events, err := q.ListOrderEvents(ctx, order.ID)
+	require.NoError(t, err)
+	require.Len(t, events, 2)
+	last := events[len(events)-1]
+	require.Equal(t, "disputed", last.FromStatus)
+	require.Equal(t, "completed", last.ToStatus)
+	require.Equal(t, "admin", last.Actor)
+
+	var action string
+	var targetID *string
+	err = pool.QueryRow(ctx, "SELECT action, target_id FROM audit_logs WHERE target_id = $1", d.ID).Scan(&action, &targetID)
+	require.NoError(t, err)
+	require.Equal(t, "dispute.resolved", action)
+	require.NotNil(t, targetID)
+	require.Equal(t, d.ID, *targetID)
+}
+
+func TestResolveRejectedCancelsOrder(t *testing.T) {
+	q, pool := testQueriesOrSkip(t)
+	svc := NewService(q, pool, nil, zerolog.Nop())
+	ctx := context.Background()
+
+	order, buyerID, _ := seedOrder(t, q, "reject")
+	d, err := svc.Raise(ctx, order.ID, buyerID, "other", "")
+	require.NoError(t, err)
+
+	resolved, err := svc.Resolve(ctx, d.ID, "admin-y", "rejected", "cancelled", "no evidence")
+	require.NoError(t, err)
+	require.Equal(t, "rejected", resolved.Status)
+
+	got, err := q.GetOrder(ctx, order.ID)
+	require.NoError(t, err)
+	require.Equal(t, "cancelled", got.Status)
+}
+
+func TestResolveInvalidOutcome(t *testing.T) {
+	q, pool := testQueriesOrSkip(t)
+	svc := NewService(q, pool, nil, zerolog.Nop())
+	ctx := context.Background()
+
+	order, buyerID, _ := seedOrder(t, q, "invalidoutcome")
+	d, err := svc.Raise(ctx, order.ID, buyerID, "other", "")
+	require.NoError(t, err)
+
+	_, err = svc.Resolve(ctx, d.ID, "admin-z", "maybe", "completed", "")
+	require.Error(t, err)
+	var validation ValidationError
+	require.ErrorAs(t, err, &validation)
+
+	_, err = svc.Resolve(ctx, d.ID, "admin-z", "resolved", "fulfilled", "")
+	require.Error(t, err)
+	require.ErrorAs(t, err, &validation)
+}
+
+func TestResolveAlreadyResolved(t *testing.T) {
+	q, pool := testQueriesOrSkip(t)
+	svc := NewService(q, pool, nil, zerolog.Nop())
+	ctx := context.Background()
+
+	order, buyerID, _ := seedOrder(t, q, "already")
+	d, err := svc.Raise(ctx, order.ID, buyerID, "other", "")
+	require.NoError(t, err)
+
+	_, err = svc.Resolve(ctx, d.ID, "admin-a", "resolved", "completed", "done")
+	require.NoError(t, err)
+
+	_, err = svc.Resolve(ctx, d.ID, "admin-a", "resolved", "completed", "done again")
+	require.Error(t, err)
+	var conflict ConflictError
+	require.ErrorAs(t, err, &conflict)
+}
+
+func TestListForAdminFiltersByStatus(t *testing.T) {
+	q, pool := testQueriesOrSkip(t)
+	svc := NewService(q, pool, nil, zerolog.Nop())
+	ctx := context.Background()
+
+	orderOpen, buyerOpen, _ := seedOrder(t, q, "adminopen")
+	dOpen, err := svc.Raise(ctx, orderOpen.ID, buyerOpen, "other", "")
+	require.NoError(t, err)
+
+	orderResolved, buyerResolved, _ := seedOrder(t, q, "adminresolved")
+	dResolved, err := svc.Raise(ctx, orderResolved.ID, buyerResolved, "other", "")
+	require.NoError(t, err)
+	_, err = svc.Resolve(ctx, dResolved.ID, "admin-list", "resolved", "completed", "done")
+	require.NoError(t, err)
+
+	openList, err := svc.ListForAdmin(ctx, "open")
+	require.NoError(t, err)
+	require.True(t, containsDispute(openList, dOpen.ID))
+	require.False(t, containsDispute(openList, dResolved.ID))
+
+	allList, err := svc.ListForAdmin(ctx, "")
+	require.NoError(t, err)
+	require.True(t, containsDispute(allList, dOpen.ID))
+	require.True(t, containsDispute(allList, dResolved.ID))
+}
+
+func containsDispute(list []sqlc.Dispute, id string) bool {
+	for _, d := range list {
+		if d.ID == id {
+			return true
+		}
+	}
+	return false
+}

@@ -7,6 +7,7 @@ package disputes
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	"github.com/jackc/pgx/v5"
@@ -45,6 +46,13 @@ var validReasons = map[string]bool{
 var disputableStatuses = map[string]bool{
 	"created": true, "confirmed": true, "fulfilled": true,
 }
+
+// validOutcomes are the dispute statuses an admin resolution may set.
+var validOutcomes = map[string]bool{"resolved": true, "rejected": true}
+
+// validOrderTargets are the terminal order states a resolution may move the
+// order to.
+var validOrderTargets = map[string]bool{"completed": true, "cancelled": true}
 
 // Service raises and resolves disputes, transactionally moving the parent
 // order alongside the dispute row, and notifying the affected parties after
@@ -168,4 +176,119 @@ func (s *Service) ListForOrder(ctx context.Context, orderID, companyID string) (
 		return nil, ErrNotFound
 	}
 	return s.q.ListDisputesForOrder(ctx, orderID)
+}
+
+// ListForAdmin returns disputes for the platform-admin queue, optionally
+// filtered by status ("open"/"resolved"/"rejected"); an empty status
+// returns all of them.
+func (s *Service) ListForAdmin(ctx context.Context, status string) ([]sqlc.Dispute, error) {
+	var narg *string
+	if status != "" {
+		narg = &status
+	}
+	return s.q.ListDisputes(ctx, narg)
+}
+
+// Resolve applies an admin's resolution to disputeID: it flips the dispute
+// to a terminal status, moves the parent order out of disputed to orderTo,
+// appends an order_event, and writes an audit_logs row — all inside one
+// transaction. Both parties are notified after commit. A dispute that is
+// already resolved/rejected (0 rows on the conditional UPDATE) is a 409, so
+// a double-resolve is safe.
+func (s *Service) Resolve(ctx context.Context, disputeID, adminID, outcome, orderTo, resolution string) (sqlc.Dispute, error) {
+	if !validOutcomes[outcome] {
+		return sqlc.Dispute{}, ValidationError{Msg: "invalid outcome"}
+	}
+	if !validOrderTargets[orderTo] {
+		return sqlc.Dispute{}, ValidationError{Msg: "invalid order target"}
+	}
+
+	if _, err := s.q.GetDispute(ctx, disputeID); errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.Dispute{}, ErrNotFound
+	} else if err != nil {
+		return sqlc.Dispute{}, err
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return sqlc.Dispute{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	qtx := s.q.WithTx(tx)
+
+	resolved, err := qtx.ResolveDispute(ctx, sqlc.ResolveDisputeParams{
+		ID:                disputeID,
+		Status:            outcome,
+		Resolution:        resolution,
+		ResolvedByAdminID: &adminID,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.Dispute{}, ConflictError{Msg: "dispute is not open"}
+	} else if err != nil {
+		return sqlc.Dispute{}, err
+	}
+
+	order, err := qtx.GetOrder(ctx, resolved.OrderID)
+	if err != nil {
+		return sqlc.Dispute{}, err
+	}
+
+	updatedOrder, err := qtx.SetOrderStatus(ctx, sqlc.SetOrderStatusParams{ID: order.ID, Status: orderTo, FromStatus: "disputed"})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.Dispute{}, ConflictError{Msg: "order was concurrently modified"}
+	} else if err != nil {
+		return sqlc.Dispute{}, err
+	}
+
+	if _, err := qtx.CreateOrderEvent(ctx, sqlc.CreateOrderEventParams{
+		OrderID:    order.ID,
+		FromStatus: "disputed",
+		ToStatus:   orderTo,
+		Actor:      "admin",
+		Note:       resolution,
+	}); err != nil {
+		return sqlc.Dispute{}, err
+	}
+
+	detail, err := json.Marshal(map[string]any{
+		"outcome": outcome, "order_to": orderTo, "resolution": resolution,
+	})
+	if err != nil {
+		return sqlc.Dispute{}, err
+	}
+	targetID := disputeID
+	if _, err := qtx.CreateAuditLog(ctx, sqlc.CreateAuditLogParams{
+		CompanyID: order.BuyerCompanyID,
+		Actor:     adminID,
+		Action:    "dispute.resolved",
+		TargetID:  &targetID,
+		Detail:    detail,
+	}); err != nil {
+		return sqlc.Dispute{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return sqlc.Dispute{}, err
+	}
+
+	if s.notifier != nil {
+		s.notifier.NotifyCompany(ctx, updatedOrder.BuyerCompanyID, notify.Event{
+			Type:     notify.TypeDisputeResolved,
+			Title:    "Dispute resolved",
+			Body:     "The dispute on your order was resolved.",
+			Data:     map[string]any{"order_id": order.ID, "dispute_id": disputeID, "outcome": outcome},
+			CTALabel: "View order",
+			CTAPath:  "/orders/" + order.ID,
+		})
+		s.notifier.NotifyCompany(ctx, updatedOrder.SellerCompanyID, notify.Event{
+			Type:     notify.TypeDisputeResolved,
+			Title:    "Dispute resolved",
+			Body:     "The dispute on your order was resolved.",
+			Data:     map[string]any{"order_id": order.ID, "dispute_id": disputeID, "outcome": outcome},
+			CTALabel: "View order",
+			CTAPath:  "/orders/" + order.ID,
+		})
+	}
+
+	return resolved, nil
 }
