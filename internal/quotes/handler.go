@@ -34,6 +34,7 @@ func (h *Handler) Register(app *fiber.App, messageRL fiber.Handler, guard ...fib
 	g.Get("/:id/messages", h.listMessages)
 	g.Post("/:id/messages", messageRL, h.addMessage)
 	g.Post("/:id/counter", messageRL, h.counter)
+	g.Get("/:id/thread", h.thread)
 }
 
 type quoteView struct {
@@ -210,6 +211,38 @@ func (h *Handler) counter(c *fiber.Ctx) error {
 		return err
 	}
 	return c.JSON(fiber.Map{"message": messageView(msg)})
+}
+
+// thread returns the combined thread load for a quote — the head quote, its
+// full message history, and its immutable version history — so the buyer or
+// seller UI can render the page in one round-trip before switching to the
+// live SSE tail. Party-only, mirroring the other quote routes.
+func (h *Handler) thread(c *fiber.Ctx) error {
+	q, err := h.mustParty(c)
+	if err != nil {
+		return err
+	}
+	msgs, err := h.q.ListQuoteMessages(c.Context(), q.ID)
+	if err != nil {
+		return err
+	}
+	versions, err := h.q.ListQuoteVersions(c.Context(), q.ID)
+	if err != nil {
+		return err
+	}
+	views := make([]quoteMessageView, len(msgs))
+	for i, m := range msgs {
+		views[i] = messageView(m)
+	}
+	return c.JSON(fiber.Map{
+		"quote": quoteView{
+			ID: q.ID, RFQID: q.RfqID, SellerID: q.SellerCompanyID,
+			PriceCents: q.PriceCents, Currency: q.Currency, DeliveryDays: q.DeliveryDays,
+			Notes: q.Notes, Completeness: q.Completeness, Status: q.Status,
+		},
+		"messages": views,
+		"versions": versions,
+	})
 }
 
 func (h *Handler) listMessages(c *fiber.Ctx) error {

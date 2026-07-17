@@ -15,6 +15,18 @@ import (
 	"github.com/tradebridge/core/pkg/db/sqlc"
 )
 
+// mustJSON marshals v for a best-effort thread publish. A marshal failure
+// (which shouldn't happen for these concrete row types) yields nil, which
+// Publisher.PublishMessage/PublishVersion treat as an empty (omitted) field
+// rather than panicking.
+func mustJSON(v any) []byte {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return nil
+	}
+	return b
+}
+
 // supportedCommands is the closed set of commands an agent may send.
 var supportedCommands = map[string]bool{
 	"quote.submit":          true,
@@ -162,20 +174,23 @@ func (h *Handler) command(c *fiber.Ctx) error {
 			h.threadClarification(c.Context(), *rfqID, agent.CompanyID, payload)
 		}
 	case "quote.counter":
-		head, _, err := quotes.RecordCounter(c.Context(), h.q, h.pool, counterQuote.ID, cmd.ID, normalized)
+		head, ver, err := quotes.RecordCounter(c.Context(), h.q, h.pool, counterQuote.ID, cmd.ID, normalized)
 		if err != nil {
 			return err
 		}
+		h.thread.PublishVersion(c.Context(), head.ID, mustJSON(ver))
 		// Thread the seller's counter as a message too, so the buyer sees the
 		// human-readable ask alongside the new head terms.
 		sellerBody := normalized.Notes
 		if sellerBody == "" {
 			sellerBody = fmt.Sprintf("New offer: %.2f %s", float64(normalized.PriceCents)/100, normalized.Currency)
 		}
-		if _, err := h.q.CreateQuoteMessage(c.Context(), sqlc.CreateQuoteMessageParams{
+		if sellerMsg, err := h.q.CreateQuoteMessage(c.Context(), sqlc.CreateQuoteMessageParams{
 			QuoteID: head.ID, Author: "seller", Body: sellerBody, Attachments: nil,
 		}); err != nil {
 			h.logger.Warn().Err(err).Str("quote_id", head.ID).Msg("failed to thread seller counter")
+		} else {
+			h.thread.PublishMessage(c.Context(), head.ID, mustJSON(sellerMsg))
 		}
 		if h.notifier != nil {
 			if r, err := h.q.GetRFQ(c.Context(), head.RfqID); err == nil {

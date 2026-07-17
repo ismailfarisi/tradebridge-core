@@ -65,7 +65,7 @@ func TestAcceptCreatesInvoiceAtomically(t *testing.T) {
 	pub := eventbus.New(q, nil, zerolog.Nop())
 	invSvc := invoicing.NewService(zerolog.Nop())
 	entSvc := entitlements.NewService(q, zerolog.Nop())
-	svc := NewService(q, pool, pub, nil, zerolog.Nop(), nil, invSvc, entSvc)
+	svc := NewService(q, pool, pub, nil, zerolog.Nop(), nil, invSvc, entSvc, nil)
 
 	order, err := svc.Accept(ctx, buyerID, quote.ID)
 	require.NoError(t, err)

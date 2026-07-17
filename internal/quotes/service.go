@@ -23,8 +23,21 @@ import (
 	"github.com/tradebridge/core/internal/invoicing"
 	"github.com/tradebridge/core/internal/notify"
 	"github.com/tradebridge/core/internal/rfq"
+	"github.com/tradebridge/core/internal/thread"
 	"github.com/tradebridge/core/pkg/db/sqlc"
 )
+
+// mustJSON marshals v for a best-effort thread publish. A marshal failure
+// (which shouldn't happen for these concrete row types) yields nil, which
+// Publisher.PublishMessage/PublishVersion treat as an empty (omitted) field
+// rather than panicking.
+func mustJSON(v any) []byte {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return nil
+	}
+	return b
+}
 
 // ErrNotFound is returned when a quote (or its RFQ) doesn't exist or isn't
 // visible to the caller; the HTTP layer maps it to 404.
@@ -182,11 +195,12 @@ type Service struct {
 	notifier *notify.Notifier
 	inv      *invoicing.Service
 	ent      *entitlements.Service
+	thread   *thread.Publisher
 }
 
 // NewService builds the quotes service.
-func NewService(q *sqlc.Queries, pool *pgxpool.Pool, pub *eventbus.Publisher, loader *attachments.Loader, logger zerolog.Logger, notifier *notify.Notifier, inv *invoicing.Service, ent *entitlements.Service) *Service {
-	return &Service{q: q, pool: pool, pub: pub, loader: loader, logger: logger, notifier: notifier, inv: inv, ent: ent}
+func NewService(q *sqlc.Queries, pool *pgxpool.Pool, pub *eventbus.Publisher, loader *attachments.Loader, logger zerolog.Logger, notifier *notify.Notifier, inv *invoicing.Service, ent *entitlements.Service, threadPub *thread.Publisher) *Service {
+	return &Service{q: q, pool: pool, pub: pub, loader: loader, logger: logger, notifier: notifier, inv: inv, ent: ent, thread: threadPub}
 }
 
 // QuoteMessageEvent is the agent event emitted when a buyer posts in a quote
@@ -230,6 +244,7 @@ func (s *Service) AddMessage(ctx context.Context, q sqlc.Quote, authorCompanyID,
 	if err != nil {
 		return msg, err
 	}
+	s.thread.PublishMessage(ctx, q.ID, mustJSON(messageView(msg)))
 	if len(attachmentIDs) > 0 {
 		if err := s.q.SetAttachmentsRFQ(ctx, sqlc.SetAttachmentsRFQParams{
 			RfqID: &q.RfqID, Ids: attachmentIDs, CompanyID: authorCompanyID,
@@ -340,6 +355,7 @@ func (s *Service) Counter(ctx context.Context, buyerCompanyID, quoteID string, p
 	if err != nil {
 		return sqlc.QuoteMessage{}, err
 	}
+	s.thread.PublishMessage(ctx, quoteID, mustJSON(messageView(msg)))
 	// Round-trip to the agent ONLY if the seller has agent autonomy.
 	if s.ent != nil && s.ent.For(ctx, quote.SellerCompanyID).AgentAutonomy && s.pub != nil {
 		payload, err := json.Marshal(messageReceivedEvent{

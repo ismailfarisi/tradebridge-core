@@ -20,6 +20,7 @@ import (
 	"github.com/tradebridge/core/internal/entitlements"
 	"github.com/tradebridge/core/internal/identity"
 	"github.com/tradebridge/core/internal/notify"
+	"github.com/tradebridge/core/internal/thread"
 	"github.com/tradebridge/core/pkg/db/sqlc"
 )
 
@@ -40,11 +41,12 @@ type Handler struct {
 	notifier *notify.Notifier // may be nil; notifications are then skipped
 	ent      *entitlements.Service
 	pool     *pgxpool.Pool // used by quote.counter to atomically bump the quote head + append a version
+	thread   *thread.Publisher
 }
 
 // NewHandler builds the gateway handler. notifier may be nil, in which case
 // domain events (e.g. quote.submitted) do not notify anyone.
-func NewHandler(q *sqlc.Queries, rdb *redis.Client, store *attachments.Store, logger zerolog.Logger, rlc RateLimitConfig, notifier *notify.Notifier, ent *entitlements.Service, pool *pgxpool.Pool) *Handler {
+func NewHandler(q *sqlc.Queries, rdb *redis.Client, store *attachments.Store, logger zerolog.Logger, rlc RateLimitConfig, notifier *notify.Notifier, ent *entitlements.Service, pool *pgxpool.Pool, threadPub *thread.Publisher) *Handler {
 	var c counter
 	if rdb != nil {
 		c = redisCounter{rdb: rdb}
@@ -58,7 +60,7 @@ func NewHandler(q *sqlc.Queries, rdb *redis.Client, store *attachments.Store, lo
 		failWin: time.Duration(rlc.AuthfailWindowSec) * time.Second,
 		logger:  logger,
 	}
-	return &Handler{q: q, redis: rdb, store: store, logger: logger, rl: rl, notifier: notifier, ent: ent, pool: pool}
+	return &Handler{q: q, redis: rdb, store: store, logger: logger, rl: rl, notifier: notifier, ent: ent, pool: pool, thread: threadPub}
 }
 
 // Register mounts the gateway routes.

@@ -49,7 +49,7 @@ func TestCounter_NoAutonomy_RecordsMessageOnly(t *testing.T) {
 
 	pub := eventbus.New(q, nil, zerolog.Nop())
 	entSvc := entitlements.NewService(q, zerolog.Nop())
-	svc := NewService(q, pool, pub, nil, zerolog.Nop(), nil, invoicing.NewService(zerolog.Nop()), entSvc)
+	svc := NewService(q, pool, pub, nil, zerolog.Nop(), nil, invoicing.NewService(zerolog.Nop()), entSvc, nil)
 
 	price := int64(4500)
 	days := int32(5)
@@ -89,7 +89,7 @@ func TestCounter_WithAutonomy_EmitsMessageReceived(t *testing.T) {
 	pub := eventbus.New(q, nil, zerolog.Nop())
 	entSvc := entitlements.NewService(q, zerolog.Nop())
 	require.True(t, entSvc.For(ctx, sellerID).AgentAutonomy, "sanity: seller now has agent autonomy")
-	svc := NewService(q, pool, pub, nil, zerolog.Nop(), nil, invoicing.NewService(zerolog.Nop()), entSvc)
+	svc := NewService(q, pool, pub, nil, zerolog.Nop(), nil, invoicing.NewService(zerolog.Nop()), entSvc, nil)
 
 	price := int64(4500)
 	_, err = svc.Counter(ctx, buyerID, quote.ID, &price, nil, "revised offer")
@@ -120,7 +120,7 @@ func TestCounter_NonBuyerReturnsNotFound(t *testing.T) {
 
 	pub := eventbus.New(q, nil, zerolog.Nop())
 	entSvc := entitlements.NewService(q, zerolog.Nop())
-	svc := NewService(q, pool, pub, nil, zerolog.Nop(), nil, invoicing.NewService(zerolog.Nop()), entSvc)
+	svc := NewService(q, pool, pub, nil, zerolog.Nop(), nil, invoicing.NewService(zerolog.Nop()), entSvc, nil)
 
 	price := int64(4500)
 	_, err := svc.Counter(ctx, sellerID, quote.ID, &price, nil, "sneaky")

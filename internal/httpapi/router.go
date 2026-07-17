@@ -29,6 +29,7 @@ import (
 	"github.com/tradebridge/core/internal/rfq"
 	"github.com/tradebridge/core/internal/settings"
 	"github.com/tradebridge/core/internal/suppliers"
+	"github.com/tradebridge/core/internal/thread"
 	"github.com/tradebridge/core/internal/trust"
 	"github.com/tradebridge/core/internal/waitlist"
 	"github.com/tradebridge/core/pkg/cryptobox"
@@ -247,7 +248,9 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	// invSvc is shared: quotes.Accept creates the invoice inside its
 	// transaction, and the invoicing handler serves it back as a PDF.
 	invSvc := invoicing.NewService(cfg.Logger)
-	quotes.NewHandler(quotes.NewService(q, cfg.Pool, pub, attLoader, cfg.Logger, notifier, invSvc, entSvc), q).Register(f, rlMessage, guard...)
+	threadPub := thread.NewPublisher(cfg.Redis, cfg.Logger)
+	quotes.NewHandler(quotes.NewService(q, cfg.Pool, pub, attLoader, cfg.Logger, notifier, invSvc, entSvc, threadPub), q).Register(f, rlMessage, guard...)
+	thread.NewHandler(q, cfg.Redis, cfg.Logger).Register(f, guard...)
 	orders.NewHandler(orders.NewService(q, cfg.Pool, notifier, cfg.Logger), q).Register(f, guard...)
 	invoicing.NewHandler(invSvc, q).Register(f, guard...)
 
