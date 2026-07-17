@@ -325,7 +325,7 @@ func (s *Service) Accept(ctx context.Context, buyerCompanyID, quoteID string) (s
 	if s.notifier != nil {
 		nev := notify.Event{
 			Type:     notify.TypeOrderCreated,
-			Title:    "Order confirmed",
+			Title:    "Order placed",
 			Body:     "A purchase order was created from the accepted quote.",
 			Data:     map[string]any{"order_id": order.ID, "rfq_id": order.RfqID},
 			CTALabel: "View order",
