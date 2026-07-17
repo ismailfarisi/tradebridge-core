@@ -103,3 +103,36 @@ func TestDiscoveryProjectionHasNoPrivateColumns(t *testing.T) {
 		require.False(t, present, "private field must not appear: %s", f)
 	}
 }
+
+// A supplier whose CATALOG (not profile) matches the query surfaces the matched
+// item as a snippet.
+func TestDiscoverAttachesMatchedCatalog(t *testing.T) {
+	q, _ := queriesOrSkip(t)
+	ctx := context.Background()
+	tag := "catsnippet"
+
+	co, err := q.CreateCompany(ctx, sqlc.CreateCompanyParams{Name: "catsnippet-co", Type: "seller"})
+	require.NoError(t, err)
+	// Profile does NOT contain the tag; only the catalog item does.
+	_, err = q.UpsertSupplierProfile(ctx, sqlc.UpsertSupplierProfileParams{
+		CompanyID: co.ID, Description: sp("general supplier"), Categories: []string{"misc"}, Location: sp("NYC"),
+	})
+	require.NoError(t, err)
+	_, err = q.CreateCatalogSummary(ctx, sqlc.CreateCatalogSummaryParams{
+		CompanyID: co.ID, Name: tag + " widget", Category: "widgets", Summary: sp("a fine " + tag),
+	})
+	require.NoError(t, err)
+
+	page, err := NewService(q).Search(ctx, Query{Q: tag})
+	require.NoError(t, err)
+
+	var found *Result
+	for i := range page.Results {
+		if page.Results[i].CompanyID == co.ID {
+			found = &page.Results[i]
+		}
+	}
+	require.NotNil(t, found, "catalog-only match must appear in discovery")
+	require.NotEmpty(t, found.MatchedCatalog, "matched catalog snippet attached")
+	require.Contains(t, found.MatchedCatalog[0].Name, tag)
+}

@@ -183,3 +183,44 @@ func (q *Queries) DiscoverSuppliers(ctx context.Context, arg DiscoverSuppliersPa
 	}
 	return items, nil
 }
+
+const matchedCatalogForCompanies = `-- name: MatchedCatalogForCompanies :many
+SELECT company_id, name, category
+FROM catalog_summaries
+WHERE company_id = ANY($1::text[])
+  AND search_vector @@ websearch_to_tsquery('english', $2::text)
+ORDER BY company_id, created_at DESC
+`
+
+type MatchedCatalogForCompaniesParams struct {
+	CompanyIds []string `json:"company_ids"`
+	Query      string   `json:"query"`
+}
+
+type MatchedCatalogForCompaniesRow struct {
+	CompanyID string `json:"company_id"`
+	Name      string `json:"name"`
+	Category  string `json:"category"`
+}
+
+// Catalog items (name/category) matching the query text for a set of companies,
+// used to show WHY a supplier matched. Public columns only.
+func (q *Queries) MatchedCatalogForCompanies(ctx context.Context, arg MatchedCatalogForCompaniesParams) ([]MatchedCatalogForCompaniesRow, error) {
+	rows, err := q.db.Query(ctx, matchedCatalogForCompanies, arg.CompanyIds, arg.Query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MatchedCatalogForCompaniesRow
+	for rows.Next() {
+		var i MatchedCatalogForCompaniesRow
+		if err := rows.Scan(&i.CompanyID, &i.Name, &i.Category); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

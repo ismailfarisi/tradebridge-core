@@ -77,3 +77,12 @@ WHERE (
   AND (NOT sqlc.arg(verified_only)::bool OR sp.verified)
   AND (sqlc.arg(location)::text = '' OR sp.location ILIKE '%' || sqlc.arg(location)::text || '%')
   AND (sqlc.arg(min_rating)::float8 <= 0 OR COALESCE(rep.avg_rating, 0) >= sqlc.arg(min_rating)::float8);
+
+-- name: MatchedCatalogForCompanies :many
+-- Catalog items (name/category) matching the query text for a set of companies,
+-- used to show WHY a supplier matched. Public columns only.
+SELECT company_id, name, category
+FROM catalog_summaries
+WHERE company_id = ANY(sqlc.arg(company_ids)::text[])
+  AND search_vector @@ websearch_to_tsquery('english', sqlc.arg(query)::text)
+ORDER BY company_id, created_at DESC;
