@@ -24,6 +24,14 @@ const (
 	TypeQuoteSubmitted = "quote.submitted"
 	// TypeOrderCreated fires when an order is created from an accepted quote.
 	TypeOrderCreated = "order.created"
+	// TypeOrderConfirmed fires when a seller confirms an order.
+	TypeOrderConfirmed = "order.confirmed"
+	// TypeOrderFulfilled fires when a seller marks an order fulfilled/shipped.
+	TypeOrderFulfilled = "order.fulfilled"
+	// TypeOrderCompleted fires when a buyer marks an order completed.
+	TypeOrderCompleted = "order.completed"
+	// TypeOrderCancelled fires when either party cancels an order.
+	TypeOrderCancelled = "order.cancelled"
 	// TypeEmailVerify fires when a user needs to verify their email address.
 	TypeEmailVerify = "email.verify"
 )

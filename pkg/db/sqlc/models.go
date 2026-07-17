@@ -156,6 +156,17 @@ type Order struct {
 	CreatedAt       time.Time `json:"created_at"`
 }
 
+type OrderEvent struct {
+	ID             string    `json:"id"`
+	OrderID        string    `json:"order_id"`
+	FromStatus     string    `json:"from_status"`
+	ToStatus       string    `json:"to_status"`
+	Actor          string    `json:"actor"`
+	ActorCompanyID *string   `json:"actor_company_id"`
+	Note           string    `json:"note"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
 type Plan struct {
 	Code            string    `json:"code"`
 	Name            string    `json:"name"`
