@@ -2,6 +2,7 @@ package discovery
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"testing"
 
@@ -65,4 +66,40 @@ func TestDiscoverRanksVerifiedRatedHigher(t *testing.T) {
 	require.GreaterOrEqual(t, topIdx, 0, "verified supplier present")
 	require.GreaterOrEqual(t, lowIdx, 0, "unverified supplier present")
 	require.Less(t, topIdx, lowIdx, "verified+rated ranks above unverified")
+}
+
+// The public discovery projection must expose only whitelisted keys — never
+// private company columns (stripe_customer_id, type, created_at, ...).
+func TestDiscoveryProjectionHasNoPrivateColumns(t *testing.T) {
+	q, _ := queriesOrSkip(t)
+	ctx := context.Background()
+	co, err := q.CreateCompany(ctx, sqlc.CreateCompanyParams{Name: "projprobe-co", Type: "seller"})
+	require.NoError(t, err)
+	_, err = q.UpsertSupplierProfile(ctx, sqlc.UpsertSupplierProfileParams{
+		CompanyID: co.ID, Description: sp("projprobe supplier"), Categories: []string{"projprobe"}, Location: sp("NYC"),
+	})
+	require.NoError(t, err)
+
+	page, err := NewService(q).Search(ctx, Query{Q: "projprobe"})
+	require.NoError(t, err)
+	require.NotEmpty(t, page.Results)
+
+	b, err := json.Marshal(page.Results[0])
+	require.NoError(t, err)
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(b, &m))
+
+	allowed := map[string]bool{
+		"company_id": true, "name": true, "verification_status": true, "verified_domain": true,
+		"description": true, "categories": true, "location": true, "verified": true,
+		"avg_rating": true, "review_count": true, "score": true,
+	}
+	for k := range m {
+		require.True(t, allowed[k], "unexpected public field leaked: %s", k)
+	}
+	forbidden := []string{"stripe_customer_id", "type", "created_at", "updated_at", "email"}
+	for _, f := range forbidden {
+		_, present := m[f]
+		require.False(t, present, "private field must not appear: %s", f)
+	}
 }

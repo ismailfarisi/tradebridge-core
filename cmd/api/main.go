@@ -64,6 +64,7 @@ func main() {
 		RateLimitMessage:     app.Config.RateLimitMessage,
 		RateLimitVerifyCheck: app.Config.RateLimitVerifyCheck,
 		RateLimitReport:      app.Config.RateLimitReport,
+		RateLimitDiscovery:   app.Config.RateLimitDiscovery,
 	})
 
 	sweepCtx, cancelSweep := context.WithCancel(context.Background())

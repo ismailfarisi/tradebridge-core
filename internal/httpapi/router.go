@@ -18,6 +18,7 @@ import (
 	"github.com/tradebridge/core/internal/attachments"
 	"github.com/tradebridge/core/internal/billing"
 	"github.com/tradebridge/core/internal/catalog"
+	"github.com/tradebridge/core/internal/discovery"
 	"github.com/tradebridge/core/internal/disputes"
 	"github.com/tradebridge/core/internal/entitlements"
 	"github.com/tradebridge/core/internal/eventbus"
@@ -99,6 +100,7 @@ type Config struct {
 	RateLimitMessage     string
 	RateLimitVerifyCheck string
 	RateLimitReport      string
+	RateLimitDiscovery   string
 }
 
 // New builds the Core API with all Phase 1 routes mounted.
@@ -176,11 +178,21 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	rlRFQ := mkRL("rfq", cfg.RateLimitRFQ, middleware.RateLimit{Limit: 20, Window: time.Hour}, middleware.KeyCompanyOrIP)
 	rlMessage := mkRL("message", cfg.RateLimitMessage, middleware.RateLimit{Limit: 120, Window: time.Hour}, middleware.KeyCompanyOrIP)
 	rlVerify := mkRL("verify", cfg.RateLimitVerifyCheck, middleware.RateLimit{Limit: 10, Window: time.Hour}, middleware.KeyCompanyOrIP)
+	rlDiscovery := mkRL("discovery", cfg.RateLimitDiscovery, middleware.RateLimit{Limit: 120, Window: time.Hour}, middleware.KeyIP)
 	// rlReport (Task 3's reports handler) is wired in further down where the
 	// reports handler is registered, to keep it visibly close to its use.
 
+	// Supplier discovery: public (rate-limited, no guard) + authenticated
+	// share one projection/service. Constructed here (rather than up by the
+	// public seller storefront) because it needs rlDiscovery, which depends
+	// on mkRL defined just above.
+	discoverySvc := discovery.NewService(q)
+	discoveryHandler := discovery.NewHandler(discoverySvc)
+	discoveryHandler.RegisterPublic(f, rlDiscovery)
+
 	identity.NewHandler(q, tokens, notifier, entSvc).Register(f, rlSignup, guard...)
 	suppliers.NewHandler(q).Register(f, guard...)
+	discoveryHandler.Register(f, guard...)
 	trustSvc := trust.NewService(q, cfg.Pool, trust.NewNetResolver(cfg.VerifyDNSTimeout), cfg.Logger)
 	trust.NewHandler(trustSvc, q).Register(f, middleware.RequireVerified(q), rlVerify, guard...)
 	catalog.NewHandler(q, entSvc).Register(f, guard...)

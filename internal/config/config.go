@@ -96,6 +96,7 @@ type Config struct {
 	RateLimitMessage     string `mapstructure:"RATE_LIMIT_MESSAGE"`
 	RateLimitVerifyCheck string `mapstructure:"RATE_LIMIT_VERIFY_CHECK"`
 	RateLimitReport      string `mapstructure:"RATE_LIMIT_REPORT"`
+	RateLimitDiscovery   string `mapstructure:"RATE_LIMIT_DISCOVERY"`
 }
 
 // Load reads configuration from the environment, falling back to a local
@@ -146,6 +147,7 @@ func Load() (*Config, error) {
 	v.SetDefault("RATE_LIMIT_MESSAGE", "120/1h")
 	v.SetDefault("RATE_LIMIT_VERIFY_CHECK", "10/1h")
 	v.SetDefault("RATE_LIMIT_REPORT", "30/1h")
+	v.SetDefault("RATE_LIMIT_DISCOVERY", "120/1h")
 
 	v.SetConfigName(".env")
 	v.SetConfigType("env")
