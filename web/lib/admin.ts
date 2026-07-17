@@ -74,3 +74,68 @@ export const resolveDispute = (token: string, id: string, outcome: string, order
     token,
     body: { outcome, order_to: orderTo, resolution },
   });
+
+// --- companies (Sprint 8: unified admin console) ---
+
+export type AdminCompany = { id: string; name: string; type: string; status: string; created_at: string };
+export type AdminCompanyDetail = AdminCompany & {
+  verification_status: string;
+  plan_code: string;
+  users: { id: string; email: string; role: string }[];
+  counts: { rfqs: number; quotes: number; orders: number };
+};
+export type VerificationCompany = {
+  id: string;
+  name: string;
+  type: string;
+  verification_status: string;
+  verified_domain: string | null;
+  verified_at: string | null;
+};
+export type AdminReport = {
+  id: string;
+  reporter_company_id: string;
+  reported_company_id: string;
+  reason: string;
+  detail: string | null;
+  status: string;
+  created_at: string;
+  resolved_at: string | null;
+  reporter_name: string;
+  reported_name: string;
+};
+export type AuditEntry = { id: string; company_id: string; actor: string; action: string; target_id: string | null; detail: unknown; created_at: string };
+
+// adminQuery builds a query string from defined, non-empty params only.
+export function adminQuery(params: Record<string, string | undefined>): string {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v) p.set(k, v);
+  }
+  return p.toString();
+}
+
+export const listCompanies = (token: string, q = "", status = "") =>
+  req<{ companies: AdminCompany[]; count: number }>("GET", `/admin/v1/companies/?${adminQuery({ q, status })}`, { token });
+export const getCompany = (token: string, id: string) =>
+  req<AdminCompanyDetail>("GET", `/admin/v1/companies/${id}`, { token });
+export const suspendCompany = (token: string, id: string, reason: string) =>
+  req<{ company_id: string; status: string }>("POST", `/admin/v1/companies/${id}/suspend`, { token, body: { reason } });
+export const unsuspendCompany = (token: string, id: string) =>
+  req<{ company_id: string; status: string }>("POST", `/admin/v1/companies/${id}/unsuspend`, { token });
+
+export const listVerifications = (token: string, status = "pending") =>
+  req<{ companies: VerificationCompany[]; count: number }>("GET", `/admin/v1/verifications?${adminQuery({ status })}`, { token });
+export const resolveVerification = (token: string, id: string, status: string, reason = "") =>
+  req<{ company_id: string; verification_status: string }>("POST", `/admin/v1/companies/${id}/verification`, { token, body: { status, reason } });
+
+export const listReports = (token: string, status = "open") =>
+  req<{ reports: AdminReport[]; count: number }>("GET", `/admin/v1/reports?${adminQuery({ status })}`, { token });
+export const resolveReport = (token: string, id: string, status: string) =>
+  req<AdminReport>("POST", `/admin/v1/reports/${id}`, { token, body: { status } });
+
+export const listAudit = (token: string, filters: { company_id?: string; actor?: string; action?: string } = {}) =>
+  req<{ entries: AuditEntry[]; count: number }>("GET", `/admin/v1/audit?${adminQuery(filters)}`, { token });
+
+export const impersonate = (token: string, companyId: string) =>
+  req<{ token: string; company_id: string; user_id: string; expires_in: number }>("POST", "/admin/v1/impersonate", { token, body: { company_id: companyId } });

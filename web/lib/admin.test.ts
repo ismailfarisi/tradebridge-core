@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { listDisputes, resolveDispute } from "./admin";
+import { listDisputes, resolveDispute, adminQuery } from "./admin";
 
 const realFetch = global.fetch;
 beforeEach(() => { vi.restoreAllMocks(); });
@@ -40,5 +40,19 @@ describe("admin dispute client", () => {
     expect(JSON.parse(init.body as string)).toEqual({
       outcome: "resolved", order_to: "completed", resolution: "refunded buyer",
     });
+  });
+});
+
+describe("adminQuery", () => {
+  it("omits empty and undefined params", () => {
+    expect(adminQuery({ q: "acme", status: "", actor: undefined })).toBe("q=acme");
+  });
+  it("encodes multiple params", () => {
+    const s = new URLSearchParams(adminQuery({ q: "a b", action: "company.suspend" }));
+    expect(s.get("q")).toBe("a b");
+    expect(s.get("action")).toBe("company.suspend");
+  });
+  it("returns empty string when nothing set", () => {
+    expect(adminQuery({ q: "", status: undefined })).toBe("");
   });
 });

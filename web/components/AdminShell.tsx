@@ -6,8 +6,12 @@ import { usePathname, useRouter } from "next/navigation";
 import { adminMe, clearAdminToken, useAdminToken } from "@/lib/admin";
 
 const NAV = [
-  { href: "/admin", label: "Settings" },
+  { href: "/admin/companies", label: "Companies" },
+  { href: "/admin/verifications", label: "Verifications" },
   { href: "/admin/disputes", label: "Disputes" },
+  { href: "/admin/reports", label: "Reports" },
+  { href: "/admin/audit", label: "Audit" },
+  { href: "/admin", label: "Settings" },
 ];
 
 export default function AdminShell({ children }: { children: React.ReactNode }) {
@@ -53,7 +57,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         </div>
         <button className="btn btn-sm btn-ghost" onClick={() => { clearAdminToken(); router.replace("/admin/login"); }}>Sign out</button>
       </header>
-      <main style={{ padding: "1.75rem", maxWidth: 760, width: "100%" }}>{children}</main>
+      <main style={{ padding: "1.75rem", maxWidth: 1100, width: "100%" }}>{children}</main>
     </div>
   );
 }

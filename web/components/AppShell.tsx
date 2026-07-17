@@ -7,6 +7,7 @@ import { logout, useMe } from "@/lib/auth";
 import type { Me } from "@/lib/api";
 import NotificationBell from "@/components/NotificationBell";
 import VerifyEmailBanner from "@/components/VerifyEmailBanner";
+import { IMPERSONATING_FLAG_KEY, leaveImpersonation } from "@/lib/impersonation";
 
 type NavItem = { href: string; label: string; show: (me: Me) => boolean };
 
@@ -48,13 +49,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [hydrated, setHydrated] = useState(false);
+  const [impersonating, setImpersonating] = useState<string | null>(null);
 
   // On a hard page load the token store first returns its *server* snapshot
   // (null) before the client snapshot (localStorage) is read one tick later.
   // Redirecting on that first render bounces a logged-in user to /login, so we
   // wait until the client has mounted — by then the real token has been read.
   // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => setHydrated(true), []);
+  useEffect(() => {
+    setHydrated(true);
+    setImpersonating(localStorage.getItem(IMPERSONATING_FLAG_KEY));
+  }, []);
 
   useEffect(() => {
     if (hydrated && ready && !token) router.replace("/login");
@@ -151,6 +156,31 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             </button>
           </div>
         </header>
+        {impersonating && (
+          <div
+            className="row"
+            style={{
+              justifyContent: "space-between",
+              alignItems: "center",
+              padding: "0.6rem 1.5rem",
+              background: "var(--warning-bg, #4a3a08)",
+              color: "var(--warning-text, #ffd479)",
+              fontSize: "0.85rem",
+              fontWeight: 600,
+            }}
+          >
+            <span>Viewing as {impersonating} — read-only (support session)</span>
+            <button
+              className="btn btn-sm btn-ghost"
+              onClick={() => {
+                leaveImpersonation();
+                router.replace("/admin/companies");
+              }}
+            >
+              Leave
+            </button>
+          </div>
+        )}
         {token && <VerifyEmailBanner token={token} emailVerified={me.email_verified} />}
         <main style={{ padding: "1.75rem", maxWidth: 1000, width: "100%" }}>{children}</main>
       </div>
