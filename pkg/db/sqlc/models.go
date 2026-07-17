@@ -325,6 +325,12 @@ type RfqMatch struct {
 	CreatedAt       time.Time `json:"created_at"`
 }
 
+type RfqView struct {
+	CompanyID    string    `json:"company_id"`
+	RfqID        string    `json:"rfq_id"`
+	LastViewedAt time.Time `json:"last_viewed_at"`
+}
+
 type Subscription struct {
 	ID                   string             `json:"id"`
 	CompanyID            string             `json:"company_id"`
