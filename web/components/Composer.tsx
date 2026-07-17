@@ -10,6 +10,7 @@ export function Composer({
   disabled,
   token,
   placeholder = "Describe what you need…",
+  assist,
 }: {
   draft: string;
   setDraft: (v: string) => void;
@@ -17,6 +18,8 @@ export function Composer({
   disabled: boolean;
   token: string;
   placeholder?: string;
+  /** Optional extra control rendered beside the send button (e.g. "Improve this RFQ"). */
+  assist?: React.ReactNode;
 }) {
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -122,6 +125,7 @@ export function Composer({
             placeholder={placeholder}
             autoFocus
           />
+          {assist}
           <button className="btn btn-primary" disabled={disabled || uploading || (!draft.trim() && files.length === 0)}>
             {uploading ? "Uploading…" : "Send"}
           </button>

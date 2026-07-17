@@ -7,6 +7,7 @@ import { rfqChatStream, type AttachmentMeta } from "@/lib/api";
 import { chatReducer, initialChatState } from "@/lib/chat";
 import { Composer } from "@/components/Composer";
 import { AttachmentView } from "@/components/AttachmentView";
+import { AssistImprove } from "@/components/AssistImprove";
 
 export default function NewChat() {
   const token = useToken();
@@ -62,7 +63,14 @@ export default function NewChat() {
           </div>
         )}
       </div>
-      <Composer draft={draft} setDraft={setDraft} onSend={send} disabled={state.pending} token={token ?? ""} />
+      <Composer
+        draft={draft}
+        setDraft={setDraft}
+        onSend={send}
+        disabled={state.pending}
+        token={token ?? ""}
+        assist={token && <AssistImprove token={token} draft={draft} onSuggestion={setDraft} disabled={state.pending} />}
+      />
     </div>
   );
 }
