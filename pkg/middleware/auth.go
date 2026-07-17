@@ -15,6 +15,11 @@ type Claims struct {
 	CompanyID string `json:"company_id"`
 	UserID    string `json:"user_id"`
 	Role      string `json:"role"`
+	// ReadOnly and ActingAdmin are set on support impersonation tokens
+	// (identity.TokenService.IssueImpersonation). Existing tokens omit both
+	// fields, which deserialize to their zero values — backward compatible.
+	ReadOnly    bool   `json:"ro,omitempty"`
+	ActingAdmin string `json:"imp,omitempty"`
 	jwt.RegisteredClaims
 }
 

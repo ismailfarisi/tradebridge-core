@@ -27,6 +27,7 @@ import (
 	"github.com/tradebridge/core/internal/entitlements"
 	"github.com/tradebridge/core/internal/eventbus"
 	"github.com/tradebridge/core/internal/identity"
+	"github.com/tradebridge/core/internal/impersonation"
 	"github.com/tradebridge/core/internal/invoicing"
 	"github.com/tradebridge/core/internal/notify"
 	"github.com/tradebridge/core/internal/orders"
@@ -139,6 +140,7 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 		middleware.JWT(cfg.JWTSecret),
 		middleware.TenantGuard(),
 		middleware.RequireActiveCompany(q.GetCompanyStatus),
+		middleware.EnforceReadOnly(),
 	}
 
 	f.Get("/v1/me", append(guard, func(c *fiber.Ctx) error {
@@ -319,6 +321,7 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 		reviews.NewAdminHandler(reviewsSvc).Register(f, adminGuard)
 		disputes.NewAdminHandler(disputesSvc, auditor).RegisterAdmin(f, adminGuard)
 		adminconsole.NewHandler(q, entSvc, auditor).Register(f, adminGuard)
+		impersonation.NewHandler(q, tokens, auditor).Register(f, adminGuard)
 	} else {
 		cfg.Logger.Warn().Msg("ADMIN_JWT_SECRET unset — platform admin routes disabled")
 	}

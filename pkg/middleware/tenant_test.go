@@ -81,3 +81,38 @@ func TestRequireActiveCompany(t *testing.T) {
 		}
 	})
 }
+
+func TestEnforceReadOnly(t *testing.T) {
+	app := fiber.New()
+	app.Use(func(c *fiber.Ctx) error {
+		c.Locals("claims", &Claims{CompanyID: "co_1", ReadOnly: true})
+		return c.Next()
+	})
+	app.Use(EnforceReadOnly())
+	app.Get("/x", func(c *fiber.Ctx) error { return c.SendString("ok") })
+	app.Post("/x", func(c *fiber.Ctx) error { return c.SendString("wrote") })
+
+	get, _ := app.Test(httptest.NewRequest("GET", "/x", nil))
+	if get.StatusCode != 200 {
+		t.Fatalf("GET want 200, got %d", get.StatusCode)
+	}
+	post, _ := app.Test(httptest.NewRequest("POST", "/x", nil))
+	if post.StatusCode != 403 {
+		t.Fatalf("POST want 403, got %d", post.StatusCode)
+	}
+}
+
+func TestEnforceReadOnlyPassesWhenNotReadOnly(t *testing.T) {
+	app := fiber.New()
+	app.Use(func(c *fiber.Ctx) error {
+		c.Locals("claims", &Claims{CompanyID: "co_1"})
+		return c.Next()
+	})
+	app.Use(EnforceReadOnly())
+	app.Post("/x", func(c *fiber.Ctx) error { return c.SendString("wrote") })
+
+	post, _ := app.Test(httptest.NewRequest("POST", "/x", nil))
+	if post.StatusCode != 200 {
+		t.Fatalf("POST want 200, got %d", post.StatusCode)
+	}
+}

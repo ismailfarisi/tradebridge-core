@@ -70,6 +70,23 @@ func UserID(c *fiber.Ctx) string {
 	return ""
 }
 
+// EnforceReadOnly must run after JWT (which stashes *Claims). When the token is
+// a read-only impersonation session, it blocks any state-changing method so a
+// support operator can look but never act. GET/HEAD pass.
+func EnforceReadOnly() fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		claims, ok := c.Locals("claims").(*Claims)
+		if ok && claims.ReadOnly {
+			switch c.Method() {
+			case fiber.MethodGet, fiber.MethodHead:
+			default:
+				return fiber.NewError(fiber.StatusForbidden, "read-only session")
+			}
+		}
+		return c.Next()
+	}
+}
+
 // RequireActiveCompany must run after TenantGuard. It rejects requests from a
 // suspended company so an admin suspend takes effect immediately, not at token
 // expiry. `status` is injected (typically q.GetCompanyStatus) so this package
