@@ -12,6 +12,7 @@ import (
 )
 
 const metricRFQ = "rfq"
+const metricAssist = "assist"
 
 // PaywallError signals a request blocked by an entitlement limit. Fail renders
 // it as HTTP 402.
@@ -68,6 +69,8 @@ func (s *Service) planRequiredFor(ctx context.Context, feature string, used int)
 			lim = p.RfqMonthlyLimit
 		case "seats":
 			lim = p.Seats
+		case "assist_monthly_limit":
+			lim = p.AssistMonthlyLimit
 		case "agent_autonomy":
 			if p.AgentAutonomy {
 				return code
@@ -116,6 +119,44 @@ func (s *Service) IncrementRFQUsage(ctx context.Context, companyID string) {
 		CompanyID: companyID, Metric: metricRFQ, Period: period(),
 	}); err != nil {
 		s.logger.Warn().Err(err).Str("company", companyID).Msg("entitlements: rfq usage increment failed")
+	}
+}
+
+// assistUsed reads the current-period assist counter (0 when absent).
+func (s *Service) assistUsed(ctx context.Context, companyID string) int {
+	n, err := s.q.GetUsageCounter(ctx, sqlc.GetUsageCounterParams{
+		CompanyID: companyID, Metric: metricAssist, Period: period(),
+	})
+	if err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			s.logger.Warn().Err(err).Str("company", companyID).Msg("entitlements: assist usage read failed, treating as 0")
+		}
+		return 0
+	}
+	return int(n)
+}
+
+// CheckAssistQuota returns a *PaywallError when the company is at/over its
+// monthly assist cap. Unlimited (-1) never blocks.
+func (s *Service) CheckAssistQuota(ctx context.Context, companyID string) error {
+	limit := s.For(ctx, companyID).AssistMonthlyLimit
+	if limit == -1 {
+		return nil
+	}
+	used := s.assistUsed(ctx, companyID)
+	if used >= limit {
+		return &PaywallError{Feature: "assist_monthly_limit", PlanRequired: s.planRequiredFor(ctx, "assist_monthly_limit", used)}
+	}
+	return nil
+}
+
+// IncrementAssistUsage bumps the current-period assist counter. Best-effort: a
+// failure is logged, not surfaced (the assist reply was already served).
+func (s *Service) IncrementAssistUsage(ctx context.Context, companyID string) {
+	if _, err := s.q.IncrementUsageCounter(ctx, sqlc.IncrementUsageCounterParams{
+		CompanyID: companyID, Metric: metricAssist, Period: period(),
+	}); err != nil {
+		s.logger.Warn().Err(err).Str("company", companyID).Msg("entitlements: assist usage increment failed")
 	}
 }
 

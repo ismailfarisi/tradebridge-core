@@ -16,15 +16,16 @@ import (
 // Entitlements is the set of feature limits a plan grants. A limit of -1 means
 // unlimited.
 type Entitlements struct {
-	AgentAutonomy   bool `json:"agent_autonomy"`
-	CatalogMaxItems int  `json:"catalog_max_items"`
-	RFQMonthlyLimit int  `json:"rfq_monthly_limit"`
-	Seats           int  `json:"seats"`
+	AgentAutonomy      bool `json:"agent_autonomy"`
+	CatalogMaxItems    int  `json:"catalog_max_items"`
+	RFQMonthlyLimit    int  `json:"rfq_monthly_limit"`
+	Seats              int  `json:"seats"`
+	AssistMonthlyLimit int  `json:"assist_monthly_limit"`
 }
 
 // freeFallback is returned whenever resolution fails, so callers never receive
 // a paid entitlement on error.
-var freeFallback = Entitlements{AgentAutonomy: false, CatalogMaxItems: 25, RFQMonthlyLimit: 10, Seats: 2}
+var freeFallback = Entitlements{AgentAutonomy: false, CatalogMaxItems: 25, RFQMonthlyLimit: 10, Seats: 2, AssistMonthlyLimit: 20}
 
 // Service resolves plans and entitlements over the query layer, caching plan
 // rows in-process (invalidated when the admin edits a plan).
@@ -68,10 +69,11 @@ func (s *Service) For(ctx context.Context, companyID string) Entitlements {
 		return freeFallback
 	}
 	return Entitlements{
-		AgentAutonomy:   plan.AgentAutonomy,
-		CatalogMaxItems: int(plan.CatalogMaxItems),
-		RFQMonthlyLimit: int(plan.RfqMonthlyLimit),
-		Seats:           int(plan.Seats),
+		AgentAutonomy:      plan.AgentAutonomy,
+		CatalogMaxItems:    int(plan.CatalogMaxItems),
+		RFQMonthlyLimit:    int(plan.RfqMonthlyLimit),
+		Seats:              int(plan.Seats),
+		AssistMonthlyLimit: int(plan.AssistMonthlyLimit),
 	}
 }
 

@@ -202,13 +202,14 @@ type OrderEvent struct {
 }
 
 type Plan struct {
-	Code            string    `json:"code"`
-	Name            string    `json:"name"`
-	AgentAutonomy   bool      `json:"agent_autonomy"`
-	CatalogMaxItems int32     `json:"catalog_max_items"`
-	RfqMonthlyLimit int32     `json:"rfq_monthly_limit"`
-	Seats           int32     `json:"seats"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	Code               string    `json:"code"`
+	Name               string    `json:"name"`
+	AgentAutonomy      bool      `json:"agent_autonomy"`
+	CatalogMaxItems    int32     `json:"catalog_max_items"`
+	RfqMonthlyLimit    int32     `json:"rfq_monthly_limit"`
+	Seats              int32     `json:"seats"`
+	UpdatedAt          time.Time `json:"updated_at"`
+	AssistMonthlyLimit int32     `json:"assist_monthly_limit"`
 }
 
 type PlatformAdmin struct {
