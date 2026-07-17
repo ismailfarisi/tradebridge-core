@@ -7,7 +7,28 @@ package sqlc
 
 import (
 	"context"
+	"time"
 )
+
+const adminCompanyCounts = `-- name: AdminCompanyCounts :one
+SELECT
+  (SELECT COUNT(*) FROM rfqs   r WHERE r.buyer_company_id  = $1) AS rfqs,
+  (SELECT COUNT(*) FROM quotes q WHERE q.seller_company_id = $1) AS quotes,
+  (SELECT COUNT(*) FROM orders o WHERE o.buyer_company_id  = $1 OR o.seller_company_id = $1) AS orders
+`
+
+type AdminCompanyCountsRow struct {
+	Rfqs   int64 `json:"rfqs"`
+	Quotes int64 `json:"quotes"`
+	Orders int64 `json:"orders"`
+}
+
+func (q *Queries) AdminCompanyCounts(ctx context.Context, buyerCompanyID string) (AdminCompanyCountsRow, error) {
+	row := q.db.QueryRow(ctx, adminCompanyCounts, buyerCompanyID)
+	var i AdminCompanyCountsRow
+	err := row.Scan(&i.Rfqs, &i.Quotes, &i.Orders)
+	return i, err
+}
 
 const createCompany = `-- name: CreateCompany :one
 INSERT INTO companies (name, type)
@@ -68,6 +89,57 @@ func (q *Queries) GetCompanyStatus(ctx context.Context, id string) (string, erro
 	var status string
 	err := row.Scan(&status)
 	return status, err
+}
+
+const searchCompaniesForAdmin = `-- name: SearchCompaniesForAdmin :many
+SELECT id, name, type, status, created_at
+FROM companies
+WHERE ($1::text IS NULL
+       OR name ILIKE '%' || $1 || '%'
+       OR id = $1)
+  AND ($2::text IS NULL OR status = $2)
+ORDER BY created_at DESC
+LIMIT $3
+`
+
+type SearchCompaniesForAdminParams struct {
+	Q      *string `json:"q"`
+	Status *string `json:"status"`
+	Lim    int32   `json:"lim"`
+}
+
+type SearchCompaniesForAdminRow struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Type      string    `json:"type"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (q *Queries) SearchCompaniesForAdmin(ctx context.Context, arg SearchCompaniesForAdminParams) ([]SearchCompaniesForAdminRow, error) {
+	rows, err := q.db.Query(ctx, searchCompaniesForAdmin, arg.Q, arg.Status, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SearchCompaniesForAdminRow
+	for rows.Next() {
+		var i SearchCompaniesForAdminRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Type,
+			&i.Status,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const setCompanyStatus = `-- name: SetCompanyStatus :exec
