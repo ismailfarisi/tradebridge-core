@@ -31,10 +31,12 @@ export default function StorefrontPage() {
         <h1 style={{ margin: 0 }}>{seller.name}</h1>
         <VerifiedBadge status={seller.verification_status} />
       </div>
-      {seller.reputation && (
+      {seller.reputation && seller.reputation.review_count > 0 ? (
         <div style={{ marginTop: "0.35rem" }}>
           <StarRating value={seller.reputation.avg_rating} count={seller.reputation.review_count} />
         </div>
+      ) : (
+        <p className="muted" style={{ marginTop: "0.35rem" }}>No ratings yet</p>
       )}
       {seller.verified_domain && (
         <p className="muted">Verified domain: {seller.verified_domain}</p>
