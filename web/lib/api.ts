@@ -109,6 +109,8 @@ export type QuoteRow = {
   status: string;
   rank?: number;
   seller_verification_status?: string;
+  seller_avg_rating?: number;
+  seller_review_count?: number;
 };
 export type CatalogItem = {
   id: string;

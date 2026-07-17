@@ -31,8 +31,9 @@ export type PublicSeller = {
   categories: string[];
   location: string | null;
   catalog: CatalogShowcaseItem[];
-  reputation: null;
+  reputation: { avg_rating: number; review_count: number } | null;
 };
+export type PublicReview = { id: string; rating: number; body: string; reviewer_name: string; created_at: string };
 export type BlockRow = {
   id: string;
   blocked_company_id: string;
@@ -72,6 +73,9 @@ export const checkDomain = (token: string, domain: string) =>
 
 export const getPublicSeller = (companyId: string) =>
   call<PublicSeller>("GET", `/public/v1/sellers/${companyId}`);
+
+export const getPublicSellerReviews = (companyId: string) =>
+  call<{ reviews: PublicReview[] }>("GET", `/public/v1/sellers/${companyId}/reviews`);
 
 export const createReport = (token: string, reportedCompanyId: string, reason: string, detail: string) =>
   call<{ id: string }>("POST", "/v1/reports", {

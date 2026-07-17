@@ -1,6 +1,7 @@
 "use client";
 
 import { CORE_URL } from "./api";
+import type { Dispute } from "./orders";
 import { useSyncExternalStore } from "react";
 
 const ADMIN_TOKEN_KEY = "tb_admin_token";
@@ -65,3 +66,11 @@ export const testAdminSettings = (token: string) =>
   req<TestResult>("POST", "/admin/v1/settings/test", { token });
 export const getAdminHealth = (token: string) =>
   req<LlmHealth>("GET", "/admin/v1/settings/health", { token });
+
+export const listDisputes = (token: string, status = "") =>
+  req<{ disputes: Dispute[] }>("GET", `/admin/v1/disputes${status ? `?status=${status}` : ""}`, { token });
+export const resolveDispute = (token: string, id: string, outcome: string, orderTo: string, resolution: string) =>
+  req<{ dispute: Dispute }>("POST", `/admin/v1/disputes/${id}/resolve`, {
+    token,
+    body: { outcome, order_to: orderTo, resolution },
+  });
