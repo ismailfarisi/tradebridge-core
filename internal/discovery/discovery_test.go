@@ -136,3 +136,37 @@ func TestDiscoverAttachesMatchedCatalog(t *testing.T) {
 	require.NotEmpty(t, found.MatchedCatalog, "matched catalog snippet attached")
 	require.Contains(t, found.MatchedCatalog[0].Name, tag)
 }
+
+// Facets reflect the filtered set and each dimension omits its own filter.
+func TestFacetsReflectFilterSet(t *testing.T) {
+	q, _ := queriesOrSkip(t)
+	ctx := context.Background()
+	tag := "facetprobe"
+
+	mk := func(name, cat string, verified bool) {
+		co, err := q.CreateCompany(ctx, sqlc.CreateCompanyParams{Name: name, Type: "seller"})
+		require.NoError(t, err)
+		_, err = q.UpsertSupplierProfile(ctx, sqlc.UpsertSupplierProfileParams{
+			CompanyID: co.ID, Description: sp(tag + " supplier"), Categories: []string{cat}, Location: sp("Rome"),
+		})
+		require.NoError(t, err)
+		if verified {
+			require.NoError(t, q.SyncSupplierVerified(ctx, sqlc.SyncSupplierVerifiedParams{CompanyID: co.ID, Verified: true}))
+		}
+	}
+	mk("facetprobe-a", tag+"-cat1", true)
+	mk("facetprobe-b", tag+"-cat1", false)
+	mk("facetprobe-c", tag+"-cat2", false)
+
+	f, err := NewService(q).Facets(ctx, Query{Q: tag})
+	require.NoError(t, err)
+
+	counts := map[string]int64{}
+	for _, c := range f.Categories {
+		counts[c.Value] = c.Count
+	}
+	require.Equal(t, int64(2), counts[tag+"-cat1"])
+	require.Equal(t, int64(1), counts[tag+"-cat2"])
+	require.GreaterOrEqual(t, f.Verified.True, int64(1))
+	require.GreaterOrEqual(t, f.Verified.False, int64(2))
+}

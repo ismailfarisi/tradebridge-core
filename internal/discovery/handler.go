@@ -19,13 +19,16 @@ func (h *Handler) Register(app *fiber.App, guard ...fiber.Handler) {
 	g := app.Group("/v1/discovery", guard...)
 	g.Get("/", h.search)
 	g.Get("", h.search)
+	g.Get("/facets", h.facets)
 }
 
 // RegisterPublic mounts the unauthenticated route with the supplied middleware
 // (rate limiter) and NO tenant guard.
 func (h *Handler) RegisterPublic(app *fiber.App, mw ...fiber.Handler) {
-	handlers := append(append([]fiber.Handler{}, mw...), h.search)
-	app.Get("/public/v1/discovery", handlers...)
+	search := append(append([]fiber.Handler{}, mw...), h.search)
+	app.Get("/public/v1/discovery", search...)
+	facets := append(append([]fiber.Handler{}, mw...), h.facets)
+	app.Get("/public/v1/discovery/facets", facets...)
 }
 
 func (h *Handler) search(c *fiber.Ctx) error {
@@ -34,6 +37,14 @@ func (h *Handler) search(c *fiber.Ctx) error {
 		return err
 	}
 	return c.JSON(page)
+}
+
+func (h *Handler) facets(c *fiber.Ctx) error {
+	f, err := h.svc.Facets(c.Context(), parseQuery(c))
+	if err != nil {
+		return err
+	}
+	return c.JSON(f)
 }
 
 func parseQuery(c *fiber.Ctx) Query {

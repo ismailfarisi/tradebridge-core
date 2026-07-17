@@ -115,3 +115,68 @@ func (s *Service) Search(ctx context.Context, q Query) (Page, error) {
 	}
 	return Page{Results: results, Page: q.Page, PerPage: q.PerPage, Total: total}, nil
 }
+
+// FacetCount is a single category value with its matching count.
+type FacetCount struct {
+	Value string `json:"value"`
+	Count int64  `json:"count"`
+}
+
+// VerifiedFacet buckets suppliers by verification status.
+type VerifiedFacet struct {
+	True  int64 `json:"true"`
+	False int64 `json:"false"`
+}
+
+// RatingBucket is a "min rating and above" count.
+type RatingBucket struct {
+	Min   float64 `json:"min"`
+	Count int64   `json:"count"`
+}
+
+// Facets bundles filter-aware facet counts for the current query.
+type Facets struct {
+	Categories    []FacetCount   `json:"categories"`
+	Verified      VerifiedFacet  `json:"verified"`
+	RatingBuckets []RatingBucket `json:"rating_buckets"`
+}
+
+// Facets returns filter-aware facet counts for the current query (each facet
+// dimension omits its own filter so the user can widen it).
+func (s *Service) Facets(ctx context.Context, q Query) (Facets, error) {
+	q.normalize()
+	cats, err := s.q.DiscoverCategoryFacets(ctx, sqlc.DiscoverCategoryFacetsParams{
+		Query: q.Q, Location: q.Location, VerifiedOnly: q.VerifiedOnly, MinRating: q.MinRating,
+	})
+	if err != nil {
+		return Facets{}, err
+	}
+	ver, err := s.q.DiscoverVerifiedFacets(ctx, sqlc.DiscoverVerifiedFacetsParams{
+		Query: q.Q, Location: q.Location, Category: q.Category, MinRating: q.MinRating,
+	})
+	if err != nil {
+		return Facets{}, err
+	}
+	rat, err := s.q.DiscoverRatingFacets(ctx, sqlc.DiscoverRatingFacetsParams{
+		Query: q.Q, Location: q.Location, Category: q.Category, VerifiedOnly: q.VerifiedOnly,
+	})
+	if err != nil {
+		return Facets{}, err
+	}
+	out := Facets{
+		Categories: make([]FacetCount, 0, len(cats)),
+		Verified:   VerifiedFacet{True: ver.VerifiedCount, False: ver.UnverifiedCount},
+		RatingBuckets: []RatingBucket{
+			{Min: 4, Count: rat.Gte4}, {Min: 3, Count: rat.Gte3},
+			{Min: 2, Count: rat.Gte2}, {Min: 1, Count: rat.Gte1},
+		},
+	}
+	for _, c := range cats {
+		// The category value comes from unnest() over a CTE column, so sqlc
+		// can't infer its Postgres type and generates it as `interface{}`;
+		// pgx decodes a text column into a string underneath.
+		value, _ := c.Value.(string)
+		out.Categories = append(out.Categories, FacetCount{Value: value, Count: c.Count})
+	}
+	return out, nil
+}

@@ -55,6 +55,126 @@ func (q *Queries) CountDiscoverSuppliers(ctx context.Context, arg CountDiscoverS
 	return total, err
 }
 
+const discoverCategoryFacets = `-- name: DiscoverCategoryFacets :many
+WITH rep AS (
+    SELECT reviewee_company_id AS company_id, AVG(rating)::float8 AS avg_rating
+    FROM reviews WHERE status = 'visible' GROUP BY reviewee_company_id
+),
+matched AS (
+    SELECT sp.company_id, sp.categories
+    FROM supplier_profiles sp
+    JOIN companies c ON c.id = sp.company_id
+    LEFT JOIN rep ON rep.company_id = sp.company_id
+    WHERE ($1::text = ''
+           OR sp.search_vector @@ websearch_to_tsquery('english', $1::text)
+           OR c.name ILIKE '%' || $1::text || '%'
+           OR EXISTS (SELECT 1 FROM catalog_summaries cs WHERE cs.company_id = sp.company_id
+                      AND cs.search_vector @@ websearch_to_tsquery('english', $1::text)))
+      AND ($2::text = '' OR sp.location ILIKE '%' || $2::text || '%')
+      AND (NOT $3::bool OR sp.verified)
+      AND ($4::float8 <= 0 OR COALESCE(rep.avg_rating, 0) >= $4::float8)
+)
+SELECT cat AS value, COUNT(*)::bigint AS count
+FROM matched, unnest(matched.categories) AS cat
+GROUP BY cat
+ORDER BY count DESC, value
+LIMIT 50
+`
+
+type DiscoverCategoryFacetsParams struct {
+	Query        string  `json:"query"`
+	Location     string  `json:"location"`
+	VerifiedOnly bool    `json:"verified_only"`
+	MinRating    float64 `json:"min_rating"`
+}
+
+type DiscoverCategoryFacetsRow struct {
+	Value interface{} `json:"value"`
+	Count int64       `json:"count"`
+}
+
+// Category counts; omits the category filter (so the user can switch category).
+func (q *Queries) DiscoverCategoryFacets(ctx context.Context, arg DiscoverCategoryFacetsParams) ([]DiscoverCategoryFacetsRow, error) {
+	rows, err := q.db.Query(ctx, discoverCategoryFacets,
+		arg.Query,
+		arg.Location,
+		arg.VerifiedOnly,
+		arg.MinRating,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DiscoverCategoryFacetsRow
+	for rows.Next() {
+		var i DiscoverCategoryFacetsRow
+		if err := rows.Scan(&i.Value, &i.Count); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const discoverRatingFacets = `-- name: DiscoverRatingFacets :one
+WITH rep AS (
+    SELECT reviewee_company_id AS company_id, AVG(rating)::float8 AS avg_rating
+    FROM reviews WHERE status = 'visible' GROUP BY reviewee_company_id
+)
+SELECT
+    COUNT(*) FILTER (WHERE COALESCE(rep.avg_rating, 0) >= 4)::bigint AS gte4,
+    COUNT(*) FILTER (WHERE COALESCE(rep.avg_rating, 0) >= 3)::bigint AS gte3,
+    COUNT(*) FILTER (WHERE COALESCE(rep.avg_rating, 0) >= 2)::bigint AS gte2,
+    COUNT(*) FILTER (WHERE COALESCE(rep.avg_rating, 0) >= 1)::bigint AS gte1
+FROM supplier_profiles sp
+JOIN companies c ON c.id = sp.company_id
+LEFT JOIN rep ON rep.company_id = sp.company_id
+WHERE ($1::text = ''
+       OR sp.search_vector @@ websearch_to_tsquery('english', $1::text)
+       OR c.name ILIKE '%' || $1::text || '%'
+       OR EXISTS (SELECT 1 FROM catalog_summaries cs WHERE cs.company_id = sp.company_id
+                  AND cs.search_vector @@ websearch_to_tsquery('english', $1::text)))
+  AND ($2::text = '' OR sp.location ILIKE '%' || $2::text || '%')
+  AND ($3::text = ''
+       OR EXISTS (SELECT 1 FROM unnest(sp.categories) cat WHERE cat ILIKE $3::text))
+  AND (NOT $4::bool OR sp.verified)
+`
+
+type DiscoverRatingFacetsParams struct {
+	Query        string `json:"query"`
+	Location     string `json:"location"`
+	Category     string `json:"category"`
+	VerifiedOnly bool   `json:"verified_only"`
+}
+
+type DiscoverRatingFacetsRow struct {
+	Gte4 int64 `json:"gte4"`
+	Gte3 int64 `json:"gte3"`
+	Gte2 int64 `json:"gte2"`
+	Gte1 int64 `json:"gte1"`
+}
+
+// Count of suppliers at or above each rating threshold; omits the min_rating filter.
+func (q *Queries) DiscoverRatingFacets(ctx context.Context, arg DiscoverRatingFacetsParams) (DiscoverRatingFacetsRow, error) {
+	row := q.db.QueryRow(ctx, discoverRatingFacets,
+		arg.Query,
+		arg.Location,
+		arg.Category,
+		arg.VerifiedOnly,
+	)
+	var i DiscoverRatingFacetsRow
+	err := row.Scan(
+		&i.Gte4,
+		&i.Gte3,
+		&i.Gte2,
+		&i.Gte1,
+	)
+	return i, err
+}
+
 const discoverSuppliers = `-- name: DiscoverSuppliers :many
 WITH rep AS (
     SELECT reviewee_company_id AS company_id,
@@ -182,6 +302,53 @@ func (q *Queries) DiscoverSuppliers(ctx context.Context, arg DiscoverSuppliersPa
 		return nil, err
 	}
 	return items, nil
+}
+
+const discoverVerifiedFacets = `-- name: DiscoverVerifiedFacets :one
+WITH rep AS (
+    SELECT reviewee_company_id AS company_id, AVG(rating)::float8 AS avg_rating
+    FROM reviews WHERE status = 'visible' GROUP BY reviewee_company_id
+)
+SELECT
+    COUNT(*) FILTER (WHERE sp.verified)::bigint     AS verified_count,
+    COUNT(*) FILTER (WHERE NOT sp.verified)::bigint AS unverified_count
+FROM supplier_profiles sp
+JOIN companies c ON c.id = sp.company_id
+LEFT JOIN rep ON rep.company_id = sp.company_id
+WHERE ($1::text = ''
+       OR sp.search_vector @@ websearch_to_tsquery('english', $1::text)
+       OR c.name ILIKE '%' || $1::text || '%'
+       OR EXISTS (SELECT 1 FROM catalog_summaries cs WHERE cs.company_id = sp.company_id
+                  AND cs.search_vector @@ websearch_to_tsquery('english', $1::text)))
+  AND ($2::text = '' OR sp.location ILIKE '%' || $2::text || '%')
+  AND ($3::text = ''
+       OR EXISTS (SELECT 1 FROM unnest(sp.categories) cat WHERE cat ILIKE $3::text))
+  AND ($4::float8 <= 0 OR COALESCE(rep.avg_rating, 0) >= $4::float8)
+`
+
+type DiscoverVerifiedFacetsParams struct {
+	Query     string  `json:"query"`
+	Location  string  `json:"location"`
+	Category  string  `json:"category"`
+	MinRating float64 `json:"min_rating"`
+}
+
+type DiscoverVerifiedFacetsRow struct {
+	VerifiedCount   int64 `json:"verified_count"`
+	UnverifiedCount int64 `json:"unverified_count"`
+}
+
+// Verified vs unverified counts; omits the verified filter.
+func (q *Queries) DiscoverVerifiedFacets(ctx context.Context, arg DiscoverVerifiedFacetsParams) (DiscoverVerifiedFacetsRow, error) {
+	row := q.db.QueryRow(ctx, discoverVerifiedFacets,
+		arg.Query,
+		arg.Location,
+		arg.Category,
+		arg.MinRating,
+	)
+	var i DiscoverVerifiedFacetsRow
+	err := row.Scan(&i.VerifiedCount, &i.UnverifiedCount)
+	return i, err
 }
 
 const matchedCatalogForCompanies = `-- name: MatchedCatalogForCompanies :many

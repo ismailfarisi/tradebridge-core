@@ -86,3 +86,75 @@ FROM catalog_summaries
 WHERE company_id = ANY(sqlc.arg(company_ids)::text[])
   AND search_vector @@ websearch_to_tsquery('english', sqlc.arg(query)::text)
 ORDER BY company_id, created_at DESC;
+
+-- name: DiscoverCategoryFacets :many
+-- Category counts; omits the category filter (so the user can switch category).
+WITH rep AS (
+    SELECT reviewee_company_id AS company_id, AVG(rating)::float8 AS avg_rating
+    FROM reviews WHERE status = 'visible' GROUP BY reviewee_company_id
+),
+matched AS (
+    SELECT sp.company_id, sp.categories
+    FROM supplier_profiles sp
+    JOIN companies c ON c.id = sp.company_id
+    LEFT JOIN rep ON rep.company_id = sp.company_id
+    WHERE (sqlc.arg(query)::text = ''
+           OR sp.search_vector @@ websearch_to_tsquery('english', sqlc.arg(query)::text)
+           OR c.name ILIKE '%' || sqlc.arg(query)::text || '%'
+           OR EXISTS (SELECT 1 FROM catalog_summaries cs WHERE cs.company_id = sp.company_id
+                      AND cs.search_vector @@ websearch_to_tsquery('english', sqlc.arg(query)::text)))
+      AND (sqlc.arg(location)::text = '' OR sp.location ILIKE '%' || sqlc.arg(location)::text || '%')
+      AND (NOT sqlc.arg(verified_only)::bool OR sp.verified)
+      AND (sqlc.arg(min_rating)::float8 <= 0 OR COALESCE(rep.avg_rating, 0) >= sqlc.arg(min_rating)::float8)
+)
+SELECT cat AS value, COUNT(*)::bigint AS count
+FROM matched, unnest(matched.categories) AS cat
+GROUP BY cat
+ORDER BY count DESC, value
+LIMIT 50;
+
+-- name: DiscoverVerifiedFacets :one
+-- Verified vs unverified counts; omits the verified filter.
+WITH rep AS (
+    SELECT reviewee_company_id AS company_id, AVG(rating)::float8 AS avg_rating
+    FROM reviews WHERE status = 'visible' GROUP BY reviewee_company_id
+)
+SELECT
+    COUNT(*) FILTER (WHERE sp.verified)::bigint     AS verified_count,
+    COUNT(*) FILTER (WHERE NOT sp.verified)::bigint AS unverified_count
+FROM supplier_profiles sp
+JOIN companies c ON c.id = sp.company_id
+LEFT JOIN rep ON rep.company_id = sp.company_id
+WHERE (sqlc.arg(query)::text = ''
+       OR sp.search_vector @@ websearch_to_tsquery('english', sqlc.arg(query)::text)
+       OR c.name ILIKE '%' || sqlc.arg(query)::text || '%'
+       OR EXISTS (SELECT 1 FROM catalog_summaries cs WHERE cs.company_id = sp.company_id
+                  AND cs.search_vector @@ websearch_to_tsquery('english', sqlc.arg(query)::text)))
+  AND (sqlc.arg(location)::text = '' OR sp.location ILIKE '%' || sqlc.arg(location)::text || '%')
+  AND (sqlc.arg(category)::text = ''
+       OR EXISTS (SELECT 1 FROM unnest(sp.categories) cat WHERE cat ILIKE sqlc.arg(category)::text))
+  AND (sqlc.arg(min_rating)::float8 <= 0 OR COALESCE(rep.avg_rating, 0) >= sqlc.arg(min_rating)::float8);
+
+-- name: DiscoverRatingFacets :one
+-- Count of suppliers at or above each rating threshold; omits the min_rating filter.
+WITH rep AS (
+    SELECT reviewee_company_id AS company_id, AVG(rating)::float8 AS avg_rating
+    FROM reviews WHERE status = 'visible' GROUP BY reviewee_company_id
+)
+SELECT
+    COUNT(*) FILTER (WHERE COALESCE(rep.avg_rating, 0) >= 4)::bigint AS gte4,
+    COUNT(*) FILTER (WHERE COALESCE(rep.avg_rating, 0) >= 3)::bigint AS gte3,
+    COUNT(*) FILTER (WHERE COALESCE(rep.avg_rating, 0) >= 2)::bigint AS gte2,
+    COUNT(*) FILTER (WHERE COALESCE(rep.avg_rating, 0) >= 1)::bigint AS gte1
+FROM supplier_profiles sp
+JOIN companies c ON c.id = sp.company_id
+LEFT JOIN rep ON rep.company_id = sp.company_id
+WHERE (sqlc.arg(query)::text = ''
+       OR sp.search_vector @@ websearch_to_tsquery('english', sqlc.arg(query)::text)
+       OR c.name ILIKE '%' || sqlc.arg(query)::text || '%'
+       OR EXISTS (SELECT 1 FROM catalog_summaries cs WHERE cs.company_id = sp.company_id
+                  AND cs.search_vector @@ websearch_to_tsquery('english', sqlc.arg(query)::text)))
+  AND (sqlc.arg(location)::text = '' OR sp.location ILIKE '%' || sqlc.arg(location)::text || '%')
+  AND (sqlc.arg(category)::text = ''
+       OR EXISTS (SELECT 1 FROM unnest(sp.categories) cat WHERE cat ILIKE sqlc.arg(category)::text))
+  AND (NOT sqlc.arg(verified_only)::bool OR sp.verified);
