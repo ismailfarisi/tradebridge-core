@@ -7,7 +7,98 @@ package sqlc
 
 import (
 	"context"
+	"time"
 )
+
+const buyerDashboardCounts = `-- name: BuyerDashboardCounts :one
+SELECT
+    (SELECT COUNT(*) FROM rfqs r
+       WHERE r.buyer_company_id = $1 AND r.status IN ('open','quoted'))::bigint AS active_rfqs,
+    (SELECT COUNT(*) FROM quotes q JOIN rfqs r ON r.id = q.rfq_id
+       WHERE r.buyer_company_id = $1)::bigint AS quotes_received,
+    (SELECT COUNT(*) FROM quotes q JOIN rfqs r ON r.id = q.rfq_id
+       LEFT JOIN rfq_views v ON v.rfq_id = r.id AND v.company_id = r.buyer_company_id
+       WHERE r.buyer_company_id = $1
+         AND q.created_at > COALESCE(v.last_viewed_at, 'epoch'::timestamptz))::bigint AS new_quotes,
+    (SELECT COUNT(*) FROM orders o
+       WHERE o.buyer_company_id = $1
+         AND o.status IN ('created','confirmed','fulfilled'))::bigint AS orders_in_progress
+`
+
+type BuyerDashboardCountsRow struct {
+	ActiveRfqs       int64 `json:"active_rfqs"`
+	QuotesReceived   int64 `json:"quotes_received"`
+	NewQuotes        int64 `json:"new_quotes"`
+	OrdersInProgress int64 `json:"orders_in_progress"`
+}
+
+// All four buyer headline counts in one round-trip, tenant-scoped.
+func (q *Queries) BuyerDashboardCounts(ctx context.Context, companyID string) (BuyerDashboardCountsRow, error) {
+	row := q.db.QueryRow(ctx, buyerDashboardCounts, companyID)
+	var i BuyerDashboardCountsRow
+	err := row.Scan(
+		&i.ActiveRfqs,
+		&i.QuotesReceived,
+		&i.NewQuotes,
+		&i.OrdersInProgress,
+	)
+	return i, err
+}
+
+const listBuyerRecentRFQs = `-- name: ListBuyerRecentRFQs :many
+SELECT r.id, r.title, r.status, r.created_at,
+    (SELECT COUNT(*) FROM quotes q WHERE q.rfq_id = r.id)::bigint AS quote_count,
+    (SELECT COUNT(*) FROM quotes q
+       WHERE q.rfq_id = r.id
+         AND q.created_at > COALESCE(v.last_viewed_at, 'epoch'::timestamptz))::bigint AS new_quotes
+FROM rfqs r
+LEFT JOIN rfq_views v ON v.rfq_id = r.id AND v.company_id = r.buyer_company_id
+WHERE r.buyer_company_id = $1
+ORDER BY r.created_at DESC
+LIMIT $2
+`
+
+type ListBuyerRecentRFQsParams struct {
+	CompanyID string `json:"company_id"`
+	Lim       int32  `json:"lim"`
+}
+
+type ListBuyerRecentRFQsRow struct {
+	ID         string    `json:"id"`
+	Title      string    `json:"title"`
+	Status     string    `json:"status"`
+	CreatedAt  time.Time `json:"created_at"`
+	QuoteCount int64     `json:"quote_count"`
+	NewQuotes  int64     `json:"new_quotes"`
+}
+
+// Recent RFQs with quote counts + how many quotes arrived since last viewed.
+func (q *Queries) ListBuyerRecentRFQs(ctx context.Context, arg ListBuyerRecentRFQsParams) ([]ListBuyerRecentRFQsRow, error) {
+	rows, err := q.db.Query(ctx, listBuyerRecentRFQs, arg.CompanyID, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListBuyerRecentRFQsRow
+	for rows.Next() {
+		var i ListBuyerRecentRFQsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.Status,
+			&i.CreatedAt,
+			&i.QuoteCount,
+			&i.NewQuotes,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
 
 const upsertRFQView = `-- name: UpsertRFQView :exec
 INSERT INTO rfq_views (company_id, rfq_id, last_viewed_at)

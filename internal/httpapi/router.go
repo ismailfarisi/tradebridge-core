@@ -18,6 +18,7 @@ import (
 	"github.com/tradebridge/core/internal/attachments"
 	"github.com/tradebridge/core/internal/billing"
 	"github.com/tradebridge/core/internal/catalog"
+	"github.com/tradebridge/core/internal/dashboard"
 	"github.com/tradebridge/core/internal/discovery"
 	"github.com/tradebridge/core/internal/disputes"
 	"github.com/tradebridge/core/internal/entitlements"
@@ -193,6 +194,7 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	identity.NewHandler(q, tokens, notifier, entSvc).Register(f, rlSignup, guard...)
 	suppliers.NewHandler(q).Register(f, guard...)
 	discoveryHandler.Register(f, guard...)
+	dashboard.NewHandler(dashboard.NewService(q)).Register(f, guard...)
 	trustSvc := trust.NewService(q, cfg.Pool, trust.NewNetResolver(cfg.VerifyDNSTimeout), cfg.Logger)
 	trust.NewHandler(trustSvc, q).Register(f, middleware.RequireVerified(q), rlVerify, guard...)
 	catalog.NewHandler(q, entSvc).Register(f, guard...)
