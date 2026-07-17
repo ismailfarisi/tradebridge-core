@@ -73,13 +73,14 @@ type Block struct {
 }
 
 type CatalogSummary struct {
-	ID        string    `json:"id"`
-	CompanyID string    `json:"company_id"`
-	Name      string    `json:"name"`
-	Category  string    `json:"category"`
-	Summary   *string   `json:"summary"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID           string      `json:"id"`
+	CompanyID    string      `json:"company_id"`
+	Name         string      `json:"name"`
+	Category     string      `json:"category"`
+	Summary      *string     `json:"summary"`
+	CreatedAt    time.Time   `json:"created_at"`
+	UpdatedAt    time.Time   `json:"updated_at"`
+	SearchVector interface{} `json:"search_vector"`
 }
 
 type Company struct {
@@ -339,14 +340,15 @@ type Subscription struct {
 }
 
 type SupplierProfile struct {
-	ID          string    `json:"id"`
-	CompanyID   string    `json:"company_id"`
-	Description *string   `json:"description"`
-	Categories  []string  `json:"categories"`
-	Location    *string   `json:"location"`
-	Verified    bool      `json:"verified"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID           string      `json:"id"`
+	CompanyID    string      `json:"company_id"`
+	Description  *string     `json:"description"`
+	Categories   []string    `json:"categories"`
+	Location     *string     `json:"location"`
+	Verified     bool        `json:"verified"`
+	CreatedAt    time.Time   `json:"created_at"`
+	UpdatedAt    time.Time   `json:"updated_at"`
+	SearchVector interface{} `json:"search_vector"`
 }
 
 type UsageCounter struct {

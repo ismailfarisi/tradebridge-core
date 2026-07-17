@@ -13,7 +13,7 @@ import (
 const createCatalogSummary = `-- name: CreateCatalogSummary :one
 INSERT INTO catalog_summaries (company_id, name, category, summary)
 VALUES ($1, $2, $3, $4)
-RETURNING id, company_id, name, category, summary, created_at, updated_at
+RETURNING id, company_id, name, category, summary, created_at, updated_at, search_vector
 `
 
 type CreateCatalogSummaryParams struct {
@@ -39,6 +39,7 @@ func (q *Queries) CreateCatalogSummary(ctx context.Context, arg CreateCatalogSum
 		&i.Summary,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SearchVector,
 	)
 	return i, err
 }
@@ -54,7 +55,7 @@ func (q *Queries) DeleteCatalogSummary(ctx context.Context, id string) error {
 }
 
 const getCatalogSummary = `-- name: GetCatalogSummary :one
-SELECT id, company_id, name, category, summary, created_at, updated_at FROM catalog_summaries
+SELECT id, company_id, name, category, summary, created_at, updated_at, search_vector FROM catalog_summaries
 WHERE id = $1
 `
 
@@ -69,12 +70,13 @@ func (q *Queries) GetCatalogSummary(ctx context.Context, id string) (CatalogSumm
 		&i.Summary,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SearchVector,
 	)
 	return i, err
 }
 
 const listCatalogByCompany = `-- name: ListCatalogByCompany :many
-SELECT id, company_id, name, category, summary, created_at, updated_at FROM catalog_summaries
+SELECT id, company_id, name, category, summary, created_at, updated_at, search_vector FROM catalog_summaries
 WHERE company_id = $1
 ORDER BY created_at DESC
 `
@@ -96,6 +98,7 @@ func (q *Queries) ListCatalogByCompany(ctx context.Context, companyID string) ([
 			&i.Summary,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.SearchVector,
 		); err != nil {
 			return nil, err
 		}
@@ -108,7 +111,7 @@ func (q *Queries) ListCatalogByCompany(ctx context.Context, companyID string) ([
 }
 
 const searchCatalog = `-- name: SearchCatalog :many
-SELECT cs.id, cs.company_id, cs.name, cs.category, cs.summary, cs.created_at, cs.updated_at, c.name AS company_name
+SELECT cs.id, cs.company_id, cs.name, cs.category, cs.summary, cs.created_at, cs.updated_at, cs.search_vector, c.name AS company_name
 FROM catalog_summaries cs
 JOIN companies c ON c.id = cs.company_id
 WHERE (
@@ -128,14 +131,15 @@ type SearchCatalogParams struct {
 }
 
 type SearchCatalogRow struct {
-	ID          string    `json:"id"`
-	CompanyID   string    `json:"company_id"`
-	Name        string    `json:"name"`
-	Category    string    `json:"category"`
-	Summary     *string   `json:"summary"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-	CompanyName string    `json:"company_name"`
+	ID           string      `json:"id"`
+	CompanyID    string      `json:"company_id"`
+	Name         string      `json:"name"`
+	Category     string      `json:"category"`
+	Summary      *string     `json:"summary"`
+	CreatedAt    time.Time   `json:"created_at"`
+	UpdatedAt    time.Time   `json:"updated_at"`
+	SearchVector interface{} `json:"search_vector"`
+	CompanyName  string      `json:"company_name"`
 }
 
 func (q *Queries) SearchCatalog(ctx context.Context, arg SearchCatalogParams) ([]SearchCatalogRow, error) {
@@ -155,6 +159,7 @@ func (q *Queries) SearchCatalog(ctx context.Context, arg SearchCatalogParams) ([
 			&i.Summary,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.SearchVector,
 			&i.CompanyName,
 		); err != nil {
 			return nil, err
@@ -171,7 +176,7 @@ const updateCatalogSummary = `-- name: UpdateCatalogSummary :one
 UPDATE catalog_summaries
 SET name = $2, category = $3, summary = $4, updated_at = NOW()
 WHERE id = $1
-RETURNING id, company_id, name, category, summary, created_at, updated_at
+RETURNING id, company_id, name, category, summary, created_at, updated_at, search_vector
 `
 
 type UpdateCatalogSummaryParams struct {
@@ -197,6 +202,7 @@ func (q *Queries) UpdateCatalogSummary(ctx context.Context, arg UpdateCatalogSum
 		&i.Summary,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SearchVector,
 	)
 	return i, err
 }
