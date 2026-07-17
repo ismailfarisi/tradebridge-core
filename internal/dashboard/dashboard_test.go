@@ -6,8 +6,10 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tradebridge/core/internal/entitlements"
 	"github.com/tradebridge/core/pkg/db/sqlc"
 )
 
@@ -21,6 +23,11 @@ func queriesOrSkip(t *testing.T) *sqlc.Queries {
 	require.NoError(t, err)
 	t.Cleanup(pool.Close)
 	return sqlc.New(pool)
+}
+
+func newSvc(t *testing.T, q *sqlc.Queries) *Service {
+	t.Helper()
+	return NewService(q, entitlements.NewService(q, zerolog.Nop()))
 }
 
 func TestBuyerDashboardAggregates(t *testing.T) {
@@ -48,7 +55,7 @@ func TestBuyerDashboardAggregates(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	svc := NewService(q)
+	svc := newSvc(t, q)
 	d, err := svc.BuyerDashboard(ctx, buyer.ID)
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, d.ActiveRFQs, int64(1))
@@ -61,4 +68,31 @@ func TestBuyerDashboardAggregates(t *testing.T) {
 	d2, err := svc.BuyerDashboard(ctx, buyer.ID)
 	require.NoError(t, err)
 	require.Equal(t, int64(0), d2.NewQuotes, "viewing clears the new-quote badge")
+}
+
+func TestSellerDashboardCountsAndAgent(t *testing.T) {
+	q := queriesOrSkip(t)
+	ctx := context.Background()
+
+	seller, err := q.CreateCompany(ctx, sqlc.CreateCompanyParams{Name: "sd-seller-co", Type: "seller"})
+	require.NoError(t, err)
+	buyer, err := q.CreateCompany(ctx, sqlc.CreateCompanyParams{Name: "sd-buyer-co", Type: "buyer"})
+	require.NoError(t, err)
+	user, err := q.CreateUser(ctx, sqlc.CreateUserParams{CompanyID: buyer.ID, Email: "sd-" + buyer.ID + "@ex.com", Role: "owner"})
+	require.NoError(t, err)
+
+	// An open RFQ matched to the seller, not yet quoted => incoming + review_queue.
+	rfq, err := q.CreateRFQ(ctx, sqlc.CreateRFQParams{BuyerCompanyID: buyer.ID, CreatedBy: user.ID, Title: "SD RFQ", RawText: "need pallets"})
+	require.NoError(t, err)
+	_, err = q.SetRFQStatus(ctx, sqlc.SetRFQStatusParams{ID: rfq.ID, Status: "open"})
+	require.NoError(t, err)
+	_, err = q.CreateRFQMatch(ctx, sqlc.CreateRFQMatchParams{RfqID: rfq.ID, SellerCompanyID: seller.ID})
+	require.NoError(t, err)
+
+	d, err := newSvc(t, q).SellerDashboard(ctx, seller.ID)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, d.IncomingRFQs, int64(1))
+	require.GreaterOrEqual(t, d.ReviewQueue, int64(1), "unquoted matched RFQ is in the review queue")
+	require.False(t, d.Agent.Online, "no heartbeat => offline")
+	require.NotEmpty(t, d.PlanUsage.Plan)
 }

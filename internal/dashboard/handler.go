@@ -17,10 +17,19 @@ func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
 func (h *Handler) Register(app *fiber.App, guard ...fiber.Handler) {
 	g := app.Group("/v1/dashboard", guard...)
 	g.Get("/buyer", h.buyer)
+	g.Get("/seller", h.seller)
 }
 
 func (h *Handler) buyer(c *fiber.Ctx) error {
 	d, err := h.svc.BuyerDashboard(c.Context(), middleware.CompanyID(c))
+	if err != nil {
+		return err
+	}
+	return c.JSON(d)
+}
+
+func (h *Handler) seller(c *fiber.Ctx) error {
+	d, err := h.svc.SellerDashboard(c.Context(), middleware.CompanyID(c))
 	if err != nil {
 		return err
 	}

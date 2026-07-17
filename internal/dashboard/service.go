@@ -4,18 +4,24 @@ package dashboard
 
 import (
 	"context"
+	"time"
 
+	"github.com/tradebridge/core/internal/entitlements"
 	"github.com/tradebridge/core/pkg/db/sqlc"
 )
 
 const recentRFQLimit = 8
 
+// agentFreshWindow: a credential seen within this window is considered online.
+const agentFreshWindow = 5 * time.Minute
+
 // Service runs dashboard aggregation queries.
 type Service struct {
-	q *sqlc.Queries
+	q   *sqlc.Queries
+	ent *entitlements.Service
 }
 
-func NewService(q *sqlc.Queries) *Service { return &Service{q: q} }
+func NewService(q *sqlc.Queries, ent *entitlements.Service) *Service { return &Service{q: q, ent: ent} }
 
 // RecentRFQ is a compact RFQ row for the dashboard recent list.
 type RecentRFQ struct {
@@ -67,4 +73,71 @@ func (s *Service) BuyerDashboard(ctx context.Context, companyID string) (BuyerDa
 		})
 	}
 	return out, nil
+}
+
+// AgentStatus is the seller's connected-agent state.
+type AgentStatus struct {
+	Online   bool    `json:"online"`
+	LastSeen *string `json:"last_seen"`
+	Autonomy bool    `json:"autonomy"`
+}
+
+// PlanUsage is the seller's plan + usage snapshot.
+type PlanUsage struct {
+	Plan         string `json:"plan"`
+	RFQUsed      int    `json:"rfq_used"`
+	RFQLimit     int    `json:"rfq_limit"`
+	CatalogUsed  int    `json:"catalog_used"`
+	CatalogLimit int    `json:"catalog_limit"`
+	SeatsUsed    int    `json:"seats_used"`
+	SeatsLimit   int    `json:"seats_limit"`
+}
+
+// SellerDashboard is the seller home summary.
+type SellerDashboard struct {
+	IncomingRFQs int64       `json:"incoming_rfqs"`
+	ReviewQueue  int64       `json:"review_queue"`
+	ActiveOrders int64       `json:"active_orders"`
+	Agent        AgentStatus `json:"agent"`
+	PlanUsage    PlanUsage   `json:"plan_usage"`
+}
+
+// SellerDashboard computes the seller home summary for a company.
+func (s *Service) SellerDashboard(ctx context.Context, companyID string) (SellerDashboard, error) {
+	counts, err := s.q.SellerDashboardCounts(ctx, companyID)
+	if err != nil {
+		return SellerDashboard{}, err
+	}
+	presence, err := s.q.GetAgentPresence(ctx, companyID)
+	if err != nil {
+		return SellerDashboard{}, err
+	}
+	agent := AgentStatus{Autonomy: s.ent.For(ctx, companyID).AgentAutonomy}
+	// presence.LastSeen is generated as `interface{}` (sqlc could not infer a
+	// concrete nullable type from the scalar-subquery MAX). pgx decodes a
+	// non-NULL timestamptz into time.Time when scanning into `any`, and leaves
+	// it nil on SQL NULL — so a type assertion covers both cases safely.
+	if presence.HasValid {
+		if ts, ok := presence.LastSeen.(time.Time); ok {
+			iso := ts.UTC().Format("2006-01-02T15:04:05Z07:00")
+			agent.LastSeen = &iso
+			agent.Online = time.Since(ts) <= agentFreshWindow
+		}
+	}
+	u := s.ent.Usage(ctx, companyID)
+	return SellerDashboard{
+		IncomingRFQs: counts.IncomingRfqs,
+		ReviewQueue:  counts.ReviewQueue,
+		ActiveOrders: counts.ActiveOrders,
+		Agent:        agent,
+		PlanUsage: PlanUsage{
+			Plan:         s.ent.PlanCode(ctx, companyID),
+			RFQUsed:      u.RFQUsed,
+			RFQLimit:     u.RFQLimit,
+			CatalogUsed:  u.CatalogUsed,
+			CatalogLimit: u.CatalogLimit,
+			SeatsUsed:    u.SeatsUsed,
+			SeatsLimit:   u.SeatsLimit,
+		},
+	}, nil
 }

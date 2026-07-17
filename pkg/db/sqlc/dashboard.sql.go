@@ -45,6 +45,30 @@ func (q *Queries) BuyerDashboardCounts(ctx context.Context, companyID string) (B
 	return i, err
 }
 
+const getAgentPresence = `-- name: GetAgentPresence :one
+SELECT
+    (SELECT MAX(ac.last_seen) FROM agent_credentials ac
+       WHERE ac.company_id = $1 AND ac.status = 'active'
+         AND (ac.expires_at IS NULL OR ac.expires_at > NOW())) AS last_seen,
+    EXISTS (SELECT 1 FROM agent_credentials ac
+       WHERE ac.company_id = $1 AND ac.status = 'active'
+         AND (ac.expires_at IS NULL OR ac.expires_at > NOW())) AS has_valid
+`
+
+type GetAgentPresenceRow struct {
+	LastSeen interface{} `json:"last_seen"`
+	HasValid bool        `json:"has_valid"`
+}
+
+// Latest heartbeat among VALID (active, non-expired) credentials + whether any
+// valid credential exists. online is decided in Go against a freshness window.
+func (q *Queries) GetAgentPresence(ctx context.Context, companyID string) (GetAgentPresenceRow, error) {
+	row := q.db.QueryRow(ctx, getAgentPresence, companyID)
+	var i GetAgentPresenceRow
+	err := row.Scan(&i.LastSeen, &i.HasValid)
+	return i, err
+}
+
 const listBuyerRecentRFQs = `-- name: ListBuyerRecentRFQs :many
 SELECT r.id, r.title, r.status, r.created_at,
     (SELECT COUNT(*) FROM quotes q WHERE q.rfq_id = r.id)::bigint AS quote_count,
@@ -98,6 +122,34 @@ func (q *Queries) ListBuyerRecentRFQs(ctx context.Context, arg ListBuyerRecentRF
 		return nil, err
 	}
 	return items, nil
+}
+
+const sellerDashboardCounts = `-- name: SellerDashboardCounts :one
+SELECT
+    (SELECT COUNT(*) FROM rfq_matches m JOIN rfqs r ON r.id = m.rfq_id
+       WHERE m.seller_company_id = $1 AND r.status = 'open')::bigint AS incoming_rfqs,
+    (SELECT COUNT(*) FROM rfq_matches m JOIN rfqs r ON r.id = m.rfq_id
+       WHERE m.seller_company_id = $1 AND r.status = 'open'
+         AND NOT EXISTS (SELECT 1 FROM quotes q
+                         WHERE q.rfq_id = m.rfq_id AND q.seller_company_id = $1))::bigint AS review_queue,
+    (SELECT COUNT(*) FROM orders o
+       WHERE o.seller_company_id = $1
+         AND o.status IN ('created','confirmed','fulfilled'))::bigint AS active_orders
+`
+
+type SellerDashboardCountsRow struct {
+	IncomingRfqs int64 `json:"incoming_rfqs"`
+	ReviewQueue  int64 `json:"review_queue"`
+	ActiveOrders int64 `json:"active_orders"`
+}
+
+// Seller operational counts, tenant-scoped. review_queue = matched OPEN RFQs the
+// seller has not yet quoted (the actionable subset of incoming_rfqs).
+func (q *Queries) SellerDashboardCounts(ctx context.Context, companyID string) (SellerDashboardCountsRow, error) {
+	row := q.db.QueryRow(ctx, sellerDashboardCounts, companyID)
+	var i SellerDashboardCountsRow
+	err := row.Scan(&i.IncomingRfqs, &i.ReviewQueue, &i.ActiveOrders)
+	return i, err
 }
 
 const upsertRFQView = `-- name: UpsertRFQView :exec
