@@ -14,6 +14,7 @@ import (
 
 	"github.com/tradebridge/core/internal/admin"
 	"github.com/tradebridge/core/internal/agent"
+	"github.com/tradebridge/core/internal/assist"
 	"github.com/tradebridge/core/internal/attachments"
 	"github.com/tradebridge/core/internal/billing"
 	"github.com/tradebridge/core/internal/catalog"
@@ -210,6 +211,11 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	billing.NewHandler(q, billingProvider, billingSvc, appBaseURLOr(cfg.AppBaseURL), billingActive).Register(f, guard...)
 
 	entitlements.NewHandler(entSvc).Register(f, guard...)
+
+	// Buyer AI assist: metered via entSvc's assist quota. A keyless deploy
+	// (AnthropicAPIKey=="") runs the deterministic stub — no network.
+	assistSvc := assist.NewService(cfg.AnthropicAPIKey, cfg.Logger)
+	assist.NewHandler(assistSvc, entSvc, q).Register(f, guard...)
 
 	// Attachments: bytes on local disk, metadata in Postgres. Constructed
 	// once here; attLoader is exposed to later tasks' rfq/quotes services.
