@@ -7,8 +7,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5"
@@ -16,6 +18,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/tradebridge/core/internal/attachments"
+	"github.com/tradebridge/core/internal/entitlements"
 	"github.com/tradebridge/core/internal/eventbus"
 	"github.com/tradebridge/core/internal/invoicing"
 	"github.com/tradebridge/core/internal/notify"
@@ -155,11 +158,12 @@ type Service struct {
 	logger   zerolog.Logger
 	notifier *notify.Notifier
 	inv      *invoicing.Service
+	ent      *entitlements.Service
 }
 
 // NewService builds the quotes service.
-func NewService(q *sqlc.Queries, pool *pgxpool.Pool, pub *eventbus.Publisher, loader *attachments.Loader, logger zerolog.Logger, notifier *notify.Notifier, inv *invoicing.Service) *Service {
-	return &Service{q: q, pool: pool, pub: pub, loader: loader, logger: logger, notifier: notifier, inv: inv}
+func NewService(q *sqlc.Queries, pool *pgxpool.Pool, pub *eventbus.Publisher, loader *attachments.Loader, logger zerolog.Logger, notifier *notify.Notifier, inv *invoicing.Service, ent *entitlements.Service) *Service {
+	return &Service{q: q, pool: pool, pub: pub, loader: loader, logger: logger, notifier: notifier, inv: inv, ent: ent}
 }
 
 // QuoteMessageEvent is the agent event emitted when a buyer posts in a quote
@@ -218,6 +222,112 @@ func (s *Service) AddMessage(ctx context.Context, q sqlc.Quote, authorCompanyID,
 		b, _ := json.Marshal(ev)
 		if err := s.pub.Publish(ctx, q.SellerCompanyID, "quote.message", b); err != nil {
 			s.logger.Warn().Err(err).Str("quote_id", q.ID).Msg("quote.message publish failed")
+		}
+	}
+	return msg, nil
+}
+
+// counterTerms is the buyer's proposed terms in a counter-offer, mirrored into
+// the message.received event payload so the seller's agent can reason about
+// them without re-parsing the thread body.
+type counterTerms struct {
+	PriceCents   *int64 `json:"price_cents,omitempty"`
+	DeliveryDays *int32 `json:"delivery_days,omitempty"`
+}
+
+// threadEntry is one message in a quote's thread, as carried in the
+// message.received event so the agent has full context, not just the latest
+// message.
+type threadEntry struct {
+	Author    string    `json:"author"`
+	Body      string    `json:"body"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// messageReceivedEvent is the agent event emitted when a buyer counters a
+// quote and the seller has agent autonomy — it carries the proposed terms
+// plus the full thread so the agent can reply with a quote.counter command.
+type messageReceivedEvent struct {
+	Type    string        `json:"type"`
+	QuoteID string        `json:"quote_id"`
+	RFQID   string        `json:"rfq_id"`
+	Counter counterTerms  `json:"counter"`
+	Thread  []threadEntry `json:"thread"`
+}
+
+// buildThread loads a quote's message history for embedding in an agent
+// event. Best-effort: a lookup failure yields an empty thread rather than
+// failing the counter.
+func buildThread(ctx context.Context, q *sqlc.Queries, quoteID string) []threadEntry {
+	msgs, err := q.ListQuoteMessages(ctx, quoteID)
+	if err != nil {
+		return nil
+	}
+	out := make([]threadEntry, len(msgs))
+	for i, m := range msgs {
+		out[i] = threadEntry{Author: m.Author, Body: m.Body, CreatedAt: m.CreatedAt}
+	}
+	return out
+}
+
+// counterBody renders the buyer-facing thread message for a counter-offer:
+// their free-text message, plus a human-readable summary of any proposed
+// terms.
+func counterBody(message string, priceCents *int64, deliveryDays *int32) string {
+	var terms []string
+	if priceCents != nil {
+		terms = append(terms, fmt.Sprintf("price: $%.2f", float64(*priceCents)/100))
+	}
+	if deliveryDays != nil {
+		terms = append(terms, fmt.Sprintf("delivery: %d days", *deliveryDays))
+	}
+	if len(terms) == 0 {
+		return message
+	}
+	summary := "Proposed terms — " + strings.Join(terms, ", ")
+	if message == "" {
+		return summary
+	}
+	return message + "\n\n" + summary
+}
+
+// Counter records a buyer's counter-offer message on the thread and, only
+// when the seller has agent autonomy, emits a message.received event to the
+// seller's agent carrying the proposed terms + thread. Returns the created
+// message. Only the buyer on the quote's RFQ may counter (ErrNotFound
+// otherwise, so as not to leak existence across tenants).
+func (s *Service) Counter(ctx context.Context, buyerCompanyID, quoteID string, priceCents *int64, deliveryDays *int32, message string) (sqlc.QuoteMessage, error) {
+	quote, err := s.q.GetQuote(ctx, quoteID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.QuoteMessage{}, ErrNotFound
+	} else if err != nil {
+		return sqlc.QuoteMessage{}, err
+	}
+	r, err := s.q.GetRFQ(ctx, quote.RfqID)
+	if err != nil {
+		return sqlc.QuoteMessage{}, err
+	}
+	if r.BuyerCompanyID != buyerCompanyID {
+		return sqlc.QuoteMessage{}, ErrNotFound // party-only, no leak
+	}
+	body := counterBody(message, priceCents, deliveryDays)
+	msg, err := s.q.CreateQuoteMessage(ctx, sqlc.CreateQuoteMessageParams{
+		QuoteID: quoteID, Author: "buyer", Body: body, Attachments: nil,
+	})
+	if err != nil {
+		return sqlc.QuoteMessage{}, err
+	}
+	// Round-trip to the agent ONLY if the seller has agent autonomy.
+	if s.ent != nil && s.ent.For(ctx, quote.SellerCompanyID).AgentAutonomy && s.pub != nil {
+		payload, err := json.Marshal(messageReceivedEvent{
+			Type: "message.received", QuoteID: quoteID, RFQID: quote.RfqID,
+			Counter: counterTerms{PriceCents: priceCents, DeliveryDays: deliveryDays},
+			Thread:  buildThread(ctx, s.q, quoteID),
+		})
+		if err != nil {
+			s.logger.Warn().Err(err).Str("quote_id", quoteID).Msg("message.received marshal failed")
+		} else if err := s.pub.Publish(ctx, quote.SellerCompanyID, "message.received", payload); err != nil {
+			s.logger.Warn().Err(err).Str("quote_id", quoteID).Msg("message.received publish failed")
 		}
 	}
 	return msg, nil

@@ -33,6 +33,7 @@ func (h *Handler) Register(app *fiber.App, messageRL fiber.Handler, guard ...fib
 	g.Post("/:id/accept", h.accept)
 	g.Get("/:id/messages", h.listMessages)
 	g.Post("/:id/messages", messageRL, h.addMessage)
+	g.Post("/:id/counter", messageRL, h.counter)
 }
 
 type quoteView struct {
@@ -182,6 +183,33 @@ func (h *Handler) addMessage(c *fiber.Ctx) error {
 		return err
 	}
 	return c.Status(fiber.StatusCreated).JSON(messageView(msg))
+}
+
+type counterReq struct {
+	PriceCents   *int64 `json:"price_cents"`
+	DeliveryDays *int32 `json:"delivery_days"`
+	Message      string `json:"message"`
+}
+
+// counter lets the buyer on the RFQ propose new terms on a submitted quote.
+// It always records a thread message; when the seller has agent autonomy the
+// service also round-trips a message.received event to their agent.
+func (h *Handler) counter(c *fiber.Ctx) error {
+	var req counterReq
+	if err := c.BodyParser(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
+	}
+	if req.Message == "" && req.PriceCents == nil && req.DeliveryDays == nil {
+		return fiber.NewError(fiber.StatusBadRequest, "message or proposed terms required")
+	}
+	msg, err := h.svc.Counter(c.Context(), middleware.CompanyID(c), c.Params("id"), req.PriceCents, req.DeliveryDays, req.Message)
+	if errors.Is(err, ErrNotFound) {
+		return fiber.NewError(fiber.StatusNotFound, "quote not found")
+	}
+	if err != nil {
+		return err
+	}
+	return c.JSON(fiber.Map{"message": messageView(msg)})
 }
 
 func (h *Handler) listMessages(c *fiber.Ctx) error {

@@ -247,7 +247,7 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	// invSvc is shared: quotes.Accept creates the invoice inside its
 	// transaction, and the invoicing handler serves it back as a PDF.
 	invSvc := invoicing.NewService(cfg.Logger)
-	quotes.NewHandler(quotes.NewService(q, cfg.Pool, pub, attLoader, cfg.Logger, notifier, invSvc), q).Register(f, rlMessage, guard...)
+	quotes.NewHandler(quotes.NewService(q, cfg.Pool, pub, attLoader, cfg.Logger, notifier, invSvc, entSvc), q).Register(f, rlMessage, guard...)
 	orders.NewHandler(orders.NewService(q, cfg.Pool, notifier, cfg.Logger), q).Register(f, guard...)
 	invoicing.NewHandler(invSvc, q).Register(f, guard...)
 

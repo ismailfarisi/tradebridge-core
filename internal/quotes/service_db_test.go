@@ -9,6 +9,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tradebridge/core/internal/entitlements"
 	"github.com/tradebridge/core/internal/eventbus"
 	"github.com/tradebridge/core/internal/invoicing"
 	"github.com/tradebridge/core/pkg/db/sqlc"
@@ -63,7 +64,8 @@ func TestAcceptCreatesInvoiceAtomically(t *testing.T) {
 
 	pub := eventbus.New(q, nil, zerolog.Nop())
 	invSvc := invoicing.NewService(zerolog.Nop())
-	svc := NewService(q, pool, pub, nil, zerolog.Nop(), nil, invSvc)
+	entSvc := entitlements.NewService(q, zerolog.Nop())
+	svc := NewService(q, pool, pub, nil, zerolog.Nop(), nil, invSvc, entSvc)
 
 	order, err := svc.Accept(ctx, buyerID, quote.ID)
 	require.NoError(t, err)
