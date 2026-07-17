@@ -118,7 +118,7 @@ export default function RfqsPage() {
                 <EmptyState
                   title={tab || search ? "No RFQs match this filter" : "No RFQs yet"}
                   body={tab || search ? "Try a different tab or clear your search." : "Post your first request and Core will match sellers and collect quotes."}
-                  cta={tab || search ? { label: "Clear filters", href: "/rfqs" } : { label: "Post an RFQ", href: "/chat" }}
+                  cta={tab || search ? { label: "Clear filters", onClick: () => { setTab(""); setSearch(""); } } : { label: "Post an RFQ", href: "/chat" }}
                 />
               </td></tr>
             )}
