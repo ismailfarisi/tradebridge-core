@@ -78,6 +78,8 @@ export type RFQ = {
   match_count: number;
   messages?: ChatMessage[];
   created_at: string;
+  quote_count?: number;
+  new_quotes?: number;
 };
 export type AttachmentMeta = {
   id: string;
@@ -137,8 +139,13 @@ export const me = (token: string) => req<Me>("GET", "/v1/me", { token });
 
 export const createRfq = (token: string, title: string, text: string) =>
   req<{ rfq: RFQ; match_count: number }>("POST", "/v1/rfqs", { token, body: { title, text } });
-export const listRfqs = (token: string) =>
-  req<{ rfqs: RFQ[]; count: number }>("GET", "/v1/rfqs", { token });
+export const listRfqs = (token: string, params?: { tab?: string; q?: string }) => {
+  const s = new URLSearchParams();
+  if (params?.tab) s.set("tab", params.tab);
+  if (params?.q) s.set("q", params.q);
+  const suffix = s.toString() ? `?${s.toString()}` : "";
+  return req<{ rfqs: RFQ[]; count: number }>("GET", `/v1/rfqs${suffix}`, { token });
+};
 export const getRfq = (token: string, id: string) =>
   req<{ rfq: RFQ; match_count: number; matches: unknown[] }>("GET", `/v1/rfqs/${id}`, { token });
 export const rfqQuotes = (token: string, id: string) =>
