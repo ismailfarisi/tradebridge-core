@@ -17,6 +17,7 @@ import (
 
 	"github.com/tradebridge/core/internal/attachments"
 	"github.com/tradebridge/core/internal/eventbus"
+	"github.com/tradebridge/core/internal/invoicing"
 	"github.com/tradebridge/core/internal/notify"
 	"github.com/tradebridge/core/internal/rfq"
 	"github.com/tradebridge/core/pkg/db/sqlc"
@@ -105,11 +106,12 @@ type Service struct {
 	loader   *attachments.Loader
 	logger   zerolog.Logger
 	notifier *notify.Notifier
+	inv      *invoicing.Service
 }
 
 // NewService builds the quotes service.
-func NewService(q *sqlc.Queries, pool *pgxpool.Pool, pub *eventbus.Publisher, loader *attachments.Loader, logger zerolog.Logger, notifier *notify.Notifier) *Service {
-	return &Service{q: q, pool: pool, pub: pub, loader: loader, logger: logger, notifier: notifier}
+func NewService(q *sqlc.Queries, pool *pgxpool.Pool, pub *eventbus.Publisher, loader *attachments.Loader, logger zerolog.Logger, notifier *notify.Notifier, inv *invoicing.Service) *Service {
+	return &Service{q: q, pool: pool, pub: pub, loader: loader, logger: logger, notifier: notifier, inv: inv}
 }
 
 // QuoteMessageEvent is the agent event emitted when a buyer posts in a quote
@@ -254,6 +256,13 @@ func (s *Service) Accept(ctx context.Context, buyerCompanyID, quoteID string) (s
 		return sqlc.Order{}, err
 	}
 
+	// The invoice is created in the same transaction as the order so an
+	// order always has exactly one invoice: a rollback leaves none.
+	invoice, err := s.inv.CreateForOrder(ctx, qtx, order, r)
+	if err != nil {
+		return sqlc.Order{}, err
+	}
+
 	body, err := json.Marshal(orderCreatedEvent{
 		Type:            "order.created",
 		OrderID:         order.ID,
@@ -324,6 +333,15 @@ func (s *Service) Accept(ctx context.Context, buyerCompanyID, quoteID string) (s
 		}
 		s.notifier.NotifyCompany(ctx, order.BuyerCompanyID, nev)
 		s.notifier.NotifyCompany(ctx, order.SellerCompanyID, nev)
+
+		s.notifier.NotifyCompany(ctx, order.BuyerCompanyID, notify.Event{
+			Type:     notify.TypeInvoiceIssued,
+			Title:    "Invoice issued",
+			Body:     "Invoice " + invoice.InvoiceNumber + " is ready for your order.",
+			Data:     map[string]any{"order_id": order.ID, "invoice_number": invoice.InvoiceNumber},
+			CTALabel: "View invoice",
+			CTAPath:  "/orders/" + order.ID,
+		})
 	}
 	return order, nil
 }

@@ -20,6 +20,7 @@ import (
 	"github.com/tradebridge/core/internal/entitlements"
 	"github.com/tradebridge/core/internal/eventbus"
 	"github.com/tradebridge/core/internal/identity"
+	"github.com/tradebridge/core/internal/invoicing"
 	"github.com/tradebridge/core/internal/notify"
 	"github.com/tradebridge/core/internal/orders"
 	"github.com/tradebridge/core/internal/quotes"
@@ -241,8 +242,12 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	settingsSvc := settings.NewService(q, box, envExtraction, llmHealth)
 
 	rfq.NewHandler(rfq.NewService(q, pub, settingsSvc, attLoader, cfg.Logger, cfg.RFQTTLDays, llmHealth, notifier, cfg.VerifyRequiredForMatch), q, entSvc).Register(f, middleware.RequireVerified(q), rlRFQ, guard...)
-	quotes.NewHandler(quotes.NewService(q, cfg.Pool, pub, attLoader, cfg.Logger, notifier), q).Register(f, rlMessage, guard...)
+	// invSvc is shared: quotes.Accept creates the invoice inside its
+	// transaction, and the invoicing handler serves it back as a PDF.
+	invSvc := invoicing.NewService(cfg.Logger)
+	quotes.NewHandler(quotes.NewService(q, cfg.Pool, pub, attLoader, cfg.Logger, notifier, invSvc), q).Register(f, rlMessage, guard...)
 	orders.NewHandler(orders.NewService(q, cfg.Pool, notifier, cfg.Logger), q).Register(f, guard...)
+	// invoicing.NewHandler is registered in Task 4 below.
 
 	// Abuse reports: rate-limited, requires a verified email.
 	rlReport := mkRL("report", cfg.RateLimitReport, middleware.RateLimit{Limit: 30, Window: time.Hour}, middleware.KeyCompanyOrIP)

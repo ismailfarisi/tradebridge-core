@@ -34,6 +34,8 @@ const (
 	TypeOrderCancelled = "order.cancelled"
 	// TypeEmailVerify fires when a user needs to verify their email address.
 	TypeEmailVerify = "email.verify"
+	// TypeInvoiceIssued fires when an invoice is generated for a new order.
+	TypeInvoiceIssued = "invoice.issued"
 )
 
 // Event is a single thing worth telling a company about.

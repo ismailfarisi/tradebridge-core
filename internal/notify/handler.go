@@ -163,7 +163,8 @@ func clampInt(v, lo, hi int) int {
 func validEventType(t string) bool {
 	switch t {
 	case TypeRFQMatched, TypeQuoteSubmitted, TypeOrderCreated,
-		TypeOrderConfirmed, TypeOrderFulfilled, TypeOrderCompleted, TypeOrderCancelled:
+		TypeOrderConfirmed, TypeOrderFulfilled, TypeOrderCompleted, TypeOrderCancelled,
+		TypeInvoiceIssued:
 		return true
 	default:
 		return false
