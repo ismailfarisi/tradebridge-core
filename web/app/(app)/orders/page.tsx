@@ -50,8 +50,8 @@ export default function OrdersPage() {
               <tr><td colSpan={5}>
                 <EmptyState
                   title="No orders yet"
-                  body="When you accept a quote, the purchase order shows up here."
-                  cta={{ label: "Browse suppliers", href: "/marketplace" }}
+                  body="Accepted quotes become purchase orders and show up here."
+                  cta={{ label: "Go to dashboard", href: "/dashboard" }}
                 />
               </td></tr>
             )}

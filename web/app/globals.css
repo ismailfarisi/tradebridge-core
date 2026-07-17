@@ -149,6 +149,23 @@ textarea.input:focus {
   outline: none;
   border-color: var(--primary);
 }
+/* Keyboard focus visibility (a11y). :focus-visible keeps mouse clicks clean. */
+a:focus-visible,
+button:focus-visible,
+.btn:focus-visible,
+[role="button"]:focus-visible,
+[tabindex]:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.input:focus-visible,
+.select:focus-visible,
+textarea.input:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
 .field {
   display: flex;
   flex-direction: column;
