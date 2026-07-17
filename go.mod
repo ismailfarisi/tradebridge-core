@@ -4,6 +4,7 @@ go 1.26.4
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.56.0
+	github.com/go-pdf/fpdf v0.9.0
 	github.com/gofiber/fiber/v2 v2.52.14
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/wire v0.7.0
