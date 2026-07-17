@@ -36,6 +36,9 @@ const (
 	TypeEmailVerify = "email.verify"
 	// TypeInvoiceIssued fires when an invoice is generated for a new order.
 	TypeInvoiceIssued = "invoice.issued"
+	// TypeReviewReceived fires when a company receives a review from its
+	// counterparty on a completed order.
+	TypeReviewReceived = "review.received"
 )
 
 // Event is a single thing worth telling a company about.
