@@ -24,6 +24,7 @@ import (
 	"github.com/tradebridge/core/internal/dashboard"
 	"github.com/tradebridge/core/internal/discovery"
 	"github.com/tradebridge/core/internal/disputes"
+	"github.com/tradebridge/core/internal/dsr"
 	"github.com/tradebridge/core/internal/entitlements"
 	"github.com/tradebridge/core/internal/eventbus"
 	"github.com/tradebridge/core/internal/identity"
@@ -306,6 +307,10 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	reports.Register(f, append(append([]fiber.Handler{}, guard...), middleware.RequireVerified(q), rlReport)...)
 
 	trust.NewBlocksHandler(q).Register(f, guard...)
+
+	// GDPR data export: owner/admin only, tenant-authed (S9).
+	dsrSvc := dsr.NewService(q, cfg.Pool)
+	dsr.NewHandler(dsrSvc).Register(f, guard...)
 
 	// Platform superadmin realm: a separate credential store and JWT secret
 	// from company auth. Fail-closed — routes are not mounted at all when no
