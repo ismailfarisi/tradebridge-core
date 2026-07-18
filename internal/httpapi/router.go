@@ -16,6 +16,7 @@ import (
 	"github.com/tradebridge/core/internal/admin"
 	"github.com/tradebridge/core/internal/adminconsole"
 	"github.com/tradebridge/core/internal/agent"
+	"github.com/tradebridge/core/internal/analytics"
 	"github.com/tradebridge/core/internal/assist"
 	"github.com/tradebridge/core/internal/attachments"
 	"github.com/tradebridge/core/internal/audit"
@@ -342,6 +343,7 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 		disputes.NewAdminHandler(disputesSvc).RegisterAdmin(f, adminGuard)
 		adminconsole.NewHandler(q, entSvc, auditor, appCache).Register(f, adminGuard)
 		impersonation.NewHandler(q, tokens, auditor).Register(f, adminGuard)
+		analytics.NewHandler(analytics.NewService(q)).Register(f, adminGuard)
 	} else {
 		cfg.Logger.Warn().Msg("ADMIN_JWT_SECRET unset — platform admin routes disabled")
 	}

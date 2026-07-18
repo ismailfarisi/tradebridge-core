@@ -222,6 +222,8 @@ type Plan struct {
 	Seats              int32     `json:"seats"`
 	UpdatedAt          time.Time `json:"updated_at"`
 	AssistMonthlyLimit int32     `json:"assist_monthly_limit"`
+	PriceCentsMonth    *int32    `json:"price_cents_month"`
+	PriceCentsYear     *int32    `json:"price_cents_year"`
 }
 
 type PlatformAdmin struct {

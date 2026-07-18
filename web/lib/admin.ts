@@ -17,7 +17,7 @@ export function useAdminToken(): string | null {
   return useSyncExternalStore(subscribeAdminToken, adminTokenSnapshot, () => null);
 }
 
-async function req<T>(method: string, path: string, opts: { token?: string | null; body?: unknown } = {}): Promise<T> {
+export async function req<T>(method: string, path: string, opts: { token?: string | null; body?: unknown } = {}): Promise<T> {
   const res = await fetch(`${CORE_URL}${path}`, {
     method,
     headers: {

@@ -93,7 +93,7 @@ func (q *Queries) GetCompanyByStripeCustomer(ctx context.Context, stripeCustomer
 }
 
 const getPlan = `-- name: GetPlan :one
-SELECT code, name, agent_autonomy, catalog_max_items, rfq_monthly_limit, seats, updated_at, assist_monthly_limit FROM plans WHERE code = $1
+SELECT code, name, agent_autonomy, catalog_max_items, rfq_monthly_limit, seats, updated_at, assist_monthly_limit, price_cents_month, price_cents_year FROM plans WHERE code = $1
 `
 
 func (q *Queries) GetPlan(ctx context.Context, code string) (Plan, error) {
@@ -108,6 +108,8 @@ func (q *Queries) GetPlan(ctx context.Context, code string) (Plan, error) {
 		&i.Seats,
 		&i.UpdatedAt,
 		&i.AssistMonthlyLimit,
+		&i.PriceCentsMonth,
+		&i.PriceCentsYear,
 	)
 	return i, err
 }
@@ -186,7 +188,7 @@ func (q *Queries) IsStripeEventProcessed(ctx context.Context, eventID string) (b
 }
 
 const listPlans = `-- name: ListPlans :many
-SELECT code, name, agent_autonomy, catalog_max_items, rfq_monthly_limit, seats, updated_at, assist_monthly_limit FROM plans ORDER BY
+SELECT code, name, agent_autonomy, catalog_max_items, rfq_monthly_limit, seats, updated_at, assist_monthly_limit, price_cents_month, price_cents_year FROM plans ORDER BY
     CASE code WHEN 'free' THEN 0 WHEN 'pro' THEN 1 WHEN 'business' THEN 2 ELSE 3 END
 `
 
@@ -208,6 +210,8 @@ func (q *Queries) ListPlans(ctx context.Context) ([]Plan, error) {
 			&i.Seats,
 			&i.UpdatedAt,
 			&i.AssistMonthlyLimit,
+			&i.PriceCentsMonth,
+			&i.PriceCentsYear,
 		); err != nil {
 			return nil, err
 		}
@@ -257,7 +261,7 @@ SET agent_autonomy    = $2,
     seats             = $5,
     updated_at        = NOW()
 WHERE code = $1
-RETURNING code, name, agent_autonomy, catalog_max_items, rfq_monthly_limit, seats, updated_at, assist_monthly_limit
+RETURNING code, name, agent_autonomy, catalog_max_items, rfq_monthly_limit, seats, updated_at, assist_monthly_limit, price_cents_month, price_cents_year
 `
 
 type UpdatePlanLimitsParams struct {
@@ -286,6 +290,8 @@ func (q *Queries) UpdatePlanLimits(ctx context.Context, arg UpdatePlanLimitsPara
 		&i.Seats,
 		&i.UpdatedAt,
 		&i.AssistMonthlyLimit,
+		&i.PriceCentsMonth,
+		&i.PriceCentsYear,
 	)
 	return i, err
 }
