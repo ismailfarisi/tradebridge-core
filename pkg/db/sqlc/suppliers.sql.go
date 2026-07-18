@@ -102,6 +102,7 @@ WHERE (
         WHERE cat ILIKE '%' || $1::text || '%'
     )
 )
+  AND c.status = 'active' AND c.deleted_at IS NULL
 ORDER BY sp.verified DESC, c.name
 LIMIT $3 OFFSET $2
 `

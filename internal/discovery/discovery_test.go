@@ -247,3 +247,46 @@ func TestSearchWithNilCacheReturnsCorrectResults(t *testing.T) {
 		require.True(t, found, "supplier present in results (iteration %d)", i)
 	}
 }
+
+// The facet-count queries (DiscoverCategoryFacets, DiscoverVerifiedFacets,
+// DiscoverRatingFacets) were missed by the S9 Task 5 exclusion fix applied to
+// DiscoverSuppliers/GetPublicSeller: a suspended company still inflated the
+// category and verified counts shown alongside public discovery results.
+func TestFacetsExcludeSuspendedCompanies(t *testing.T) {
+	q, _ := queriesOrSkip(t)
+	ctx := context.Background()
+	// Unique per run (not just per package): the exact-count assertions below
+	// would otherwise accumulate matches across repeated runs against the
+	// persistent test DB, the way the shared "%widgets%" pool does elsewhere.
+	tag := fmt.Sprintf("facetexclprobe%d", time.Now().UnixNano())
+
+	active, err := q.CreateCompany(ctx, sqlc.CreateCompanyParams{Name: "facetexcl-active-co", Type: "seller"})
+	require.NoError(t, err)
+	_, err = q.UpsertSupplierProfile(ctx, sqlc.UpsertSupplierProfileParams{
+		CompanyID: active.ID, Description: sp(tag + " supplier"), Categories: []string{tag}, Location: sp("NYC"),
+	})
+	require.NoError(t, err)
+
+	suspended, err := q.CreateCompany(ctx, sqlc.CreateCompanyParams{Name: "facetexcl-suspended-co", Type: "seller"})
+	require.NoError(t, err)
+	_, err = q.UpsertSupplierProfile(ctx, sqlc.UpsertSupplierProfileParams{
+		CompanyID: suspended.ID, Description: sp(tag + " supplier"), Categories: []string{tag}, Location: sp("NYC"),
+	})
+	require.NoError(t, err)
+	require.NoError(t, q.SyncSupplierVerified(ctx, sqlc.SyncSupplierVerifiedParams{CompanyID: suspended.ID, Verified: true}))
+	require.NoError(t, q.SetCompanyStatus(ctx, sqlc.SetCompanyStatusParams{ID: suspended.ID, Status: "suspended"}))
+
+	svc := NewService(q, nil)
+	facets, err := svc.Facets(ctx, Query{Q: tag})
+	require.NoError(t, err)
+
+	var catCount int64 = -1
+	for _, c := range facets.Categories {
+		if c.Value == tag {
+			catCount = c.Count
+		}
+	}
+	require.Equal(t, int64(1), catCount, "category facet must count only the active company, not the suspended one")
+	require.Equal(t, int64(0), facets.Verified.True, "suspended (but verified) company must not count toward the verified facet")
+	require.Equal(t, int64(1), facets.Verified.False, "unverified active company must still be counted")
+}

@@ -74,6 +74,7 @@ matched AS (
       AND ($2::text = '' OR sp.location ILIKE '%' || $2::text || '%')
       AND (NOT $3::bool OR sp.verified)
       AND ($4::float8 <= 0 OR COALESCE(rep.avg_rating, 0) >= $4::float8)
+      AND c.status = 'active' AND c.deleted_at IS NULL
 )
 SELECT cat AS value, COUNT(*)::bigint AS count
 FROM matched, unnest(matched.categories) AS cat
@@ -142,6 +143,7 @@ WHERE ($1::text = ''
   AND ($3::text = ''
        OR EXISTS (SELECT 1 FROM unnest(sp.categories) cat WHERE cat ILIKE $3::text))
   AND (NOT $4::bool OR sp.verified)
+  AND c.status = 'active' AND c.deleted_at IS NULL
 `
 
 type DiscoverRatingFacetsParams struct {
@@ -326,6 +328,7 @@ WHERE ($1::text = ''
   AND ($3::text = ''
        OR EXISTS (SELECT 1 FROM unnest(sp.categories) cat WHERE cat ILIKE $3::text))
   AND ($4::float8 <= 0 OR COALESCE(rep.avg_rating, 0) >= $4::float8)
+  AND c.status = 'active' AND c.deleted_at IS NULL
 `
 
 type DiscoverVerifiedFacetsParams struct {

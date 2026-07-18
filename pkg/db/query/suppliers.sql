@@ -29,6 +29,7 @@ WHERE (
         WHERE cat ILIKE '%' || sqlc.arg(query)::text || '%'
     )
 )
+  AND c.status = 'active' AND c.deleted_at IS NULL
 ORDER BY sp.verified DESC, c.name
 LIMIT sqlc.arg(lim) OFFSET sqlc.arg(off);
 
