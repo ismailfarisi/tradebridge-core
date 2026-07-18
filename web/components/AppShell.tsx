@@ -40,6 +40,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
       { href: "/settings/billing", label: "Billing & usage", show: () => true },
       { href: "/settings/team", label: "Team", show: () => true },
       { href: "/settings/verification", label: "Verification", show: () => true },
+      { href: "/account", label: "Account", show: () => true },
     ],
   },
 ];
