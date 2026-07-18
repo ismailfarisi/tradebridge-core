@@ -344,6 +344,7 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 		adminconsole.NewHandler(q, entSvc, auditor, appCache).Register(f, adminGuard)
 		impersonation.NewHandler(q, tokens, auditor).Register(f, adminGuard)
 		analytics.NewHandler(analytics.NewService(q)).Register(f, adminGuard)
+		waitlist.NewAdminHandler(q, sender, appBaseURLOr(cfg.AppBaseURL), cfg.Logger).Register(f, adminGuard)
 	} else {
 		cfg.Logger.Warn().Msg("ADMIN_JWT_SECRET unset — platform admin routes disabled")
 	}

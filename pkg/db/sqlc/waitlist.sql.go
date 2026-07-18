@@ -13,7 +13,7 @@ const createWaitlistSignup = `-- name: CreateWaitlistSignup :one
 INSERT INTO waitlist_signups (email, source)
 VALUES ($1, $2)
 ON CONFLICT (email) DO UPDATE SET email = EXCLUDED.email
-RETURNING id, email, source, created_at
+RETURNING id, email, source, created_at, invited_at
 `
 
 type CreateWaitlistSignupParams struct {
@@ -29,6 +29,114 @@ func (q *Queries) CreateWaitlistSignup(ctx context.Context, arg CreateWaitlistSi
 		&i.Email,
 		&i.Source,
 		&i.CreatedAt,
+		&i.InvitedAt,
 	)
 	return i, err
+}
+
+const getWaitlistByIDs = `-- name: GetWaitlistByIDs :many
+SELECT id, email FROM waitlist_signups WHERE id = ANY($1::text[]) AND invited_at IS NULL
+`
+
+type GetWaitlistByIDsRow struct {
+	ID    string `json:"id"`
+	Email string `json:"email"`
+}
+
+func (q *Queries) GetWaitlistByIDs(ctx context.Context, ids []string) ([]GetWaitlistByIDsRow, error) {
+	rows, err := q.db.Query(ctx, getWaitlistByIDs, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetWaitlistByIDsRow
+	for rows.Next() {
+		var i GetWaitlistByIDsRow
+		if err := rows.Scan(&i.ID, &i.Email); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPendingWaitlistEmails = `-- name: ListPendingWaitlistEmails :many
+SELECT id, email FROM waitlist_signups WHERE invited_at IS NULL ORDER BY created_at
+`
+
+type ListPendingWaitlistEmailsRow struct {
+	ID    string `json:"id"`
+	Email string `json:"email"`
+}
+
+func (q *Queries) ListPendingWaitlistEmails(ctx context.Context) ([]ListPendingWaitlistEmailsRow, error) {
+	rows, err := q.db.Query(ctx, listPendingWaitlistEmails)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListPendingWaitlistEmailsRow
+	for rows.Next() {
+		var i ListPendingWaitlistEmailsRow
+		if err := rows.Scan(&i.ID, &i.Email); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listWaitlist = `-- name: ListWaitlist :many
+SELECT id, email, source, created_at, invited_at FROM waitlist_signups
+WHERE ($1::text IS NULL
+       OR ($1 = 'pending' AND invited_at IS NULL)
+       OR ($1 = 'invited' AND invited_at IS NOT NULL))
+ORDER BY created_at DESC
+LIMIT $2
+`
+
+type ListWaitlistParams struct {
+	StatusFilter *string `json:"status_filter"`
+	Lim          int32   `json:"lim"`
+}
+
+func (q *Queries) ListWaitlist(ctx context.Context, arg ListWaitlistParams) ([]WaitlistSignup, error) {
+	rows, err := q.db.Query(ctx, listWaitlist, arg.StatusFilter, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []WaitlistSignup
+	for rows.Next() {
+		var i WaitlistSignup
+		if err := rows.Scan(
+			&i.ID,
+			&i.Email,
+			&i.Source,
+			&i.CreatedAt,
+			&i.InvitedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const markWaitlistInvited = `-- name: MarkWaitlistInvited :exec
+UPDATE waitlist_signups SET invited_at = NOW() WHERE id = ANY($1::text[])
+`
+
+func (q *Queries) MarkWaitlistInvited(ctx context.Context, ids []string) error {
+	_, err := q.db.Exec(ctx, markWaitlistInvited, ids)
+	return err
 }

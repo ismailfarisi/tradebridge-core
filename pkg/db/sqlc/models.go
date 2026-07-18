@@ -400,8 +400,9 @@ type UserInvite struct {
 }
 
 type WaitlistSignup struct {
-	ID        string    `json:"id"`
-	Email     string    `json:"email"`
-	Source    *string   `json:"source"`
-	CreatedAt time.Time `json:"created_at"`
+	ID        string             `json:"id"`
+	Email     string             `json:"email"`
+	Source    *string            `json:"source"`
+	CreatedAt time.Time          `json:"created_at"`
+	InvitedAt pgtype.Timestamptz `json:"invited_at"`
 }
