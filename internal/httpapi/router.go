@@ -316,7 +316,7 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	trust.NewBlocksHandler(q).Register(f, guard...)
 
 	// GDPR data export: owner/admin only, tenant-authed (S9).
-	dsrSvc := dsr.NewService(q, cfg.Pool)
+	dsrSvc := dsr.NewService(q, cfg.Pool, appCache)
 	dsr.NewHandler(dsrSvc, q, cfg.Logger).Register(f, guard...)
 
 	// Platform superadmin realm: a separate credential store and JWT secret
@@ -338,7 +338,7 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 		audit.NewAdminHandler(q).Register(f, adminGuard)
 		reviews.NewAdminHandler(reviewsSvc).Register(f, adminGuard)
 		disputes.NewAdminHandler(disputesSvc).RegisterAdmin(f, adminGuard)
-		adminconsole.NewHandler(q, entSvc, auditor).Register(f, adminGuard)
+		adminconsole.NewHandler(q, entSvc, auditor, appCache).Register(f, adminGuard)
 		impersonation.NewHandler(q, tokens, auditor).Register(f, adminGuard)
 	} else {
 		cfg.Logger.Warn().Msg("ADMIN_JWT_SECRET unset — platform admin routes disabled")

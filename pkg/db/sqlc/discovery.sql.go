@@ -30,6 +30,7 @@ WHERE (
   AND (NOT $3::bool OR sp.verified)
   AND ($4::text = '' OR sp.location ILIKE '%' || $4::text || '%')
   AND ($5::float8 <= 0 OR COALESCE(rep.avg_rating, 0) >= $5::float8)
+  AND c.status = 'active' AND c.deleted_at IS NULL
 `
 
 type CountDiscoverSuppliersParams struct {
@@ -220,6 +221,7 @@ WHERE (
   AND (NOT $6::bool OR sp.verified)
   AND ($7::text = '' OR sp.location ILIKE '%' || $7::text || '%')
   AND ($8::float8 <= 0 OR COALESCE(rep.avg_rating, 0) >= $8::float8)
+  AND c.status = 'active' AND c.deleted_at IS NULL
 ORDER BY
     CASE WHEN $9::text = 'rating' THEN COALESCE(rep.avg_rating, 0) END DESC NULLS LAST,
     CASE WHEN $9::text = 'newest' THEN sp.updated_at END DESC NULLS LAST,

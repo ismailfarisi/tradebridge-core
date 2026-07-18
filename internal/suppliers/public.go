@@ -30,8 +30,6 @@ func NewPublicHandler(q *sqlc.Queries, c *cache.Cache) *PublicHandler {
 	return &PublicHandler{q: q, cache: c}
 }
 
-// storeCacheKey is the cache key for a company's public storefront profile.
-func storeCacheKey(companyID string) string { return "store:" + companyID }
 
 // RegisterPublic mounts the public routes with NO tenant guard.
 func (h *PublicHandler) RegisterPublic(app *fiber.App) {
@@ -49,7 +47,7 @@ type catalogItem struct {
 
 func (h *PublicHandler) getSeller(c *fiber.Ctx) error {
 	id := c.Params("id")
-	key := storeCacheKey(id)
+	key := cache.StorefrontKey(id)
 
 	var cached fiber.Map
 	if hit, _ := h.cache.GetJSON(c.Context(), key, &cached); hit {

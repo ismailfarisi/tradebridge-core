@@ -61,7 +61,7 @@ func (h *Handler) upsertMine(c *fiber.Ctx) error {
 	}
 	// Invalidate the public storefront cache after the write commits so a
 	// stale profile doesn't linger.
-	h.cache.Delete(c.Context(), storeCacheKey(middleware.CompanyID(c)))
+	h.cache.Delete(c.Context(), cache.StorefrontKey(middleware.CompanyID(c)))
 	activation.Emit(c.Context(), h.q, middleware.CompanyID(c), middleware.UserID(c), activation.EventProfileSet, nil)
 	return c.JSON(p)
 }

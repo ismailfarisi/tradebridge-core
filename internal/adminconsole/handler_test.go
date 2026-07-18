@@ -71,7 +71,7 @@ func doJSON(t *testing.T, app *fiber.App, method, path string, body any) (int, m
 func newTestHandler(q *sqlc.Queries) *Handler {
 	ent := entitlements.NewService(q, zerolog.Nop())
 	auditor := audit.New(q, zerolog.Nop())
-	return NewHandler(q, ent, auditor)
+	return NewHandler(q, ent, auditor, nil)
 }
 
 func TestSearchReturnsSeededCompany(t *testing.T) {

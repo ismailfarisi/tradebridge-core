@@ -28,10 +28,6 @@ func NewHandler(q *sqlc.Queries, ent *entitlements.Service, c *cache.Cache) *Han
 	return &Handler{q: q, ent: ent, cache: c}
 }
 
-// storeCacheKey mirrors suppliers.storeCacheKey: a catalog write invalidates
-// the same public storefront cache entry (the storefront embeds the
-// company's catalog showcase).
-func storeCacheKey(companyID string) string { return "store:" + companyID }
 
 // Register mounts the catalog routes under the given tenant guard.
 func (h *Handler) Register(app *fiber.App, guard ...fiber.Handler) {
@@ -70,7 +66,7 @@ func (h *Handler) create(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	h.cache.Delete(c.Context(), storeCacheKey(middleware.CompanyID(c)))
+	h.cache.Delete(c.Context(), cache.StorefrontKey(middleware.CompanyID(c)))
 	activation.Emit(c.Context(), h.q, middleware.CompanyID(c), middleware.UserID(c), activation.EventCatalogAdded, nil)
 	return c.Status(fiber.StatusCreated).JSON(item)
 }
@@ -126,7 +122,7 @@ func (h *Handler) update(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	h.cache.Delete(c.Context(), storeCacheKey(middleware.CompanyID(c)))
+	h.cache.Delete(c.Context(), cache.StorefrontKey(middleware.CompanyID(c)))
 	return c.JSON(item)
 }
 
@@ -137,7 +133,7 @@ func (h *Handler) remove(c *fiber.Ctx) error {
 	if err := h.q.DeleteCatalogSummary(c.Context(), c.Params("id")); err != nil {
 		return err
 	}
-	h.cache.Delete(c.Context(), storeCacheKey(middleware.CompanyID(c)))
+	h.cache.Delete(c.Context(), cache.StorefrontKey(middleware.CompanyID(c)))
 	return c.SendStatus(fiber.StatusNoContent)
 }
 

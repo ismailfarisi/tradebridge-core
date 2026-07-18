@@ -3,8 +3,10 @@ package discovery
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
@@ -141,7 +143,11 @@ func TestDiscoverAttachesMatchedCatalog(t *testing.T) {
 func TestFacetsReflectFilterSet(t *testing.T) {
 	q, _ := queriesOrSkip(t)
 	ctx := context.Background()
-	tag := "facetprobe"
+	// Unique per run (unlike the plain string literal this used to be): this
+	// test asserts an EXACT category count, so a fixed tag re-run against the
+	// persistent test DB (no per-run teardown) accumulates rows across
+	// invocations and breaks the exact-equality assertion below.
+	tag := fmt.Sprintf("facetprobe%d", time.Now().UnixNano())
 
 	mk := func(name, cat string, verified bool) {
 		co, err := q.CreateCompany(ctx, sqlc.CreateCompanyParams{Name: name, Type: "seller"})
@@ -169,6 +175,44 @@ func TestFacetsReflectFilterSet(t *testing.T) {
 	require.Equal(t, int64(1), counts[tag+"-cat2"])
 	require.GreaterOrEqual(t, f.Verified.True, int64(1))
 	require.GreaterOrEqual(t, f.Verified.False, int64(2))
+}
+
+// A suspended or soft-deleted (GDPR-erased) company must never appear in
+// public discovery results, regardless of how well it otherwise matches —
+// RequireActiveCompany only blocks the company's OWN authed requests, so
+// this exclusion has to live in the public query itself.
+func TestDiscoverExcludesDeletedAndSuspendedCompanies(t *testing.T) {
+	q, _ := queriesOrSkip(t)
+	ctx := context.Background()
+	tag := "excludeprobe"
+
+	mk := func(name string) sqlc.Company {
+		co, err := q.CreateCompany(ctx, sqlc.CreateCompanyParams{Name: name, Type: "seller"})
+		require.NoError(t, err)
+		_, err = q.UpsertSupplierProfile(ctx, sqlc.UpsertSupplierProfileParams{
+			CompanyID: co.ID, Description: sp(tag + " supplier"), Categories: []string{tag}, Location: sp("NYC"),
+		})
+		require.NoError(t, err)
+		return co
+	}
+
+	active := mk("excludeprobe-active-co")
+	suspended := mk("excludeprobe-suspended-co")
+	require.NoError(t, q.SetCompanyStatus(ctx, sqlc.SetCompanyStatusParams{ID: suspended.ID, Status: "suspended"}))
+	deleted := mk("excludeprobe-deleted-co")
+	require.NoError(t, q.SoftDeleteAndAnonymizeCompany(ctx, deleted.ID))
+
+	svc := NewService(q, nil)
+	page, err := svc.Search(ctx, Query{Q: tag})
+	require.NoError(t, err)
+
+	seen := map[string]bool{}
+	for _, r := range page.Results {
+		seen[r.CompanyID] = true
+	}
+	require.True(t, seen[active.ID], "active company must appear")
+	require.False(t, seen[suspended.ID], "suspended company must not appear in public discovery")
+	require.False(t, seen[deleted.ID], "soft-deleted company must not appear in public discovery")
 }
 
 // A Service built with a nil cache (the zero value — no Redis wired at all)

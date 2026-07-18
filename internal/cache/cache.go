@@ -17,6 +17,11 @@ type Cache struct {
 	logger zerolog.Logger
 }
 
+// StorefrontKey is the single source of truth for the public storefront
+// cache key, shared by every package that reads (suppliers) or invalidates
+// (suppliers, catalog, dsr, adminconsole) a company's cached public profile.
+func StorefrontKey(companyID string) string { return "store:" + companyID }
+
 func New(rdb *redis.Client, logger zerolog.Logger) *Cache {
 	return &Cache{rdb: rdb, logger: logger}
 }
@@ -46,6 +51,7 @@ func (c *Cache) SetJSON(ctx context.Context, key string, v any, ttl time.Duratio
 	}
 	raw, err := json.Marshal(v)
 	if err != nil {
+		c.logger.Debug().Err(err).Str("key", key).Msg("cache marshal failed (fail-open)")
 		return
 	}
 	if err := c.rdb.Set(ctx, key, raw, ttl).Err(); err != nil {

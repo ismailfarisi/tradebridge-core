@@ -6,6 +6,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/tradebridge/core/internal/audit"
+	"github.com/tradebridge/core/internal/cache"
 	"github.com/tradebridge/core/internal/entitlements"
 	"github.com/tradebridge/core/pkg/db/sqlc"
 	"github.com/tradebridge/core/pkg/middleware"
@@ -15,10 +16,13 @@ type Handler struct {
 	svc     *Service
 	q       *sqlc.Queries
 	auditor *audit.Auditor
+	cache   *cache.Cache
 }
 
-func NewHandler(q *sqlc.Queries, ent *entitlements.Service, auditor *audit.Auditor) *Handler {
-	return &Handler{svc: NewService(q, ent), q: q, auditor: auditor}
+// NewHandler builds the admin console handler. c may be nil — the post-
+// suspend/unsuspend cache purge then fails open to a no-op.
+func NewHandler(q *sqlc.Queries, ent *entitlements.Service, auditor *audit.Auditor, c *cache.Cache) *Handler {
+	return &Handler{svc: NewService(q, ent), q: q, auditor: auditor, cache: c}
 }
 
 func (h *Handler) Register(app *fiber.App, adminGuard fiber.Handler) {
@@ -76,6 +80,10 @@ func (h *Handler) setStatus(c *fiber.Ctx, status, action string) error {
 	if err := h.q.SetCompanyStatus(c.Context(), sqlc.SetCompanyStatusParams{ID: id, Status: status}); err != nil {
 		return err
 	}
+	// Purge the public storefront cache AFTER the status flip commits: a
+	// suspended company must stop serving its (now publicly-excluded)
+	// storefront immediately, not just after the cache TTL expires.
+	h.cache.Delete(c.Context(), cache.StorefrontKey(id))
 	h.auditor.Admin(c.Context(), middleware.AdminEmail(c), action, id, map[string]any{"reason": req.Reason})
 	return c.JSON(fiber.Map{"company_id": id, "status": status})
 }

@@ -7,19 +7,22 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/tradebridge/core/internal/cache"
 	"github.com/tradebridge/core/pkg/db/sqlc"
 )
 
 type Service struct {
-	q    *sqlc.Queries
-	pool *pgxpool.Pool
+	q     *sqlc.Queries
+	pool  *pgxpool.Pool
+	cache *cache.Cache
 }
 
 // NewService takes the pool now even though Export doesn't use it: Task 3's
 // account-deletion flow needs a transaction across multiple tables, and
-// defining the pool dependency here avoids a later signature change.
-func NewService(q *sqlc.Queries, pool *pgxpool.Pool) *Service {
-	return &Service{q: q, pool: pool}
+// defining the pool dependency here avoids a later signature change. c may
+// be nil — the post-delete cache purge then fails open to a no-op.
+func NewService(q *sqlc.Queries, pool *pgxpool.Pool, c *cache.Cache) *Service {
+	return &Service{q: q, pool: pool, cache: c}
 }
 
 // Bundle is the exported data, one entry per data section.
@@ -135,5 +138,14 @@ func (s *Service) Delete(ctx context.Context, companyID, actingUserID string) er
 	if err := qtx.RevokeAgentCredentialsByCompany(ctx, companyID); err != nil {
 		return err
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	// Purge the public storefront cache AFTER commit: a cached pre-erasure
+	// payload (real name/description) must not keep serving once the row is
+	// anonymized. (The public storefront read query now also excludes
+	// deleted_at IS NOT NULL companies outright, so this is defense in depth
+	// against the up-to-5-minute window before the old cache entry's TTL.)
+	s.cache.Delete(ctx, cache.StorefrontKey(companyID))
+	return nil
 }

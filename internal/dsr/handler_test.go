@@ -66,7 +66,7 @@ func TestHandlerDeleteHappyPathWritesAuditRow(t *testing.T) {
 	q, pool := testQueriesOrSkip(t)
 	co, user := seedOwnerCompany(t, q, "dsr-handler-ok", "correct-horse-battery-staple")
 
-	svc := NewService(q, pool)
+	svc := NewService(q, pool, nil)
 	app := fiber.New()
 	NewHandler(svc, q, zerolog.Nop()).Register(app, stubIdentity(co.ID, user.ID, "owner"))
 
@@ -89,7 +89,7 @@ func TestHandlerDeleteWrongPasswordForbidden(t *testing.T) {
 	q, pool := testQueriesOrSkip(t)
 	co, user := seedOwnerCompany(t, q, "dsr-handler-badpw", "correct-horse-battery-staple")
 
-	svc := NewService(q, pool)
+	svc := NewService(q, pool, nil)
 	app := fiber.New()
 	NewHandler(svc, q, zerolog.Nop()).Register(app, stubIdentity(co.ID, user.ID, "owner"))
 
@@ -105,7 +105,7 @@ func TestHandlerDeleteNonOwnerForbidden(t *testing.T) {
 	q, pool := testQueriesOrSkip(t)
 	co, user := seedOwnerCompany(t, q, "dsr-handler-nonowner", "correct-horse-battery-staple")
 
-	svc := NewService(q, pool)
+	svc := NewService(q, pool, nil)
 	app := fiber.New()
 	NewHandler(svc, q, zerolog.Nop()).Register(app, stubIdentity(co.ID, user.ID, "member"))
 

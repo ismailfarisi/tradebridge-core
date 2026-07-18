@@ -50,7 +50,7 @@ func TestExportAssemblesCompanyFootprint(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	svc := NewService(q, pool)
+	svc := NewService(q, pool, nil)
 	bundle, err := svc.Export(ctx, co.ID)
 	require.NoError(t, err)
 
@@ -93,7 +93,7 @@ func TestDeleteSoftDeletesAnonymizesAndIsIdempotent(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	svc := NewService(q, pool)
+	svc := NewService(q, pool, nil)
 
 	require.NoError(t, svc.Delete(ctx, co.ID, user.ID))
 

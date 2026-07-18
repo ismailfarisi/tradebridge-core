@@ -47,6 +47,7 @@ WHERE (
   AND (NOT sqlc.arg(verified_only)::bool OR sp.verified)
   AND (sqlc.arg(location)::text = '' OR sp.location ILIKE '%' || sqlc.arg(location)::text || '%')
   AND (sqlc.arg(min_rating)::float8 <= 0 OR COALESCE(rep.avg_rating, 0) >= sqlc.arg(min_rating)::float8)
+  AND c.status = 'active' AND c.deleted_at IS NULL
 ORDER BY
     CASE WHEN sqlc.arg(sort)::text = 'rating' THEN COALESCE(rep.avg_rating, 0) END DESC NULLS LAST,
     CASE WHEN sqlc.arg(sort)::text = 'newest' THEN sp.updated_at END DESC NULLS LAST,
@@ -76,7 +77,8 @@ WHERE (
        OR EXISTS (SELECT 1 FROM unnest(sp.categories) cat WHERE cat ILIKE sqlc.arg(category)::text))
   AND (NOT sqlc.arg(verified_only)::bool OR sp.verified)
   AND (sqlc.arg(location)::text = '' OR sp.location ILIKE '%' || sqlc.arg(location)::text || '%')
-  AND (sqlc.arg(min_rating)::float8 <= 0 OR COALESCE(rep.avg_rating, 0) >= sqlc.arg(min_rating)::float8);
+  AND (sqlc.arg(min_rating)::float8 <= 0 OR COALESCE(rep.avg_rating, 0) >= sqlc.arg(min_rating)::float8)
+  AND c.status = 'active' AND c.deleted_at IS NULL;
 
 -- name: MatchedCatalogForCompanies :many
 -- Catalog items (name/category) matching the query text for a set of companies,
