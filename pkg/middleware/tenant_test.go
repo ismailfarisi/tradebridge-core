@@ -58,28 +58,33 @@ func TestTenantGuardInjectsCompany(t *testing.T) {
 }
 
 func TestRequireActiveCompany(t *testing.T) {
-	newApp := func(status string, statusErr error) *fiber.App {
+	newApp := func(status string, deleted bool) *fiber.App {
 		app := fiber.New()
 		app.Use(func(c *fiber.Ctx) error { c.Locals(LocalCompanyID, "co_1"); return c.Next() })
-		app.Use(RequireActiveCompany(func(context.Context, string) (string, error) {
-			return status, statusErr
+		app.Use(RequireActiveCompany(func(context.Context, string) (string, bool, error) {
+			return status, deleted, nil
 		}))
 		app.Get("/x", func(c *fiber.Ctx) error { return c.SendString("ok") })
 		return app
 	}
-
-	t.Run("active passes", func(t *testing.T) {
-		res, _ := newApp("active", nil).Test(httptest.NewRequest("GET", "/x", nil))
-		if res.StatusCode != 200 {
-			t.Fatalf("want 200, got %d", res.StatusCode)
-		}
-	})
-	t.Run("suspended blocked 403", func(t *testing.T) {
-		res, _ := newApp("suspended", nil).Test(httptest.NewRequest("GET", "/x", nil))
-		if res.StatusCode != 403 {
-			t.Fatalf("want 403, got %d", res.StatusCode)
-		}
-	})
+	cases := []struct {
+		name    string
+		status  string
+		deleted bool
+		want    int
+	}{
+		{"active", "active", false, 200},
+		{"suspended", "suspended", false, 403},
+		{"deleted", "active", true, 403},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			res, _ := newApp(tc.status, tc.deleted).Test(httptest.NewRequest("GET", "/x", nil))
+			if res.StatusCode != tc.want {
+				t.Fatalf("%s: want %d got %d", tc.name, tc.want, res.StatusCode)
+			}
+		})
+	}
 }
 
 func TestEnforceReadOnly(t *testing.T) {

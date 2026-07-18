@@ -102,6 +102,7 @@ type Company struct {
 	VerifiedDomain     *string            `json:"verified_domain"`
 	VerifiedAt         pgtype.Timestamptz `json:"verified_at"`
 	Status             string             `json:"status"`
+	DeletedAt          pgtype.Timestamptz `json:"deleted_at"`
 }
 
 type CompanySetting struct {

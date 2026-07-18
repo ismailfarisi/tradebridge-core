@@ -8,6 +8,8 @@ package sqlc
 import (
 	"context"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const adminCompanyCounts = `-- name: AdminCompanyCounts :one
@@ -33,7 +35,7 @@ func (q *Queries) AdminCompanyCounts(ctx context.Context, buyerCompanyID string)
 const createCompany = `-- name: CreateCompany :one
 INSERT INTO companies (name, type)
 VALUES ($1, $2)
-RETURNING id, name, type, created_at, stripe_customer_id, verification_status, verified_domain, verified_at, status
+RETURNING id, name, type, created_at, stripe_customer_id, verification_status, verified_domain, verified_at, status, deleted_at
 `
 
 type CreateCompanyParams struct {
@@ -54,12 +56,13 @@ func (q *Queries) CreateCompany(ctx context.Context, arg CreateCompanyParams) (C
 		&i.VerifiedDomain,
 		&i.VerifiedAt,
 		&i.Status,
+		&i.DeletedAt,
 	)
 	return i, err
 }
 
 const getCompanyByID = `-- name: GetCompanyByID :one
-SELECT id, name, type, created_at, stripe_customer_id, verification_status, verified_domain, verified_at, status FROM companies
+SELECT id, name, type, created_at, stripe_customer_id, verification_status, verified_domain, verified_at, status, deleted_at FROM companies
 WHERE id = $1
 `
 
@@ -76,7 +79,24 @@ func (q *Queries) GetCompanyByID(ctx context.Context, id string) (Company, error
 		&i.VerifiedDomain,
 		&i.VerifiedAt,
 		&i.Status,
+		&i.DeletedAt,
 	)
+	return i, err
+}
+
+const getCompanyGate = `-- name: GetCompanyGate :one
+SELECT status, deleted_at FROM companies WHERE id = $1
+`
+
+type GetCompanyGateRow struct {
+	Status    string             `json:"status"`
+	DeletedAt pgtype.Timestamptz `json:"deleted_at"`
+}
+
+func (q *Queries) GetCompanyGate(ctx context.Context, id string) (GetCompanyGateRow, error) {
+	row := q.db.QueryRow(ctx, getCompanyGate, id)
+	var i GetCompanyGateRow
+	err := row.Scan(&i.Status, &i.DeletedAt)
 	return i, err
 }
 

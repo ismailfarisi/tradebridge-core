@@ -10,6 +10,9 @@ WHERE id = $1;
 -- name: GetCompanyStatus :one
 SELECT status FROM companies WHERE id = $1;
 
+-- name: GetCompanyGate :one
+SELECT status, deleted_at FROM companies WHERE id = $1;
+
 -- name: SetCompanyStatus :exec
 UPDATE companies SET status = $2 WHERE id = $1;
 

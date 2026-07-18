@@ -139,7 +139,13 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	guard := []fiber.Handler{
 		middleware.JWT(cfg.JWTSecret),
 		middleware.TenantGuard(),
-		middleware.RequireActiveCompany(q.GetCompanyStatus),
+		middleware.RequireActiveCompany(func(ctx context.Context, cid string) (string, bool, error) {
+			g, err := q.GetCompanyGate(ctx, cid)
+			if err != nil {
+				return "", false, err
+			}
+			return g.Status, g.DeletedAt.Valid, nil
+		}),
 		middleware.EnforceReadOnly(),
 	}
 

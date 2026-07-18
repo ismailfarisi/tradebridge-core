@@ -87,17 +87,20 @@ func EnforceReadOnly() fiber.Handler {
 	}
 }
 
-// RequireActiveCompany must run after TenantGuard. It rejects requests from a
-// suspended company so an admin suspend takes effect immediately, not at token
-// expiry. `status` is injected (typically q.GetCompanyStatus) so this package
-// stays free of a sqlc dependency. One indexed PK lookup per authed request.
-func RequireActiveCompany(status func(ctx context.Context, companyID string) (string, error)) fiber.Handler {
+// RequireActiveCompany must run after TenantGuard. It rejects a suspended OR
+// deleted company so admin suspension and account deletion take effect
+// immediately. `gate` is injected (a closure over q.GetCompanyGate) so this
+// package stays free of a sqlc dependency.
+func RequireActiveCompany(gate func(ctx context.Context, companyID string) (status string, deleted bool, err error)) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		st, err := status(c.Context(), CompanyID(c))
+		status, deleted, err := gate(c.Context(), CompanyID(c))
 		if err != nil {
 			return err
 		}
-		if st == "suspended" {
+		if deleted {
+			return fiber.NewError(fiber.StatusForbidden, "company deleted")
+		}
+		if status == "suspended" {
 			return fiber.NewError(fiber.StatusForbidden, "company suspended")
 		}
 		return c.Next()
