@@ -75,3 +75,58 @@ func TestMetricsMiddlewareRecordsRouteTemplateAndServesExposition(t *testing.T) 
 		require.Regexp(t, lineRe, line, "malformed exposition line: %q", line)
 	}
 }
+
+// TestMetricsRecordsFiberErrorStatusClass is the regression test for the
+// status-mislabeling bug: Fiber's DefaultErrorHandler only rewrites the
+// response status AFTER every middleware (including this one) unwinds, so a
+// naive read of c.Response().StatusCode() right after c.Next() still sees
+// 200 for a handler that returned a *fiber.Error(400). This must derive the
+// status from the returned error instead. Fails on the old code (would
+// record status="2xx"), passes once status is derived from err.
+func TestMetricsRecordsFiberErrorStatusClass(t *testing.T) {
+	m := NewMetrics()
+	app := fiber.New()
+	app.Use(m.Middleware())
+	app.Get("/bad", func(c *fiber.Ctx) error {
+		return fiber.NewError(fiber.StatusBadRequest, "bad")
+	})
+	app.Get("/metrics", m.Handler())
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/bad", nil))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+
+	scrape, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/metrics", nil))
+	require.NoError(t, err)
+	body, err := io.ReadAll(scrape.Body)
+	require.NoError(t, err)
+	text := string(body)
+
+	require.Contains(t, text, `http_requests_total{method="GET",route="/bad",status="4xx"} 1`)
+	require.NotContains(t, text, `route="/bad",status="2xx"`)
+}
+
+// TestMetricsRecordsUnregisteredPathBounded hits a path with no matching
+// route (404) and confirms it's recorded under the "4xx" status class
+// without ever leaking the raw unregistered path/id into a label — keeping
+// cardinality bounded to Fiber's fixed route table even for 404s.
+func TestMetricsRecordsUnregisteredPathBounded(t *testing.T) {
+	m := NewMetrics()
+	app := fiber.New()
+	app.Use(m.Middleware())
+	app.Get("/metrics", m.Handler())
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/no-such-route/abc123", nil))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+
+	scrape, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/metrics", nil))
+	require.NoError(t, err)
+	body, err := io.ReadAll(scrape.Body)
+	require.NoError(t, err)
+	text := string(body)
+
+	require.NotContains(t, text, "abc123")
+	require.NotContains(t, text, "no-such-route")
+	require.Regexp(t, regexp.MustCompile(`http_requests_total\{method="GET",route="[^"]*",status="4xx"\} 1`), text)
+}

@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -60,6 +61,16 @@ func statusClass(code int) string {
 // route, which happens inside c.Next() — so it must be read AFTER c.Next()
 // returns, not before. It never reads c.Path()/c.OriginalURL(), so no id or
 // tenant data ever reaches a label.
+//
+// Status derivation: Fiber's DefaultErrorHandler (no custom ErrorHandler is
+// configured for this app) only rewrites the response status AFTER every
+// middleware has unwound — so a handler/guard that returns a *fiber.Error
+// (e.g. middleware.JWT, TenantGuard, RequireActiveCompany, RequireVerified,
+// PlatformAdminGuard all return 401/403 this way) still reads back as 200 at
+// this point in the stack. To avoid mislabeling every auth rejection as
+// "2xx", the status is derived from the returned error the same way
+// DefaultErrorHandler would: a *fiber.Error's Code, or 500 for any other
+// non-nil error, taking priority over c.Response().StatusCode().
 func (m *Metrics) Middleware() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		start := time.Now()
@@ -69,7 +80,16 @@ func (m *Metrics) Middleware() fiber.Handler {
 		elapsed := time.Since(start).Seconds()
 		route := c.Route().Path
 		method := c.Method()
-		status := statusClass(c.Response().StatusCode())
+
+		code := c.Response().StatusCode()
+		if err != nil {
+			code = fiber.StatusInternalServerError
+			var fe *fiber.Error
+			if errors.As(err, &fe) {
+				code = fe.Code
+			}
+		}
+		status := statusClass(code)
 		k := metricKey{method: method, route: route, status: status}
 
 		m.mu.Lock()
@@ -86,8 +106,7 @@ func (m *Metrics) Middleware() fiber.Handler {
 func (m *Metrics) Handler() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		c.Set(fiber.HeaderContentType, "text/plain; version=0.0.4; charset=utf-8")
-		c.SendString(m.render())
-		return nil
+		return c.SendString(m.render())
 	}
 }
 
