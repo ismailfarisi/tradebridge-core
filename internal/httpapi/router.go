@@ -29,6 +29,7 @@ import (
 	"github.com/tradebridge/core/internal/dsr"
 	"github.com/tradebridge/core/internal/entitlements"
 	"github.com/tradebridge/core/internal/eventbus"
+	"github.com/tradebridge/core/internal/feedback"
 	"github.com/tradebridge/core/internal/identity"
 	"github.com/tradebridge/core/internal/impersonation"
 	"github.com/tradebridge/core/internal/invoicing"
@@ -322,6 +323,10 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	dsrSvc := dsr.NewService(q, cfg.Pool, appCache)
 	dsr.NewHandler(dsrSvc, q, cfg.Logger).Register(f, guard...)
 
+	// In-app feedback + NPS (S10): tenant-authed create, admin-only list.
+	feedbackHandler := feedback.NewHandler(q)
+	feedbackHandler.Register(f, guard...)
+
 	// Platform superadmin realm: a separate credential store and JWT secret
 	// from company auth. Fail-closed — routes are not mounted at all when no
 	// secret is configured, rather than mounting with a guessable default.
@@ -345,6 +350,7 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 		impersonation.NewHandler(q, tokens, auditor).Register(f, adminGuard)
 		analytics.NewHandler(analytics.NewService(q)).Register(f, adminGuard)
 		waitlist.NewAdminHandler(q, sender, appBaseURLOr(cfg.AppBaseURL), cfg.Logger).Register(f, adminGuard)
+		feedbackHandler.RegisterAdmin(f, adminGuard)
 	} else {
 		cfg.Logger.Warn().Msg("ADMIN_JWT_SECRET unset — platform admin routes disabled")
 	}

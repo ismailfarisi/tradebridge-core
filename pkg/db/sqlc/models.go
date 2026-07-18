@@ -149,6 +149,16 @@ type EmailVerification struct {
 	CreatedAt  time.Time          `json:"created_at"`
 }
 
+type Feedback struct {
+	ID        string    `json:"id"`
+	CompanyID string    `json:"company_id"`
+	UserID    string    `json:"user_id"`
+	Kind      string    `json:"kind"`
+	Score     *int32    `json:"score"`
+	Message   *string   `json:"message"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type Invoice struct {
 	ID              string    `json:"id"`
 	OrderID         string    `json:"order_id"`

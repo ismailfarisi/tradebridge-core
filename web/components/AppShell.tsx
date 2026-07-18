@@ -7,6 +7,7 @@ import { logout, useMe } from "@/lib/auth";
 import type { Me } from "@/lib/api";
 import NotificationBell from "@/components/NotificationBell";
 import VerifyEmailBanner from "@/components/VerifyEmailBanner";
+import FeedbackWidget from "@/components/FeedbackWidget";
 import { IMPERSONATING_FLAG_KEY, leaveImpersonation } from "@/lib/impersonation";
 
 type NavItem = { href: string; label: string; show: (me: Me) => boolean };
@@ -184,6 +185,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         )}
         {token && <VerifyEmailBanner token={token} emailVerified={me.email_verified} />}
         <main style={{ padding: "1.75rem", maxWidth: 1000, width: "100%" }}>{children}</main>
+        <FeedbackWidget />
       </div>
     </div>
   );
