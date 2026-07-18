@@ -33,9 +33,13 @@ SELECT
   (SELECT COUNT(*) FROM orders o WHERE o.buyer_company_id  = $1 OR o.seller_company_id = $1) AS orders;
 
 -- name: SoftDeleteAndAnonymizeCompany :exec
+-- verified_domain is scrubbed too: it is identifying data (proof of control
+-- over a real-world domain) and must not survive GDPR account deletion,
+-- same as the name reset below.
 UPDATE companies
 SET deleted_at = NOW(),
-    name = 'Deleted company ' || left(id, 8)
+    name = 'Deleted company ' || left(id, 8),
+    verified_domain = NULL
 WHERE id = $1 AND deleted_at IS NULL;
 
 -- name: AnonymizeCompanyUsers :exec

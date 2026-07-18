@@ -211,10 +211,14 @@ func (q *Queries) SetCompanyStatus(ctx context.Context, arg SetCompanyStatusPara
 const softDeleteAndAnonymizeCompany = `-- name: SoftDeleteAndAnonymizeCompany :exec
 UPDATE companies
 SET deleted_at = NOW(),
-    name = 'Deleted company ' || left(id, 8)
+    name = 'Deleted company ' || left(id, 8),
+    verified_domain = NULL
 WHERE id = $1 AND deleted_at IS NULL
 `
 
+// verified_domain is scrubbed too: it is identifying data (proof of control
+// over a real-world domain) and must not survive GDPR account deletion,
+// same as the name reset below.
 func (q *Queries) SoftDeleteAndAnonymizeCompany(ctx context.Context, id string) error {
 	_, err := q.db.Exec(ctx, softDeleteAndAnonymizeCompany, id)
 	return err

@@ -93,6 +93,16 @@ func TestDeleteSoftDeletesAnonymizesAndIsIdempotent(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	// Give the company a verified domain — this is identifying data (proves
+	// control of a real-world domain) and must be scrubbed on deletion just
+	// like name/email, not merely left dangling on an otherwise-anonymized row.
+	require.NoError(t, q.SetCompanyVerified(ctx, sqlc.SetCompanyVerifiedParams{
+		ID: co.ID, VerifiedDomain: strPtr("dsr-delete-" + co.ID + ".example"),
+	}))
+	verified, err := q.GetCompanyByID(ctx, co.ID)
+	require.NoError(t, err)
+	require.NotNil(t, verified.VerifiedDomain)
+
 	svc := NewService(q, pool, nil)
 
 	require.NoError(t, svc.Delete(ctx, co.ID, user.ID))
@@ -104,6 +114,7 @@ func TestDeleteSoftDeletesAnonymizesAndIsIdempotent(t *testing.T) {
 	company, err := q.GetCompanyByID(ctx, co.ID)
 	require.NoError(t, err)
 	require.True(t, strings.HasPrefix(company.Name, "Deleted company "))
+	require.Nil(t, company.VerifiedDomain, "verified_domain must be scrubbed on GDPR account deletion")
 
 	updatedUser, err := q.GetUserByID(ctx, user.ID)
 	require.NoError(t, err)
