@@ -22,9 +22,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       twitter: { title: seller.name, description },
     };
   } catch {
+    const title = "Supplier storefront";
+    const description = "Verified B2B supplier profile on TradeBridge.";
     return {
-      title: "Supplier storefront",
-      description: "Verified B2B supplier profile on TradeBridge.",
+      title,
+      description,
+      openGraph: { title, description },
+      twitter: { title, description },
     };
   }
 }

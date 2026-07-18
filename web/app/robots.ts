@@ -5,7 +5,7 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: "*",
       allow: "/",
-      disallow: ["/admin", "/dashboard", "/account", "/rfqs", "/orders", "/chat", "/settings"],
+      disallow: ["/admin", "/dashboard", "/account", "/rfqs", "/orders", "/chat", "/settings", "/seller"],
     },
     sitemap: "https://switeaz.com/sitemap.xml",
   };
