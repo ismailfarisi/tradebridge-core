@@ -41,7 +41,7 @@ export default function ChatShell({ children }: { children: React.ReactNode }) {
     activeId ? rfqs.find((r) => r.id === activeId)?.title ?? "RFQ" : "New RFQ";
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh" }}>
+    <div style={{ display: "flex", height: "100vh" }}>
       <aside
         style={{
           width: 264,
@@ -128,7 +128,7 @@ export default function ChatShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
         {token && <VerifyEmailBanner token={token} emailVerified={me.email_verified} />}
-        <main style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>{children}</main>
+        <main style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", paddingBottom: "var(--cookie-banner, 0px)" }}>{children}</main>
       </div>
     </div>
   );

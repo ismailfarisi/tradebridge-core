@@ -1,15 +1,29 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { needsConsent, writeConsent } from "@/lib/consent";
 
 export default function CookieConsent() {
   const [visible, setVisible] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setVisible(needsConsent());
   }, []);
+
+  // Publish the banner's height as a CSS variable so layouts with
+  // bottom-anchored content (the chat composer) can reserve space and avoid
+  // being overlapped by this fixed bar. Reset to 0 when the banner is gone.
+  useEffect(() => {
+    const root = document.documentElement;
+    if (visible && ref.current) {
+      root.style.setProperty("--cookie-banner", `${ref.current.offsetHeight}px`);
+    } else {
+      root.style.setProperty("--cookie-banner", "0px");
+    }
+    return () => root.style.setProperty("--cookie-banner", "0px");
+  }, [visible]);
 
   if (!visible) return null;
 
@@ -20,6 +34,7 @@ export default function CookieConsent() {
 
   return (
     <div
+      ref={ref}
       role="dialog"
       aria-live="polite"
       aria-label="Cookie consent"

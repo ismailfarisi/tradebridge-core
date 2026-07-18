@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { me, register, setToken, type CompanyType } from "@/lib/api";
@@ -17,6 +17,16 @@ export default function RegisterPage() {
   const router = useRouter();
   const [companyName, setCompanyName] = useState("");
   const [companyType, setCompanyType] = useState<CompanyType>("buyer");
+
+  // Preselect the account type from ?role= so the landing's "Sell on
+  // TradeBridge" CTA lands on a seller-defaulted form (read on the client to
+  // avoid a Suspense boundary / hydration mismatch).
+  useEffect(() => {
+    const role = new URLSearchParams(window.location.search).get("role");
+    if (role && TYPES.some((t) => t.value === role)) {
+      setCompanyType(role as CompanyType);
+    }
+  }, []);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [err, setErr] = useState<string | null>(null);

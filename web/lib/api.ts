@@ -1,7 +1,28 @@
-// Client for the Core API. Fiber returns JSON on success and plain-text on
-// error, so the request helper handles both.
+// Client for the Core API. On error, Core returns EITHER a plain-text body
+// ("email already registered") OR a structured JSON error
+// ({"code":"verify_email","message":"verify your email to continue"}). The
+// request helper normalizes both into a human-readable Error.message so pages
+// that render err.message never show a raw JSON blob to the user.
 
 import { readSSE } from "./sse";
+
+// errorMessage turns a Core error response body into a human-readable string.
+// A JSON body with a `message` (or `error`) field yields that field; a plain
+// string body is used verbatim; an empty body falls back to the status.
+export function errorMessage(text: string, status?: number): string {
+  if (!text) return status ? `HTTP ${status}` : "request failed";
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (parsed && typeof parsed === "object") {
+      const obj = parsed as Record<string, unknown>;
+      if (typeof obj.message === "string" && obj.message) return obj.message;
+      if (typeof obj.error === "string" && obj.error) return obj.error;
+    }
+  } catch {
+    // body is not JSON — use the plain text as-is
+  }
+  return text;
+}
 
 export const CORE_URL =
   process.env.NEXT_PUBLIC_CORE_URL ?? "http://localhost:8080";
@@ -47,7 +68,7 @@ async function req<T>(
     cache: "no-store",
   });
   const text = await res.text();
-  if (!res.ok) throw new Error(text || `HTTP ${res.status}`);
+  if (!res.ok) throw new Error(errorMessage(text, res.status));
   return (text ? JSON.parse(text) : null) as T;
 }
 
