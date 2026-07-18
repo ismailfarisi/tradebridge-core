@@ -103,8 +103,19 @@ type reviewView struct {
 }
 
 // getReviews returns the visible reviews left for a seller, newest first.
+// Reviews must never keep serving for a company once it stops being a live
+// public seller (suspended or GDPR soft-deleted): GetPublicSeller is the same
+// existence/liveness gate getSeller uses, so a seller that 404s there must
+// 404 here too, before ListVisibleReviewsForCompany ever runs.
 func (h *PublicHandler) getReviews(c *fiber.Ctx) error {
 	id := c.Params("id")
+
+	if _, err := h.q.GetPublicSeller(c.Context(), id); errors.Is(err, pgx.ErrNoRows) {
+		return fiber.NewError(fiber.StatusNotFound, "seller not found")
+	} else if err != nil {
+		return err
+	}
+
 	rows, err := h.q.ListVisibleReviewsForCompany(c.Context(), id)
 	if err != nil {
 		return err

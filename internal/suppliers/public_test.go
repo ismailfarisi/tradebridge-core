@@ -200,4 +200,38 @@ func TestPublicReviewsRoute(t *testing.T) {
 	require.Contains(t, first, "created_at")
 }
 
+// A suspended or soft-deleted (GDPR-erased) seller's reviews must not keep
+// serving publicly, mirroring TestPublicSellerNotFoundWhenSuspendedOrDeleted
+// for the storefront profile itself.
+func TestPublicReviewsNotFoundWhenSuspendedOrDeleted(t *testing.T) {
+	q := pubQueriesOrSkip(t)
+	ctx := context.Background()
+
+	mk := func(name string) string {
+		co, err := q.CreateCompany(ctx, sqlc.CreateCompanyParams{Name: name, Type: "seller"})
+		require.NoError(t, err)
+		_, err = q.UpsertSupplierProfile(ctx, sqlc.UpsertSupplierProfileParams{
+			CompanyID: co.ID, Description: sp("we sell widgets"), Categories: []string{"widgets"}, Location: sp("NYC"),
+		})
+		require.NoError(t, err)
+		return co.ID
+	}
+
+	suspended := mk("Suspended Reviews Co")
+	require.NoError(t, q.SetCompanyStatus(ctx, sqlc.SetCompanyStatusParams{ID: suspended, Status: "suspended"}))
+
+	deleted := mk("Deleted Reviews Co")
+	require.NoError(t, q.SoftDeleteAndAnonymizeCompany(ctx, deleted))
+
+	app := fiber.New()
+	NewPublicHandler(q, nil).RegisterPublic(app)
+
+	for _, id := range []string{suspended, deleted} {
+		req := httptest.NewRequest("GET", "/public/v1/sellers/"+id+"/reviews", nil)
+		resp, err := app.Test(req, -1)
+		require.NoError(t, err)
+		require.Equal(t, 404, resp.StatusCode, "company %s reviews must not resolve publicly", id)
+	}
+}
+
 func sp(s string) *string { return &s }
