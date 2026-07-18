@@ -117,6 +117,13 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	f := fiber.New(fiber.Config{AppName: "tradebridge-core-api", BodyLimit: 12 * 1024 * 1024})
 	f.Use(middleware.RequestLogger(cfg.Logger))
 
+	// Golden-signal request metrics (S10 T6): dependency-free, in-memory,
+	// keyed by (method, route TEMPLATE, status class) — bounded cardinality,
+	// no ids/tenant data in labels. Registered early so it wraps every route
+	// below, including /health and /metrics itself.
+	metrics := middleware.NewMetrics()
+	f.Use(metrics.Middleware())
+
 	// The frontend runs on a different origin than the API; allow it explicitly.
 	origins := cfg.CORSOrigins
 	if origins == "" {
@@ -131,6 +138,7 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	f.Get("/health", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"status": "ok"})
 	})
+	f.Get("/metrics", metrics.Handler())
 
 	// Fail-open Redis cache for hot read paths (public discovery, public
 	// storefront profile). A nil Redis client (cfg.Redis unset) makes every
