@@ -119,6 +119,20 @@ func (h *Handler) authenticate(c *fiber.Ctx) (authedAgent, error) {
 		c.Set("Retry-After", "60")
 		return authedAgent{}, fiber.NewError(fiber.StatusTooManyRequests, "rate limit exceeded")
 	}
+	// A valid, active credential is not enough: a suspended or soft-deleted
+	// (GDPR-erased) company must not keep transacting through its agent, or
+	// suspension is trivially bypassed. Not a brute-force signal — do not
+	// record an auth failure for this.
+	gate, err := h.q.GetCompanyGate(ctx, cred.CompanyID)
+	if err != nil {
+		return authedAgent{}, err
+	}
+	if gate.DeletedAt.Valid {
+		return authedAgent{}, fiber.NewError(fiber.StatusForbidden, "company deleted")
+	}
+	if gate.Status == "suspended" {
+		return authedAgent{}, fiber.NewError(fiber.StatusForbidden, "company suspended")
+	}
 	return authedAgent{CredentialID: cred.ID, CompanyID: cred.CompanyID}, nil
 }
 
