@@ -3,7 +3,8 @@ import Link from "next/link";
 import LegalShell from "../LegalShell";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy — TradeBridge",
+  title: "Privacy Policy",
+  description: "How TradeBridge collects, uses, and protects your data.",
 };
 
 export default function PrivacyPage() {

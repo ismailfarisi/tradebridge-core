@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import LegalShell from "../LegalShell";
 
 export const metadata: Metadata = {
-  title: "Terms of Service — TradeBridge",
+  title: "Terms of Service",
+  description: "TradeBridge Terms of Service — the rules for using the platform.",
 };
 
 export default function TermsPage() {

@@ -2,9 +2,30 @@ import type { Metadata } from "next";
 import "./globals.css";
 import CookieConsent from "@/components/CookieConsent";
 
+const SITE_URL = "https://switeaz.com";
+const SITE_DESCRIPTION = "B2B RFQ marketplace — buyer, seller & admin console";
+
 export const metadata: Metadata = {
-  title: "TradeBridge",
-  description: "B2B RFQ marketplace — buyer, seller & admin console",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: "TradeBridge",
+    template: "%s — TradeBridge",
+  },
+  description: SITE_DESCRIPTION,
+  openGraph: {
+    title: "TradeBridge",
+    description: SITE_DESCRIPTION,
+    url: SITE_URL,
+    siteName: "TradeBridge",
+    images: [{ url: "/opengraph-image" }],
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "TradeBridge",
+    description: SITE_DESCRIPTION,
+    images: ["/opengraph-image"],
+  },
 };
 
 export default function RootLayout({

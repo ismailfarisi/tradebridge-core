@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import LegalShell from "../LegalShell";
 
 export const metadata: Metadata = {
-  title: "Cookie Policy — TradeBridge",
+  title: "Cookie Policy",
+  description: "How TradeBridge uses cookies and similar technologies.",
 };
 
 export default function CookiesPage() {
