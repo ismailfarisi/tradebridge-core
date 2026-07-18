@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -130,6 +131,35 @@ func TestCreateFeedbackMessageOK(t *testing.T) {
 	require.Equal(t, "hi", out["message"])
 }
 
+func TestCreateFeedbackMessageWhitespaceOnlyRejected(t *testing.T) {
+	q := testQueriesOrSkip(t)
+	cid, uid := seedCompanyAndUser(t, q, "fb-msg-whitespace")
+
+	app := fiber.New()
+	NewHandler(q).Register(app, stubIdentity(cid, uid))
+
+	code, _ := doJSON(t, app, "POST", "/v1/feedback", map[string]any{"kind": "feedback", "message": "   "})
+	require.Equal(t, 400, code)
+}
+
+// A stray out-of-range score on a "feedback" kind must not reach the DB's
+// CHECK (score BETWEEN 0 AND 10) constraint — that would surface as an
+// unwrapped *pgconn.PgError and a 500 from Fiber's default error handler.
+// The handler clears score for "feedback" kind, so this must 201 with a null
+// score rather than 500.
+func TestCreateFeedbackWithStrayOutOfRangeScoreIgnoresScore(t *testing.T) {
+	q := testQueriesOrSkip(t)
+	cid, uid := seedCompanyAndUser(t, q, "fb-stray-score")
+
+	app := fiber.New()
+	NewHandler(q).Register(app, stubIdentity(cid, uid))
+
+	code, out := doJSON(t, app, "POST", "/v1/feedback", map[string]any{"kind": "feedback", "message": "hi", "score": 99})
+	require.Equal(t, 201, code, "%v", out)
+	require.Equal(t, "feedback", out["kind"])
+	require.Nil(t, out["score"])
+}
+
 func TestCreateFeedbackBogusKind(t *testing.T) {
 	q := testQueriesOrSkip(t)
 	cid, uid := seedCompanyAndUser(t, q, "fb-bogus")
@@ -145,7 +175,16 @@ func TestAdminListFeedbackNewestFirst(t *testing.T) {
 	q := testQueriesOrSkip(t)
 	cid, uid := seedCompanyAndUser(t, q, "fb-admin-list")
 
-	_, err := q.CreateFeedback(context.Background(), sqlc.CreateFeedbackParams{
+	older, err := q.CreateFeedback(context.Background(), sqlc.CreateFeedbackParams{
+		CompanyID: cid, UserID: uid, Kind: "nps", Score: int32Ptr(3),
+	})
+	require.NoError(t, err)
+	// A real clock tick between the two inserts, so ordering can't be a
+	// same-timestamp coincidence: created_at is TIMESTAMPTZ (microsecond
+	// resolution), but two inserts back-to-back in-process can otherwise
+	// land in the same tick on a fast machine.
+	time.Sleep(2 * time.Millisecond)
+	newer, err := q.CreateFeedback(context.Background(), sqlc.CreateFeedbackParams{
 		CompanyID: cid, UserID: uid, Kind: "nps", Score: int32Ptr(8),
 	})
 	require.NoError(t, err)
@@ -157,7 +196,23 @@ func TestAdminListFeedbackNewestFirst(t *testing.T) {
 	require.Equal(t, 200, code, "%v", out)
 	rows, ok := out["feedback"].([]any)
 	require.True(t, ok)
-	require.NotEmpty(t, rows)
+
+	// The list spans every tenant's feedback (admin-wide), not just this
+	// test's rows, so locate our two rows by id and assert their relative
+	// order — dropping ORDER BY created_at DESC would put `older` before
+	// `newer` (or make the order unstable) and fail this.
+	indexOf := func(id string) int {
+		for i, r := range rows {
+			if m, ok := r.(map[string]any); ok && m["id"] == id {
+				return i
+			}
+		}
+		return -1
+	}
+	newerIdx, olderIdx := indexOf(newer.ID), indexOf(older.ID)
+	require.GreaterOrEqual(t, newerIdx, 0, "newer row missing from list")
+	require.GreaterOrEqual(t, olderIdx, 0, "older row missing from list")
+	require.Less(t, newerIdx, olderIdx, "newer row should be listed before older row (newest-first)")
 }
 
 func int32Ptr(v int32) *int32 { return &v }

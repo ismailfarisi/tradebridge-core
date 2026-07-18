@@ -1,6 +1,8 @@
 package feedback
 
 import (
+	"strings"
+
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/tradebridge/core/pkg/db/sqlc"
@@ -30,6 +32,7 @@ func (h *Handler) create(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
 	}
+	req.Message = strings.TrimSpace(req.Message)
 	switch req.Kind {
 	case "nps":
 		if req.Score == nil || *req.Score < 0 || *req.Score > 10 {
@@ -39,6 +42,12 @@ func (h *Handler) create(c *fiber.Ctx) error {
 		if req.Message == "" {
 			return fiber.NewError(fiber.StatusBadRequest, "message required for feedback")
 		}
+		// A feedback item has no NPS score. Clearing it here (rather than
+		// range-validating it) means a stray score on a "feedback" request is
+		// silently dropped instead of tripping the DB's CHECK (score BETWEEN
+		// 0 AND 10) constraint, which would otherwise surface as an unwrapped
+		// *pgconn.PgError -> Fiber's default 500 handler.
+		req.Score = nil
 	default:
 		return fiber.NewError(fiber.StatusBadRequest, "kind must be feedback or nps")
 	}

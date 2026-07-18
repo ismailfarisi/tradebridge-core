@@ -11,6 +11,15 @@ describe("npsCategory", () => {
   it("classifies 5 as detractor", () => {
     expect(npsCategory(5)).toBe("detractor");
   });
+  it("classifies the promoter boundary 9 as promoter", () => {
+    expect(npsCategory(9)).toBe("promoter");
+  });
+  it("classifies the passive boundary 7 as passive", () => {
+    expect(npsCategory(7)).toBe("passive");
+  });
+  it("classifies the detractor boundary 6 as detractor", () => {
+    expect(npsCategory(6)).toBe("detractor");
+  });
 });
 
 describe("npsScore", () => {
