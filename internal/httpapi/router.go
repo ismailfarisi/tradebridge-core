@@ -310,7 +310,7 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 
 	// GDPR data export: owner/admin only, tenant-authed (S9).
 	dsrSvc := dsr.NewService(q, cfg.Pool)
-	dsr.NewHandler(dsrSvc).Register(f, guard...)
+	dsr.NewHandler(dsrSvc, q, cfg.Logger).Register(f, guard...)
 
 	// Platform superadmin realm: a separate credential store and JWT secret
 	// from company auth. Fail-closed — routes are not mounted at all when no

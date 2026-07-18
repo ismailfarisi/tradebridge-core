@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tradebridge/core/internal/identity"
 	"github.com/tradebridge/core/pkg/db/sqlc"
 )
 
@@ -65,3 +66,61 @@ func TestExportAssemblesCompanyFootprint(t *testing.T) {
 	require.NotContains(t, body, hash)
 	require.NotContains(t, strings.ToLower(body), "password_hash")
 }
+
+func TestDeleteSoftDeletesAnonymizesAndIsIdempotent(t *testing.T) {
+	q, pool := testQueriesOrSkip(t)
+	ctx := context.Background()
+
+	co, err := q.CreateCompany(ctx, sqlc.CreateCompanyParams{Name: "dsr-delete-co", Type: "seller"})
+	require.NoError(t, err)
+
+	hash, err := identity.HashPassword("correct-horse-battery-staple")
+	require.NoError(t, err)
+	origEmail := "dsr-delete-" + co.ID + "@example.com"
+	user, err := q.CreateUserWithPassword(ctx, sqlc.CreateUserWithPasswordParams{
+		CompanyID:    co.ID,
+		Email:        origEmail,
+		Role:         "owner",
+		PasswordHash: &hash,
+	})
+	require.NoError(t, err)
+
+	_, err = q.UpsertSupplierProfile(ctx, sqlc.UpsertSupplierProfileParams{
+		CompanyID:   co.ID,
+		Description: strPtr("we sell widgets"),
+		Categories:  []string{"widgets"},
+		Location:    strPtr("Dubai"),
+	})
+	require.NoError(t, err)
+
+	svc := NewService(q, pool)
+
+	require.NoError(t, svc.Delete(ctx, co.ID, user.ID))
+
+	gate, err := q.GetCompanyGate(ctx, co.ID)
+	require.NoError(t, err)
+	require.True(t, gate.DeletedAt.Valid)
+
+	company, err := q.GetCompanyByID(ctx, co.ID)
+	require.NoError(t, err)
+	require.True(t, strings.HasPrefix(company.Name, "Deleted company "))
+
+	updatedUser, err := q.GetUserByID(ctx, user.ID)
+	require.NoError(t, err)
+	require.Equal(t, "deleted+"+user.ID+"@deleted.invalid", updatedUser.Email)
+	require.Nil(t, updatedUser.PasswordHash)
+
+	profile, err := q.GetSupplierProfileByCompany(ctx, co.ID)
+	require.NoError(t, err)
+	require.Nil(t, profile.Description)
+	require.Nil(t, profile.Location)
+
+	// Second call is a no-op — idempotent, no error.
+	require.NoError(t, svc.Delete(ctx, co.ID, user.ID))
+
+	companyAgain, err := q.GetCompanyByID(ctx, co.ID)
+	require.NoError(t, err)
+	require.Equal(t, company.Name, companyAgain.Name)
+}
+
+func strPtr(s string) *string { return &s }

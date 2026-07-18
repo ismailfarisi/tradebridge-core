@@ -108,3 +108,32 @@ func (s *Service) Export(ctx context.Context, companyID string) (Bundle, error) 
 
 	return b, nil
 }
+
+// Delete performs a GDPR soft-delete: it sets deleted_at, anonymizes PII, and
+// revokes agent credentials in one transaction. Transactional records
+// (orders/invoices/quotes/disputes) are retained for the counterparty, since
+// they document the other side's dealings too. Idempotent: a repeat call is
+// a no-op (SoftDeleteAndAnonymizeCompany only touches rows still
+// deleted_at IS NULL) and does not error.
+func (s *Service) Delete(ctx context.Context, companyID, actingUserID string) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	qtx := s.q.WithTx(tx)
+
+	if err := qtx.SoftDeleteAndAnonymizeCompany(ctx, companyID); err != nil {
+		return err
+	}
+	if err := qtx.AnonymizeCompanyUsers(ctx, companyID); err != nil {
+		return err
+	}
+	if err := qtx.ScrubSupplierProfile(ctx, companyID); err != nil {
+		return err
+	}
+	if err := qtx.RevokeAgentCredentialsByCompany(ctx, companyID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}

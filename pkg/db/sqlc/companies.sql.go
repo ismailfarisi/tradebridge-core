@@ -32,6 +32,18 @@ func (q *Queries) AdminCompanyCounts(ctx context.Context, buyerCompanyID string)
 	return i, err
 }
 
+const anonymizeCompanyUsers = `-- name: AnonymizeCompanyUsers :exec
+UPDATE users
+SET email = 'deleted+' || id || '@deleted.invalid',
+    password_hash = NULL
+WHERE company_id = $1
+`
+
+func (q *Queries) AnonymizeCompanyUsers(ctx context.Context, companyID string) error {
+	_, err := q.db.Exec(ctx, anonymizeCompanyUsers, companyID)
+	return err
+}
+
 const createCompany = `-- name: CreateCompany :one
 INSERT INTO companies (name, type)
 VALUES ($1, $2)
@@ -111,6 +123,26 @@ func (q *Queries) GetCompanyStatus(ctx context.Context, id string) (string, erro
 	return status, err
 }
 
+const revokeAgentCredentialsByCompany = `-- name: RevokeAgentCredentialsByCompany :exec
+UPDATE agent_credentials SET status = 'revoked' WHERE company_id = $1
+`
+
+func (q *Queries) RevokeAgentCredentialsByCompany(ctx context.Context, companyID string) error {
+	_, err := q.db.Exec(ctx, revokeAgentCredentialsByCompany, companyID)
+	return err
+}
+
+const scrubSupplierProfile = `-- name: ScrubSupplierProfile :exec
+UPDATE supplier_profiles
+SET description = NULL, location = NULL
+WHERE company_id = $1
+`
+
+func (q *Queries) ScrubSupplierProfile(ctx context.Context, companyID string) error {
+	_, err := q.db.Exec(ctx, scrubSupplierProfile, companyID)
+	return err
+}
+
 const searchCompaniesForAdmin = `-- name: SearchCompaniesForAdmin :many
 SELECT id, name, type, status, created_at
 FROM companies
@@ -173,5 +205,17 @@ type SetCompanyStatusParams struct {
 
 func (q *Queries) SetCompanyStatus(ctx context.Context, arg SetCompanyStatusParams) error {
 	_, err := q.db.Exec(ctx, setCompanyStatus, arg.ID, arg.Status)
+	return err
+}
+
+const softDeleteAndAnonymizeCompany = `-- name: SoftDeleteAndAnonymizeCompany :exec
+UPDATE companies
+SET deleted_at = NOW(),
+    name = 'Deleted company ' || left(id, 8)
+WHERE id = $1 AND deleted_at IS NULL
+`
+
+func (q *Queries) SoftDeleteAndAnonymizeCompany(ctx context.Context, id string) error {
+	_, err := q.db.Exec(ctx, softDeleteAndAnonymizeCompany, id)
 	return err
 }
