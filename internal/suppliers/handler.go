@@ -11,18 +11,21 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/tradebridge/core/internal/activation"
+	"github.com/tradebridge/core/internal/cache"
 	"github.com/tradebridge/core/pkg/db/sqlc"
 	"github.com/tradebridge/core/pkg/middleware"
 )
 
 // Handler serves supplier profile + directory search routes.
 type Handler struct {
-	q *sqlc.Queries
+	q     *sqlc.Queries
+	cache *cache.Cache
 }
 
-// NewHandler builds the suppliers handler over the query layer.
-func NewHandler(q *sqlc.Queries) *Handler {
-	return &Handler{q: q}
+// NewHandler builds the suppliers handler over the query layer. c may be
+// nil — cache invalidation then fails open to a no-op.
+func NewHandler(q *sqlc.Queries, c *cache.Cache) *Handler {
+	return &Handler{q: q, cache: c}
 }
 
 // Register mounts profile routes (tenant-guarded) and the public search route.
@@ -56,6 +59,9 @@ func (h *Handler) upsertMine(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
+	// Invalidate the public storefront cache after the write commits so a
+	// stale profile doesn't linger.
+	h.cache.Delete(c.Context(), storeCacheKey(middleware.CompanyID(c)))
 	activation.Emit(c.Context(), h.q, middleware.CompanyID(c), middleware.UserID(c), activation.EventProfileSet, nil)
 	return c.JSON(p)
 }

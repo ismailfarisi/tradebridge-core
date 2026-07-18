@@ -50,7 +50,7 @@ func TestDiscoverRanksVerifiedRatedHigher(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	svc := NewService(q)
+	svc := NewService(q, nil)
 	page, err := svc.Search(ctx, Query{Q: tag})
 	require.NoError(t, err)
 
@@ -80,7 +80,7 @@ func TestDiscoveryProjectionHasNoPrivateColumns(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	page, err := NewService(q).Search(ctx, Query{Q: "projprobe"})
+	page, err := NewService(q, nil).Search(ctx, Query{Q: "projprobe"})
 	require.NoError(t, err)
 	require.NotEmpty(t, page.Results)
 
@@ -123,7 +123,7 @@ func TestDiscoverAttachesMatchedCatalog(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	page, err := NewService(q).Search(ctx, Query{Q: tag})
+	page, err := NewService(q, nil).Search(ctx, Query{Q: tag})
 	require.NoError(t, err)
 
 	var found *Result
@@ -158,7 +158,7 @@ func TestFacetsReflectFilterSet(t *testing.T) {
 	mk("facetprobe-b", tag+"-cat1", false)
 	mk("facetprobe-c", tag+"-cat2", false)
 
-	f, err := NewService(q).Facets(ctx, Query{Q: tag})
+	f, err := NewService(q, nil).Facets(ctx, Query{Q: tag})
 	require.NoError(t, err)
 
 	counts := map[string]int64{}
@@ -169,4 +169,37 @@ func TestFacetsReflectFilterSet(t *testing.T) {
 	require.Equal(t, int64(1), counts[tag+"-cat2"])
 	require.GreaterOrEqual(t, f.Verified.True, int64(1))
 	require.GreaterOrEqual(t, f.Verified.False, int64(2))
+}
+
+// A Service built with a nil cache (the zero value — no Redis wired at all)
+// must still return correct results: the cache is a read-through
+// optimization only, and correctness must never depend on it. This
+// deliberately does NOT assert a cache hit (that needs a real Redis); the
+// fail-open miss/compute path is the guarantee under test.
+func TestSearchWithNilCacheReturnsCorrectResults(t *testing.T) {
+	q, _ := queriesOrSkip(t)
+	ctx := context.Background()
+	tag := "nilcacheprobe"
+
+	co, err := q.CreateCompany(ctx, sqlc.CreateCompanyParams{Name: "nilcache-co", Type: "seller"})
+	require.NoError(t, err)
+	_, err = q.UpsertSupplierProfile(ctx, sqlc.UpsertSupplierProfileParams{
+		CompanyID: co.ID, Description: sp(tag + " supplier"), Categories: []string{tag}, Location: sp("NYC"),
+	})
+	require.NoError(t, err)
+
+	svc := NewService(q, nil)
+	// Run the search twice: a nil cache must not panic or error on either the
+	// (would-be) miss path or the (would-be) set path.
+	for i := 0; i < 2; i++ {
+		page, err := svc.Search(ctx, Query{Q: tag})
+		require.NoError(t, err)
+		var found bool
+		for _, r := range page.Results {
+			if r.CompanyID == co.ID {
+				found = true
+			}
+		}
+		require.True(t, found, "supplier present in results (iteration %d)", i)
+	}
 }

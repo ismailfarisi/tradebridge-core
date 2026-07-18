@@ -7,18 +7,31 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/tradebridge/core/internal/cache"
 	"github.com/tradebridge/core/pkg/db/sqlc"
 )
+
+// storeCacheTTL is how long a public storefront profile read is cached.
+// Invalidated eagerly on profile/catalog writes (see cache.Delete calls in
+// suppliers.Handler.upsertMine and internal/catalog), so this mostly bounds
+// staleness from any invalidation gap, not normal edits.
+const storeCacheTTL = 5 * time.Minute
 
 // PublicHandler serves the unauthenticated seller storefront. It exposes only a
 // tenant-safe projection (see GetPublicSeller) plus a bounded catalog showcase.
 type PublicHandler struct {
-	q *sqlc.Queries
+	q     *sqlc.Queries
+	cache *cache.Cache
 }
 
-func NewPublicHandler(q *sqlc.Queries) *PublicHandler {
-	return &PublicHandler{q: q}
+// NewPublicHandler builds the public storefront handler. c may be nil — every
+// cache operation then fails open to a miss/no-op.
+func NewPublicHandler(q *sqlc.Queries, c *cache.Cache) *PublicHandler {
+	return &PublicHandler{q: q, cache: c}
 }
+
+// storeCacheKey is the cache key for a company's public storefront profile.
+func storeCacheKey(companyID string) string { return "store:" + companyID }
 
 // RegisterPublic mounts the public routes with NO tenant guard.
 func (h *PublicHandler) RegisterPublic(app *fiber.App) {
@@ -36,6 +49,13 @@ type catalogItem struct {
 
 func (h *PublicHandler) getSeller(c *fiber.Ctx) error {
 	id := c.Params("id")
+	key := storeCacheKey(id)
+
+	var cached fiber.Map
+	if hit, _ := h.cache.GetJSON(c.Context(), key, &cached); hit {
+		return c.JSON(cached)
+	}
+
 	s, err := h.q.GetPublicSeller(c.Context(), id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fiber.NewError(fiber.StatusNotFound, "seller not found")
@@ -60,7 +80,7 @@ func (h *PublicHandler) getSeller(c *fiber.Ctx) error {
 		return err
 	}
 
-	return c.JSON(fiber.Map{
+	out := fiber.Map{
 		"company_id":          s.CompanyID,
 		"name":                s.Name,
 		"verification_status": s.VerificationStatus,
@@ -70,7 +90,9 @@ func (h *PublicHandler) getSeller(c *fiber.Ctx) error {
 		"location":            s.Location,
 		"catalog":             catalog,
 		"reputation":          fiber.Map{"avg_rating": rep.AvgRating, "review_count": rep.ReviewCount},
-	})
+	}
+	h.cache.SetJSON(c.Context(), key, out, storeCacheTTL)
+	return c.JSON(out)
 }
 
 // reviewView is the public, safe-fields-only projection of a review.

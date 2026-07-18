@@ -41,7 +41,7 @@ func TestPublicSellerReturnsSafeFieldsOnly(t *testing.T) {
 	require.NoError(t, err)
 
 	app := fiber.New()
-	NewPublicHandler(q).RegisterPublic(app)
+	NewPublicHandler(q, nil).RegisterPublic(app)
 
 	req := httptest.NewRequest("GET", "/public/v1/sellers/"+co.ID, nil)
 	resp, err := app.Test(req, -1)
@@ -72,7 +72,7 @@ func TestPublicSellerNotFoundWithoutProfile(t *testing.T) {
 	require.NoError(t, err)
 
 	app := fiber.New()
-	NewPublicHandler(q).RegisterPublic(app)
+	NewPublicHandler(q, nil).RegisterPublic(app)
 	req := httptest.NewRequest("GET", "/public/v1/sellers/"+co.ID, nil)
 	resp, err := app.Test(req, -1)
 	require.NoError(t, err)
@@ -126,7 +126,7 @@ func TestPublicSellerReputationReflectsVisibleReviews(t *testing.T) {
 	sellerID := seedReviewedSeller(t, q, "reputation")
 
 	app := fiber.New()
-	NewPublicHandler(q).RegisterPublic(app)
+	NewPublicHandler(q, nil).RegisterPublic(app)
 
 	req := httptest.NewRequest("GET", "/public/v1/sellers/"+sellerID, nil)
 	resp, err := app.Test(req, -1)
@@ -146,7 +146,7 @@ func TestPublicReviewsRoute(t *testing.T) {
 	sellerID := seedReviewedSeller(t, q, "reviewslist")
 
 	app := fiber.New()
-	NewPublicHandler(q).RegisterPublic(app)
+	NewPublicHandler(q, nil).RegisterPublic(app)
 
 	req := httptest.NewRequest("GET", "/public/v1/sellers/"+sellerID+"/reviews", nil)
 	resp, err := app.Test(req, -1)

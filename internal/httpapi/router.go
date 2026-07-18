@@ -20,6 +20,7 @@ import (
 	"github.com/tradebridge/core/internal/attachments"
 	"github.com/tradebridge/core/internal/audit"
 	"github.com/tradebridge/core/internal/billing"
+	"github.com/tradebridge/core/internal/cache"
 	"github.com/tradebridge/core/internal/catalog"
 	"github.com/tradebridge/core/internal/dashboard"
 	"github.com/tradebridge/core/internal/discovery"
@@ -129,11 +130,17 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 		return c.JSON(fiber.Map{"status": "ok"})
 	})
 
+	// Fail-open Redis cache for hot read paths (public discovery, public
+	// storefront profile). A nil Redis client (cfg.Redis unset) makes every
+	// cache operation a miss/no-op — the cache is a read-through
+	// optimization only, never a correctness dependency.
+	appCache := cache.New(cfg.Redis, cfg.Logger)
+
 	// Waitlist: PUBLIC, pre-signup capture — no tenant guard.
 	waitlist.NewHandler(q).Register(f)
 
 	// Public seller storefront (unauthenticated; rate-limited in Plan 3).
-	suppliers.NewPublicHandler(q).RegisterPublic(f)
+	suppliers.NewPublicHandler(q, appCache).RegisterPublic(f)
 
 	// Tenant guard chain, applied per-group (never as a broad "/v1" prefix) so
 	// public /v1/auth/* routes stay open.
@@ -200,18 +207,18 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	// share one projection/service. Constructed here (rather than up by the
 	// public seller storefront) because it needs rlDiscovery, which depends
 	// on mkRL defined just above.
-	discoverySvc := discovery.NewService(q)
+	discoverySvc := discovery.NewService(q, appCache)
 	discoveryHandler := discovery.NewHandler(discoverySvc)
 	discoveryHandler.RegisterPublic(f, rlDiscovery)
 
 	identity.NewHandler(q, tokens, notifier, entSvc).Register(f, rlSignup, guard...)
-	suppliers.NewHandler(q).Register(f, guard...)
+	suppliers.NewHandler(q, appCache).Register(f, guard...)
 	discoveryHandler.Register(f, guard...)
 	dashboard.NewHandler(dashboard.NewService(q, entSvc)).Register(f, guard...)
 	activation.NewHandler(activation.NewService(q)).Register(f, guard...)
 	trustSvc := trust.NewService(q, cfg.Pool, trust.NewNetResolver(cfg.VerifyDNSTimeout), cfg.Logger)
 	trust.NewHandler(trustSvc, q).Register(f, middleware.RequireVerified(q), rlVerify, guard...)
-	catalog.NewHandler(q, entSvc).Register(f, guard...)
+	catalog.NewHandler(q, entSvc, appCache).Register(f, guard...)
 	agent.NewHandler(q, agent.Config{TTLDays: cfg.AgentCredTTLDays, GraceDays: cfg.AgentCredRotateGraceDays}).Register(f, guard...)
 
 	notify.NewHandler(q).Register(f, guard...)

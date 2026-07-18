@@ -2,16 +2,27 @@ package discovery
 
 import (
 	"context"
+	"fmt"
+	"time"
 
+	"github.com/tradebridge/core/internal/cache"
 	"github.com/tradebridge/core/pkg/db/sqlc"
 )
 
+// searchCacheTTL is short: discovery results should reflect writes (new
+// suppliers, profile edits, ratings) within tens of seconds, not minutes.
+const searchCacheTTL = 45 * time.Second
+
 // Service runs discovery queries.
 type Service struct {
-	q *sqlc.Queries
+	q     *sqlc.Queries
+	cache *cache.Cache
 }
 
-func NewService(q *sqlc.Queries) *Service { return &Service{q: q} }
+// NewService builds the discovery service. c may be nil (or backed by a nil
+// Redis client) — every cache operation then fails open to a miss/no-op, so
+// correctness never depends on it.
+func NewService(q *sqlc.Queries, c *cache.Cache) *Service { return &Service{q: q, cache: c} }
 
 const maxCatalogSnippets = 3
 
@@ -45,9 +56,18 @@ type Page struct {
 	Total   int64    `json:"total"`
 }
 
-// Search executes the weighted discovery query.
+// Search executes the weighted discovery query. Results are read-through
+// cached: this is the PUBLIC discovery path only, so the cached page must
+// never carry per-company/personalized data (it doesn't — Result is already
+// the public projection).
 func (s *Service) Search(ctx context.Context, q Query) (Page, error) {
 	q.normalize()
+	key := searchCacheKey(q)
+	var cached Page
+	if hit, _ := s.cache.GetJSON(ctx, key, &cached); hit {
+		return cached, nil
+	}
+
 	rows, err := s.q.DiscoverSuppliers(ctx, sqlc.DiscoverSuppliersParams{
 		WRel:         WeightRelevance,
 		WRating:      WeightRating,
@@ -113,7 +133,16 @@ func (s *Service) Search(ctx context.Context, q Query) (Page, error) {
 			results[i].MatchedCatalog = byCompany[results[i].CompanyID]
 		}
 	}
-	return Page{Results: results, Page: q.Page, PerPage: q.PerPage, Total: total}, nil
+	page := Page{Results: results, Page: q.Page, PerPage: q.PerPage, Total: total}
+	s.cache.SetJSON(ctx, key, page, searchCacheTTL)
+	return page, nil
+}
+
+// searchCacheKey builds a cache key from every filter that affects the
+// result set. q must already be normalized.
+func searchCacheKey(q Query) string {
+	return fmt.Sprintf("disc:q=%q&cat=%q&loc=%q&ver=%v&minr=%v&sort=%s&page=%d&per=%d",
+		q.Q, q.Category, q.Location, q.VerifiedOnly, q.MinRating, q.Sort, q.Page, q.PerPage)
 }
 
 // FacetCount is a single category value with its matching count.
