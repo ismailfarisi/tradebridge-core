@@ -13,8 +13,10 @@ type Handler struct{ q *sqlc.Queries }
 func NewHandler(q *sqlc.Queries) *Handler { return &Handler{q: q} }
 
 // Register mounts the PUBLIC waitlist route (no tenant guard — pre-signup).
-func (h *Handler) Register(app *fiber.App) {
-	app.Post("/v1/waitlist", h.join)
+// rl is a fail-open per-IP rate limiter (nil Redis => pass-through), mirroring
+// every other unauthenticated public write (e.g. /v1/auth/register).
+func (h *Handler) Register(app *fiber.App, rl fiber.Handler) {
+	app.Post("/v1/waitlist", rl, h.join)
 }
 
 type joinReq struct {

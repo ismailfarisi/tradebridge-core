@@ -136,9 +136,6 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	// optimization only, never a correctness dependency.
 	appCache := cache.New(cfg.Redis, cfg.Logger)
 
-	// Waitlist: PUBLIC, pre-signup capture — no tenant guard.
-	waitlist.NewHandler(q).Register(f)
-
 	// Public seller storefront (unauthenticated; rate-limited in Plan 3).
 	suppliers.NewPublicHandler(q, appCache).RegisterPublic(f)
 
@@ -202,6 +199,11 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	rlDiscovery := mkRL("discovery", cfg.RateLimitDiscovery, middleware.RateLimit{Limit: 120, Window: time.Hour}, middleware.KeyIP)
 	// rlReport (Task 3's reports handler) is wired in further down where the
 	// reports handler is registered, to keep it visibly close to its use.
+
+	// Waitlist: PUBLIC, pre-signup capture — no tenant guard, but same
+	// fail-open per-IP abuse control as every other public write (S9 sec).
+	rlWaitlist := mkRL("waitlist", "", middleware.RateLimit{Limit: 10, Window: time.Hour}, middleware.KeyIP)
+	waitlist.NewHandler(q).Register(f, rlWaitlist)
 
 	// Supplier discovery: public (rate-limited, no guard) + authenticated
 	// share one projection/service. Constructed here (rather than up by the
