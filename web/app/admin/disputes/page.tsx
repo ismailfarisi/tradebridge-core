@@ -24,14 +24,14 @@ function DisputesConsole() {
   const load = () => {
     if (!token) return;
     listDisputes(token, filter === "all" ? "" : filter)
-      .then((r) => setDisputes(r.disputes))
+      .then((r) => setDisputes(r.disputes ?? []))
       .catch((e) => setErr(e instanceof Error ? e.message : "load failed"));
   };
 
   useEffect(() => {
     if (!token) return;
     listDisputes(token, filter === "all" ? "" : filter)
-      .then((r) => setDisputes(r.disputes))
+      .then((r) => setDisputes(r.disputes ?? []))
       .catch((e) => setErr(e instanceof Error ? e.message : "load failed"));
   }, [token, filter]);
 

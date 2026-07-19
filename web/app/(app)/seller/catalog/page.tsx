@@ -20,12 +20,12 @@ export default function CatalogPage() {
 
   const refresh = () => {
     if (!token) return;
-    listCatalog(token).then((r) => setItems(r.items)).catch((e) => setErr(e.message));
+    listCatalog(token).then((r) => setItems(r.items ?? [])).catch((e) => setErr(e.message));
   };
 
   useEffect(() => {
     if (!token) return;
-    listCatalog(token).then((r) => setItems(r.items)).catch((e) => setErr(e.message));
+    listCatalog(token).then((r) => setItems(r.items ?? [])).catch((e) => setErr(e.message));
   }, [token]);
 
   useEffect(() => {

@@ -25,14 +25,14 @@ function ReportsConsole() {
   const load = () => {
     if (!token) return;
     listReports(token, status)
-      .then((r) => setReports(r.reports))
+      .then((r) => setReports(r.reports ?? []))
       .catch((e) => setErr(e instanceof Error ? e.message : "load failed"));
   };
 
   useEffect(() => {
     if (!token) return;
     listReports(token, status)
-      .then((r) => setReports(r.reports))
+      .then((r) => setReports(r.reports ?? []))
       .catch((e) => setErr(e instanceof Error ? e.message : "load failed"));
   }, [token, status]);
 

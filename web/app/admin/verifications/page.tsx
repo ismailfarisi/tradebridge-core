@@ -24,14 +24,14 @@ function VerificationsConsole() {
   const load = () => {
     if (!token) return;
     listVerifications(token, status)
-      .then((r) => setCompanies(r.companies))
+      .then((r) => setCompanies(r.companies ?? []))
       .catch((e) => setErr(e instanceof Error ? e.message : "load failed"));
   };
 
   useEffect(() => {
     if (!token) return;
     listVerifications(token, status)
-      .then((r) => setCompanies(r.companies))
+      .then((r) => setCompanies(r.companies ?? []))
       .catch((e) => setErr(e instanceof Error ? e.message : "load failed"));
   }, [token, status]);
 

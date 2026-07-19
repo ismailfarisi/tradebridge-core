@@ -21,7 +21,8 @@ function AnalyticsConsole() {
   useEffect(() => {
     if (!token) return;
     getBusinessAnalytics(token)
-      .then(setSummary)
+      // Go serializes empty slices as JSON null; normalize so the .length/.map render paths are safe.
+      .then((s) => setSummary({ ...s, funnel: s.funnel ?? [], gmv_by_week: s.gmv_by_week ?? [], plan_mix: s.plan_mix ?? [] }))
       .catch((e) => setErr(e instanceof Error ? e.message : "load failed"));
   }, [token]);
 

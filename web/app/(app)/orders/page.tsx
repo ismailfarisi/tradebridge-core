@@ -14,7 +14,7 @@ export default function OrdersPage() {
 
   useEffect(() => {
     if (!token) return;
-    listOrders(token).then((r) => setOrders(r.orders)).catch((e) => setErr(e.message));
+    listOrders(token).then((r) => setOrders(r.orders ?? [])).catch((e) => setErr(e.message));
   }, [token]);
 
   return (

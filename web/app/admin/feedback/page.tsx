@@ -22,7 +22,7 @@ function FeedbackConsole() {
   useEffect(() => {
     if (!token) return;
     listFeedback(token)
-      .then((r) => setRows(r.feedback))
+      .then((r) => setRows(r.feedback ?? []))
       .catch((e) => setErr(e instanceof Error ? e.message : "load failed"));
   }, [token]);
 
