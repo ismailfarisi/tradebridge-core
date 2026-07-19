@@ -6,7 +6,7 @@
   --border-2: #3a3a44;
   --text: #f4f4f5;
   --muted: #a1a1aa;
-  --faint: #71717a;
+  --faint: #8a8a93; /* WCAG AA (>=4.5:1) on all surfaces; was #71717a (~3.8:1) */
   --primary: #3b82f6;
   --primary-hover: #2563eb;
   --success: #22c55e;
