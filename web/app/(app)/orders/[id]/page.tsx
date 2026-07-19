@@ -32,11 +32,11 @@ export default function OrderDetailPage() {
     getOrder(token, id)
       .then((r) => {
         setOrder(r.order);
-        setEvents(r.events);
+        setEvents(r.events ?? []);
       })
       .catch(() => setNotFound(true));
-    listOrderReviews(token, id).then((r) => setReviews(r.reviews)).catch(() => {});
-    listOrderDisputes(token, id).then((r) => setDisputes(r.disputes)).catch(() => {});
+    listOrderReviews(token, id).then((r) => setReviews(r.reviews ?? [])).catch(() => {});
+    listOrderDisputes(token, id).then((r) => setDisputes(r.disputes ?? [])).catch(() => {});
   };
 
   useEffect(() => {
@@ -44,11 +44,11 @@ export default function OrderDetailPage() {
     getOrder(token, id)
       .then((r) => {
         setOrder(r.order);
-        setEvents(r.events);
+        setEvents(r.events ?? []);
       })
       .catch(() => setNotFound(true));
-    listOrderReviews(token, id).then((r) => setReviews(r.reviews)).catch(() => {});
-    listOrderDisputes(token, id).then((r) => setDisputes(r.disputes)).catch(() => {});
+    listOrderReviews(token, id).then((r) => setReviews(r.reviews ?? [])).catch(() => {});
+    listOrderDisputes(token, id).then((r) => setDisputes(r.disputes ?? [])).catch(() => {});
   }, [token, id]);
 
   const transition = async (to: OrderStatus) => {
