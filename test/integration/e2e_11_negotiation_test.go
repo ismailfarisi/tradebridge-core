@@ -205,6 +205,14 @@ func TestE2E11_NegotiationAwardAnotherSupplier(t *testing.T) {
 	strat := view["strategy"].(map[string]any)
 	require.Equal(t, "completed", strat["status"])
 	require.Contains(t, strat["outcome_summary"], "over the agent's pick")
+
+	// Savings are measured from the cheapest opening quote on the RFQ, not the
+	// awarded supplier's own opening, so paying more for speed saves nothing.
+	st, savings := doJSON(t, api, "GET", "/v1/negotiations/savings", buyerToken, nil)
+	require.Equal(t, http.StatusOK, st)
+	require.EqualValues(t, 0, savings["totals"].(map[string]any)["savings_cents"])
+	deal := savings["recent_deals"].([]any)[0].(map[string]any)
+	require.EqualValues(t, 80000, deal["initial_cents"])
 }
 
 func TestE2E11_NegotiationDecline(t *testing.T) {

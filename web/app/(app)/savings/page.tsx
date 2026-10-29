@@ -28,7 +28,7 @@ export default function SavingsPage() {
     <>
       <PageHeader
         title="Savings"
-        subtitle="What your negotiation agent has saved against opening supplier quotes."
+        subtitle="What your negotiation agent has saved against the cheapest opening quote on each request."
         action={<Link href="/negotiations" className="btn"><Icon name="handshake" size={16} /> All negotiations</Link>}
       />
 
@@ -36,7 +36,7 @@ export default function SavingsPage() {
         <div className="kpi kpi-accent">
           <div className="kpi-label"><Icon name="trending" size={16} /> Total savings</div>
           <div className="kpi-value">{money(t.savings_cents)}</div>
-          <div className="kpi-sub">{pct(data.savings_pct)} below opening quotes</div>
+          <div className="kpi-sub">{pct(data.savings_pct)} below the cheapest opening quotes</div>
         </div>
         <div className="kpi">
           <div className="kpi-label"><Icon name="dollar" size={16} /> Negotiated spend</div>
@@ -81,7 +81,7 @@ export default function SavingsPage() {
           <div style={{ overflowX: "auto" }}>
             <table className="tbl tbl-cards">
               <thead>
-                <tr><th>RFQ</th><th>Supplier</th><th style={{ textAlign: "right" }}>Opening</th><th style={{ textAlign: "right" }}>Final</th><th style={{ textAlign: "right" }}>Saved</th><th style={{ textAlign: "right" }} title="Counter-offers the agent sent across all suppliers">Counters</th><th>Date</th></tr>
+                <tr><th>RFQ</th><th>Supplier</th><th style={{ textAlign: "right" }} title="Cheapest opening quote from any supplier">Best opening</th><th style={{ textAlign: "right" }}>Final</th><th style={{ textAlign: "right" }}>Saved</th><th style={{ textAlign: "right" }} title="Counter-offers the agent sent across all suppliers">Counters</th><th>Date</th></tr>
               </thead>
               <tbody>
                 {data.recent_deals.map((d) => {

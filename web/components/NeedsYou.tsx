@@ -43,7 +43,7 @@ export function NeedsYou({ approvals, unmanaged, limit = 6, showEmpty = true }: 
               <strong>{n.rfq_title}</strong>
               <div className="small muted">
                 Best offer {money(n.current_best_cents || null)}
-                {n.savings_cents > 0 ? ` · ${money(n.savings_cents)} below the opening quote` : ""}
+                {n.savings_cents > 0 ? ` · ${money(n.savings_cents)} below the cheapest opening quote` : ""}
               </div>
             </div>
             <Link className="btn btn-sm btn-primary" href={`/rfqs/${n.rfq_id}/negotiation`}>Review deal <Icon name="arrowRight" size={14} /></Link>

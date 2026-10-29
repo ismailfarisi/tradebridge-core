@@ -54,7 +54,7 @@ export default function Dashboard() {
           <Icon name="trending" size={18} />
           <span className="grow">
             Your agent has saved <span className="amt">{money(savings.totals.savings_cents)}</span>{" "}
-            <span className="small muted">{pct(savings.savings_pct)} below opening quotes, across {savings.totals.deals} deal{savings.totals.deals === 1 ? "" : "s"}</span>
+            <span className="small muted">{pct(savings.savings_pct)} below the cheapest opening quotes, across {savings.totals.deals} deal{savings.totals.deals === 1 ? "" : "s"}</span>
           </span>
           <span className="small row" style={{ display: "inline-flex", gap: "0.3rem", color: "var(--primary)" }}>Savings report <Icon name="arrowRight" size={14} /></span>
         </Link>

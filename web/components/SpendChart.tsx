@@ -59,7 +59,7 @@ export function SpendChart({ data, currency = DEFAULT_CURRENCY, height = 220 }: 
       </svg>
       <figcaption className="row small muted" style={{ gap: "1rem", marginTop: "0.4rem" }}>
         <Legend color="var(--primary)" label="Negotiated spend" />
-        <Legend color="#22c55e" label="Savings vs opening quotes" />
+        <Legend color="#22c55e" label="Savings vs cheapest opening quotes" />
       </figcaption>
     </figure>
   );
