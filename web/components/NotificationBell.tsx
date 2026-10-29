@@ -74,9 +74,9 @@ export default function NotificationBell({ token }: { token: string }) {
         {unread > 0 && (
           <span
             style={{
-              position: "absolute", top: -4, right: -4, minWidth: 16, height: 16,
-              padding: "0 4px", borderRadius: 8, background: "var(--danger)", color: "#fff",
-              fontSize: 10, lineHeight: "16px", textAlign: "center", fontWeight: 700,
+              position: "absolute", top: -4, right: -4, minWidth: 18, height: 18,
+              padding: "0 4px", borderRadius: 9, background: "var(--danger)", color: "#fff",
+              fontSize: 11, lineHeight: "18px", textAlign: "center", fontWeight: 700,
             }}
           >
             {unread > 9 ? "9+" : unread}

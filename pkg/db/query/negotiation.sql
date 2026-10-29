@@ -40,7 +40,7 @@ LIMIT @lim;
 -- name: ListNegotiationsByBuyer :many
 SELECT s.*, r.title AS rfq_title, r.status AS rfq_status,
     (SELECT COUNT(*) FROM quotes q WHERE q.rfq_id = s.rfq_id)::bigint AS quote_count,
-    (SELECT COUNT(*) FROM negotiation_rounds nr WHERE nr.strategy_id = s.id)::bigint AS round_count,
+    (SELECT COUNT(*) FROM negotiation_rounds nr WHERE nr.strategy_id = s.id AND nr.action = 'counter')::bigint AS round_count,
     COALESCE((SELECT MIN(qv.price_cents) FROM quote_versions qv JOIN quotes q ON q.id = qv.quote_id
               WHERE q.rfq_id = s.rfq_id AND qv.version = 1), 0)::bigint AS initial_best_cents,
     COALESCE((SELECT MIN(q.price_cents) FROM quotes q
@@ -125,7 +125,10 @@ LIMIT 5;
 -- name: BuyerRecentDeals :many
 SELECT o.id AS order_id, o.created_at, o.total_cents, o.currency, r.id AS rfq_id, r.title AS rfq_title,
     c.name AS seller_name, COALESCE(qv.price_cents, o.total_cents)::bigint AS initial_cents,
-    (SELECT COUNT(*) FROM negotiation_rounds nr WHERE nr.quote_id = o.quote_id AND nr.action = 'counter')::bigint AS rounds
+    -- Counters the agent sent across every supplier on the RFQ, matching
+    -- round_count in ListNegotiationsByBuyer.
+    (SELECT COUNT(*) FROM negotiation_rounds nr JOIN negotiation_strategies ns ON ns.id = nr.strategy_id
+     WHERE ns.rfq_id = o.rfq_id AND nr.action = 'counter')::bigint AS rounds
 FROM orders o
 JOIN rfqs r ON r.id = o.rfq_id
 JOIN companies c ON c.id = o.seller_company_id

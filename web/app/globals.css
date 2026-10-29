@@ -226,7 +226,7 @@ textarea.input:focus-visible {
   gap: 0.3rem;
   padding: 0.15rem 0.55rem;
   border-radius: 999px;
-  font-size: 0.72rem;
+  font-size: 0.8rem;
   font-weight: 600;
   border: 1px solid var(--border-2);
   color: var(--muted);
@@ -259,7 +259,7 @@ table.tbl {
 }
 .tbl th {
   text-align: left;
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--faint);
@@ -348,7 +348,7 @@ table.tbl {
   background: var(--primary); color: #fff;
 }
 .side .brand { color: #fff; padding: 0 0.5rem 0.9rem; }
-.side-group { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.08em; color: #64748b; padding: 0.9rem 0.6rem 0.35rem; font-weight: 600; }
+.side-group { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: #94a3b8; padding: 0.9rem 0.6rem 0.35rem; font-weight: 600; }
 .side-link {
   display: flex; align-items: center; gap: 0.65rem; padding: 0.5rem 0.6rem; border-radius: 8px;
   font-size: 0.89rem; font-weight: 500; color: #cbd5e1;
@@ -605,4 +605,41 @@ label.ledger-row:hover { background: var(--surface-2); }
   .ledger-row:first-of-type, .ledger-head + .ledger-row { border-top: 0; }
   .ledger-price { justify-content: flex-start; }
   .decision .btn-success { width: 100%; text-align: left; }
+}
+
+/* Needs-you list: the owner's open decisions, one row each. */
+.badge.sc { text-transform: none; }
+.needs-you { margin-bottom: 1rem; }
+.needs-list { list-style: none; margin: 0; padding: 0; }
+.needs-list li { display: flex; align-items: center; gap: 0.85rem; padding: 0.75rem 0; border-top: 1px solid var(--border); }
+.needs-list li > .badge { flex: none; min-width: 6.5rem; justify-content: center; }
+.needs-list li .btn { flex: none; }
+.needs-done { display: flex; align-items: center; gap: 0.6rem; color: var(--muted); }
+.savings-strip { display: flex; align-items: center; gap: 0.85rem; flex-wrap: wrap; color: inherit; margin-bottom: 1rem; }
+.savings-strip:hover { border-color: var(--border-2); }
+.savings-strip .amt { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.02em; color: var(--success); font-variant-numeric: tabular-nums; }
+.stats3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+@media (max-width: 640px) {
+  .needs-list li { flex-wrap: wrap; gap: 0.5rem 0.75rem; }
+  .needs-list li > .badge { min-width: 0; }
+  .needs-list li .grow { flex-basis: 100%; order: 2; }
+  .needs-list li .btn { order: 3; width: 100%; justify-content: center; }
+  .stats3 { gap: 0.5rem; }
+  .stats3 .stat { padding: 0.75rem; }
+  .stats3 .stat .n { font-size: 1.35rem; }
+  /* Tables become one card per row so prices stay on screen. */
+  .tbl-cards thead { display: none; }
+  .tbl-cards, .tbl-cards tbody { display: block; }
+  .tbl-cards tr { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem 1rem; padding: 0.85rem 1rem; border-bottom: 1px solid var(--border); }
+  .tbl-cards tr:last-child { border-bottom: none; }
+  .tbl-cards td { display: block; padding: 0 !important; border: 0 !important; text-align: left !important; }
+  .tbl-cards td.tc-main { grid-column: 1 / -1; }
+  .tbl-cards td.tc-hide-m { display: none; }
+  .tbl-cards td[data-label]::before { content: attr(data-label); display: block; font-size: 0.75rem; font-weight: 500; color: var(--muted); }
+  .tbl-cards tbody tr:hover td { background: none; }
+  .tbl-cards td.tc-sub { margin-top: -0.4rem; color: var(--muted); font-size: 0.82rem; }
+  .savings-strip { align-items: flex-start; }
+  .savings-strip > :last-child { flex-basis: 100%; padding-left: calc(18px + 0.85rem); }
+  .tabs { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .tab { white-space: nowrap; }
 }
