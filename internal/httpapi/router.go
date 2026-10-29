@@ -33,6 +33,7 @@ import (
 	"github.com/tradebridge/core/internal/identity"
 	"github.com/tradebridge/core/internal/impersonation"
 	"github.com/tradebridge/core/internal/invoicing"
+	"github.com/tradebridge/core/internal/negotiation"
 	"github.com/tradebridge/core/internal/notify"
 	"github.com/tradebridge/core/internal/orders"
 	"github.com/tradebridge/core/internal/quotes"
@@ -52,15 +53,20 @@ import (
 // Redis (event broadcast), the pool (for transactional quote acceptance), and
 // the RFQ extractor configuration.
 type Config struct {
-	JWTSecret       string
-	TokenTTL        time.Duration
-	Logger          zerolog.Logger
-	Redis           *redis.Client
-	Pool            *pgxpool.Pool
-	AnthropicAPIKey string
-	AnthropicModel  string
-	SettingsEncKey  string
-	CORSOrigins     string
+	// WorkerCtx, when set, starts background workers (the negotiation
+	// engine) bound to its lifetime. Tests leave it nil and tick explicitly.
+	WorkerCtx                context.Context
+	NegotiationTick          time.Duration
+	NegotiationSellerTimeout time.Duration
+	JWTSecret                string
+	TokenTTL                 time.Duration
+	Logger                   zerolog.Logger
+	Redis                    *redis.Client
+	Pool                     *pgxpool.Pool
+	AnthropicAPIKey          string
+	AnthropicModel           string
+	SettingsEncKey           string
+	CORSOrigins              string
 
 	// ResendAPIKey, EmailFrom, AppBaseURL configure the notify package's
 	// transactional email sender and link-building base URL.
@@ -302,7 +308,13 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	// transaction, and the invoicing handler serves it back as a PDF.
 	invSvc := invoicing.NewService(cfg.Logger)
 	threadPub := thread.NewPublisher(cfg.Redis, cfg.Logger)
-	quotes.NewHandler(quotes.NewService(q, cfg.Pool, pub, attLoader, cfg.Logger, notifier, invSvc, entSvc, threadPub), q).Register(f, rlMessage, guard...)
+	quotesSvc := quotes.NewService(q, cfg.Pool, pub, attLoader, cfg.Logger, notifier, invSvc, entSvc, threadPub)
+	quotes.NewHandler(quotesSvc, q).Register(f, rlMessage, guard...)
+	negEngine := negotiation.NewEngine(q, quotesSvc, notifier, cfg.Logger, cfg.NegotiationSellerTimeout)
+	negotiation.NewHandler(q, negEngine, entSvc).Register(f, guard...)
+	if cfg.WorkerCtx != nil {
+		go negEngine.Run(cfg.WorkerCtx, cfg.NegotiationTick)
+	}
 	thread.NewHandler(q, cfg.Redis, cfg.Logger).Register(f, guard...)
 	orders.NewHandler(orders.NewService(q, cfg.Pool, notifier, cfg.Logger), q).Register(f, guard...)
 	invoicing.NewHandler(invSvc, q).Register(f, guard...)

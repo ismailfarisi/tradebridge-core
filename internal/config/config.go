@@ -41,6 +41,12 @@ type Config struct {
 	RFQTTLDays int `mapstructure:"RFQ_TTL_DAYS"`
 	// RFQSweepSeconds is the expiry-sweeper tick interval (Task C4).
 	RFQSweepSeconds int `mapstructure:"RFQ_SWEEP_SECONDS"`
+	// NegotiationTickSeconds is the autonomous-negotiation worker interval.
+	NegotiationTickSeconds int `mapstructure:"NEGOTIATION_TICK_SECONDS"`
+	// NegotiationSellerTimeoutMinutes is how long the negotiation engine
+	// waits for a supplier to answer a counter before treating its last
+	// terms as final.
+	NegotiationSellerTimeoutMinutes int `mapstructure:"NEGOTIATION_SELLER_TIMEOUT_MINUTES"`
 
 	// AgentCredTTLDays is how long an issued agent credential stays valid
 	// before it expires (<= 0 means never expires).
@@ -119,6 +125,8 @@ func Load() (*Config, error) {
 	v.SetDefault("PLATFORM_ADMIN_PASSWORD", "")
 	v.SetDefault("RFQ_TTL_DAYS", 14)
 	v.SetDefault("RFQ_SWEEP_SECONDS", 300)
+	v.SetDefault("NEGOTIATION_TICK_SECONDS", 10)
+	v.SetDefault("NEGOTIATION_SELLER_TIMEOUT_MINUTES", 1440)
 	v.SetDefault("ATTACHMENTS_DIR", "")
 	v.SetDefault("AGENT_CRED_TTL_DAYS", 90)
 	v.SetDefault("AGENT_CRED_ROTATE_GRACE_DAYS", 7)

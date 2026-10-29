@@ -8,6 +8,7 @@ import { listRfqs, type Me, type RFQ } from "@/lib/api";
 import { useCoreHealth } from "@/lib/health";
 import NotificationBell from "@/components/NotificationBell";
 import VerifyEmailBanner from "@/components/VerifyEmailBanner";
+import { Icon } from "@/components/Icon";
 
 const isSeller = (m: Me) => m.company_type === "seller" || m.company_type === "both";
 
@@ -53,13 +54,19 @@ export default function ChatShell({ children }: { children: React.ReactNode }) {
         }}
       >
         <div style={{ padding: "0.9rem" }}>
-          <Link
-            href="/chat"
-            className="btn btn-primary"
-            style={{ display: "block", textAlign: "center", width: "100%" }}
-          >
-            ＋ New RFQ
+          <Link href="/dashboard" className="brand" style={{ padding: "0.2rem 0.3rem 0.9rem", color: "var(--text)" }}>
+            <span className="brand-mark"><Icon name="zap" size={16} strokeWidth={2.2} /></span>
+            TradeBridge
           </Link>
+          <Link href="/chat" className="btn btn-primary" style={{ width: "100%" }}>
+            <Icon name="plus" size={16} /> New RFQ
+          </Link>
+          <div className="col" style={{ gap: "0.1rem", marginTop: "0.75rem" }}>
+            <Link href="/dashboard" className="chat-nav"><Icon name="home" size={16} /> Overview</Link>
+            <Link href="/negotiations" className="chat-nav"><Icon name="handshake" size={16} /> Negotiations</Link>
+            <Link href="/savings" className="chat-nav"><Icon name="trending" size={16} /> Savings</Link>
+          </div>
+          <div className="side-group" style={{ color: "var(--faint)", paddingBottom: 0 }}>Recent RFQs</div>
         </div>
         <nav style={{ flex: 1, overflowY: "auto", padding: "0 0.6rem", display: "flex", flexDirection: "column", gap: "0.2rem" }}>
           {rfqs.map((r) => {
@@ -135,7 +142,7 @@ export default function ChatShell({ children }: { children: React.ReactNode }) {
 }
 
 function StatusDot({ online }: { online: boolean | null }) {
-  const color = online == null ? "var(--muted)" : online ? "#22c55e" : "#ef4444";
+  const color = online == null ? "var(--muted)" : online ? "var(--success)" : "var(--danger)";
   const label = online == null ? "Checking…" : online ? "Connected" : "Core offline";
   return (
     <span className="row small muted" style={{ gap: "0.4rem", alignItems: "center" }}>

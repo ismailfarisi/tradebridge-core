@@ -42,7 +42,27 @@ cd web && npm install && npm run dev   # -> http://localhost:3000
 ## Make targets
 
 `up` · `down` · `dev` · `gateway` · `migrate` · `migrate-down` · `generate` ·
-`test` · `lint` · `build` · `docker`
+`test` · `lint` · `build` · `docker` · `demo-seed` · `simseller`
+
+## Autonomous negotiation
+
+Buyers can hand an RFQ to a negotiation agent (`internal/negotiation`). The
+mandate (`PUT /v1/rfqs/:id/negotiation`) sets a target price, walk-away price,
+max delivery days, price-vs-delivery weight, round budget, tone
+(`collaborative` linear / `firm` Boulware concession curve) and whether to
+auto-accept (Pro+). The engine answers every supplier quote version once
+(idempotent on `quote_id, version`), counters through the normal buyer
+counter path, records each round with its rationale, and closes on the
+best-utility offer within the walk-away price: auto-accepting it or holding it
+for `POST /v1/rfqs/:id/negotiation/approve`. A background worker ticks active
+negotiations every `NEGOTIATION_TICK_SECONDS`; suppliers that don't answer a
+counter within `NEGOTIATION_SELLER_TIMEOUT_MINUTES` are evaluated on their
+last terms. Savings/spend analytics: `GET /v1/negotiations/savings`.
+
+**Local demo** (API + gateway running, `RATE_LIMIT_ENABLED=false`):
+`make demo-seed` creates `demo@northwind.test` / `Password123!`, three
+simulated sellers and seven RFQs negotiated end-to-end; `make simseller`
+keeps the simulated sellers online for new RFQs. Both are local-only tools.
 
 ## Notes
 

@@ -15,8 +15,9 @@ export default function LegalShell({
         role="note"
         className="small"
         style={{
-          background: "var(--warning)",
-          color: "#1a1400",
+          background: "var(--warning-soft)",
+          border: "1px solid #fedf89",
+          color: "var(--warning)",
           borderRadius: "var(--radius)",
           padding: "0.75rem 1rem",
           margin: "1.5rem 0",

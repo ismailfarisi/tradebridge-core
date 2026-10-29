@@ -1,4 +1,4 @@
-.PHONY: dev gateway migrate migrate-down generate test lint build docker up down
+.PHONY: dev gateway simseller demo-seed migrate migrate-down generate test lint build docker up down
 
 # Local DB URL used by the migrate CLI (matches docker-compose.yml).
 DB_URL ?= postgres://tradebridge:tradebridge@localhost:5442/tradebridge?sslmode=disable
@@ -15,6 +15,12 @@ dev: up        ## run Core API with hot reload
 
 gateway:       ## run the Agent Gateway
 	go run ./cmd/gateway
+
+demo-seed:     ## LOCAL ONLY: seed demo buyer/sellers + negotiated deals (API + gateway must be running)
+	go run ./cmd/demoseed -db "$(DB_URL)"
+
+simseller:     ## LOCAL ONLY: run simulated seller agents (credentials from demo-seed)
+	set -a; . ./.simseller.env; set +a; go run ./cmd/simseller
 
 migrate:       ## apply all pending migrations
 	migrate -path $(MIGRATIONS) -database "$(DB_URL)" up

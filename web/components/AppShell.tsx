@@ -9,8 +9,10 @@ import NotificationBell from "@/components/NotificationBell";
 import VerifyEmailBanner from "@/components/VerifyEmailBanner";
 import FeedbackWidget from "@/components/FeedbackWidget";
 import { IMPERSONATING_FLAG_KEY, leaveImpersonation } from "@/lib/impersonation";
+import { listNegotiations } from "@/lib/negotiation";
+import { Icon, type IconName } from "@/components/Icon";
 
-type NavItem = { href: string; label: string; show: (me: Me) => boolean };
+type NavItem = { href: string; label: string; icon: IconName; show: (me: Me) => boolean; badge?: "approvals" };
 
 const isSeller = (m: Me) => m.company_type === "seller" || m.company_type === "both";
 const isBuyer = (m: Me) => m.company_type === "buyer" || m.company_type === "both" || !m.company_type;
@@ -19,29 +21,34 @@ const NAV: { group: string; items: NavItem[] }[] = [
   {
     group: "",
     items: [
-      { href: "/dashboard", label: "Overview", show: () => true },
-      { href: "/orders", label: "Orders", show: () => true },
+      { href: "/dashboard", label: "Overview", icon: "home", show: () => true },
+      { href: "/orders", label: "Orders", icon: "box", show: () => true },
     ],
   },
   {
-    group: "Buyer",
-    items: [{ href: "/chat", label: "RFQ chat", show: isBuyer }],
+    group: "Procurement",
+    items: [
+      { href: "/chat", label: "New RFQ", icon: "chat", show: isBuyer },
+      { href: "/rfqs", label: "RFQs", icon: "list", show: isBuyer },
+      { href: "/negotiations", label: "Negotiations", icon: "handshake", show: isBuyer, badge: "approvals" },
+      { href: "/savings", label: "Savings", icon: "trending", show: isBuyer },
+    ],
   },
   {
-    group: "Seller",
+    group: "Selling",
     items: [
-      { href: "/seller/profile", label: "Supplier profile", show: isSeller },
-      { href: "/seller/catalog", label: "Catalog", show: isSeller },
-      { href: "/seller/agent", label: "Agent credentials", show: isSeller },
+      { href: "/seller/profile", label: "Supplier profile", icon: "store", show: isSeller },
+      { href: "/seller/catalog", label: "Catalog", icon: "layers", show: isSeller },
+      { href: "/seller/agent", label: "Sales agent", icon: "bot", show: isSeller },
     ],
   },
   {
     group: "Settings",
     items: [
-      { href: "/settings/billing", label: "Billing & usage", show: () => true },
-      { href: "/settings/team", label: "Team", show: () => true },
-      { href: "/settings/verification", label: "Verification", show: () => true },
-      { href: "/account", label: "Account", show: () => true },
+      { href: "/settings/billing", label: "Billing & usage", icon: "card", show: () => true },
+      { href: "/settings/team", label: "Team", icon: "users", show: () => true },
+      { href: "/settings/verification", label: "Verification", icon: "shield", show: () => true },
+      { href: "/account", label: "Account", icon: "user", show: () => true },
     ],
   },
 ];
@@ -52,6 +59,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [hydrated, setHydrated] = useState(false);
   const [impersonating, setImpersonating] = useState<string | null>(null);
+  const [approvals, setApprovals] = useState(0);
 
   // On a hard page load the token store first returns its *server* snapshot
   // (null) before the client snapshot (localStorage) is read one tick later.
@@ -67,6 +75,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     if (hydrated && ready && !token) router.replace("/login");
   }, [hydrated, ready, token, router]);
 
+  useEffect(() => {
+    if (!token || !me || !isBuyer(me)) return;
+    listNegotiations(token)
+      .then((r) => setApprovals(r.negotiations.filter((n) => n.status === "awaiting_approval").length))
+      .catch(() => {});
+  }, [token, me, pathname]);
+
   if (!hydrated || !ready) {
     return <Centered>Loading…</Centered>;
   }
@@ -74,106 +89,77 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return <Centered>Redirecting…</Centered>;
   }
 
+  const initials = (me.company_name ?? "TB")
+    .split(/\s+/)
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
   return (
-    <div style={{ display: "flex", minHeight: "100vh" }}>
-      <aside
-        style={{
-          width: 232,
-          flexShrink: 0,
-          borderRight: "1px solid var(--border)",
-          background: "var(--surface)",
-          padding: "1.1rem 0.9rem",
-          display: "flex",
-          flexDirection: "column",
-          gap: "0.4rem",
-        }}
-      >
-        <Link href="/dashboard" style={{ color: "var(--text)", fontWeight: 700, fontSize: "1.05rem", padding: "0 0.5rem 0.6rem" }}>
+    <div className="shell">
+      <aside className="side" aria-label="Main navigation">
+        <Link href="/dashboard" className="brand">
+          <span className="brand-mark"><Icon name="zap" size={16} strokeWidth={2.2} /></span>
           TradeBridge
         </Link>
         {NAV.map((section) => {
           const items = section.items.filter((it) => it.show(me));
           if (items.length === 0) return null;
           return (
-            <div key={section.group} style={{ marginTop: section.group ? "0.7rem" : 0 }}>
-              {section.group && (
-                <div className="faint" style={{ fontSize: "0.68rem", textTransform: "uppercase", letterSpacing: "0.06em", padding: "0 0.5rem 0.3rem" }}>
-                  {section.group}
-                </div>
-              )}
+            <div key={section.group || "main"}>
+              {section.group && <div className="side-group">{section.group}</div>}
               {items.map((it) => {
                 const active = pathname === it.href || pathname.startsWith(it.href + "/");
                 return (
-                  <Link
-                    key={it.href}
-                    href={it.href}
-                    style={{
-                      display: "block",
-                      padding: "0.45rem 0.6rem",
-                      borderRadius: 7,
-                      fontSize: "0.9rem",
-                      fontWeight: 550,
-                      color: active ? "var(--text)" : "var(--muted)",
-                      background: active ? "var(--surface-2)" : "transparent",
-                    }}
-                  >
+                  <Link key={it.href} href={it.href} className={`side-link${active ? " active" : ""}`} aria-current={active ? "page" : undefined}>
+                    <Icon name={it.icon} />
                     {it.label}
+                    {it.badge === "approvals" && approvals > 0 && <span className="count" aria-label={`${approvals} awaiting approval`}>{approvals}</span>}
                   </Link>
                 );
               })}
             </div>
           );
         })}
+        <div className="side-foot">
+          <div style={{ color: "#fff", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{me.company_name ?? "—"}</div>
+          <div style={{ color: "#94a3b8", textTransform: "capitalize" }}>{me.company_type ?? "company"} · {me.role}</div>
+        </div>
       </aside>
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-        <header
-          style={{
-            height: 56,
-            borderBottom: "1px solid var(--border)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "0 1.5rem",
-            gap: "1rem",
-          }}
-        >
+        <header className="topbar">
           <div className="row" style={{ gap: "0.6rem", minWidth: 0 }}>
-            <strong style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {me.company_name ?? "—"}
-            </strong>
+            <span className="avatar" aria-hidden>{initials}</span>
+            <strong style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{me.company_name ?? "—"}</strong>
             <span className="badge badge-info">{me.company_type ?? "company"}</span>
-            <span className="badge">{me.role}</span>
           </div>
-          <div className="row" style={{ gap: "0.6rem" }}>
+          <div className="row" style={{ gap: "0.5rem" }}>
+            {isBuyer(me) && (
+              <Link href="/chat" className="btn btn-sm btn-primary">
+                <Icon name="plus" size={16} /> New RFQ
+              </Link>
+            )}
             {token && <NotificationBell token={token} />}
             <button
-              className="btn btn-sm btn-ghost"
+              className="icon-btn"
+              aria-label="Sign out"
+              title="Sign out"
               onClick={() => {
                 logout();
                 router.replace("/login");
               }}
             >
-              Sign out
+              <Icon name="logout" />
             </button>
           </div>
         </header>
         {impersonating && (
-          <div
-            className="row"
-            style={{
-              justifyContent: "space-between",
-              alignItems: "center",
-              padding: "0.6rem 1.5rem",
-              background: "var(--warning-bg, #4a3a08)",
-              color: "var(--warning-text, #ffd479)",
-              fontSize: "0.85rem",
-              fontWeight: 600,
-            }}
-          >
+          <div className="banner banner-warn" style={{ borderRadius: 0, margin: 0, justifyContent: "space-between", fontWeight: 600, fontSize: "0.85rem" }}>
             <span>Viewing as {impersonating} — read-only (support session)</span>
             <button
-              className="btn btn-sm btn-ghost"
+              className="btn btn-sm"
               onClick={() => {
                 leaveImpersonation();
                 router.replace("/admin/companies");
@@ -184,7 +170,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         )}
         {token && <VerifyEmailBanner token={token} emailVerified={me.email_verified} />}
-        <main style={{ padding: "1.75rem", maxWidth: 1000, width: "100%" }}>{children}</main>
+        <main className="content">{children}</main>
         <FeedbackWidget />
       </div>
     </div>
@@ -199,12 +185,12 @@ function Centered({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function PageHeader({ title, subtitle, action }: { title: string; subtitle?: string; action?: React.ReactNode }) {
+export function PageHeader({ title, subtitle, action }: { title: React.ReactNode; subtitle?: React.ReactNode; action?: React.ReactNode }) {
   return (
-    <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1.25rem" }}>
-      <div>
-        <h1 style={{ fontSize: "1.4rem" }}>{title}</h1>
-        {subtitle && <p className="muted" style={{ margin: "0.25rem 0 0" }}>{subtitle}</p>}
+    <div className="row wrap" style={{ justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1.5rem" }}>
+      <div style={{ minWidth: 0 }}>
+        <h1 style={{ fontSize: "1.55rem", letterSpacing: "-0.02em" }}>{title}</h1>
+        {subtitle && <p className="muted" style={{ margin: "0.3rem 0 0" }}>{subtitle}</p>}
       </div>
       {action}
     </div>
