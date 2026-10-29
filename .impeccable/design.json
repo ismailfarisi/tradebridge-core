@@ -1,0 +1,287 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-29T21:38:20+00:00",
+  "title": "Design System: TradeBridge",
+  "extensions": {
+    "colorMeta": {
+      "gulf-night-indigo": {
+        "role": "primary",
+        "displayName": "Gulf Night Indigo",
+        "canonical": "#4338ca",
+        "tonalRamp": [
+          "#1e1b4b",
+          "#312e81",
+          "#3730a3",
+          "#4338ca",
+          "#6366f1",
+          "#a5b4fc",
+          "#c7d2fe",
+          "#eef2ff"
+        ]
+      },
+      "night-ink": {
+        "role": "neutral",
+        "displayName": "Night Ink",
+        "canonical": "#0b1020",
+        "tonalRamp": [
+          "#0b1020",
+          "#101828",
+          "#1d2939",
+          "#344054",
+          "#475467",
+          "#667085",
+          "#98a2b3",
+          "#e4e7ec"
+        ]
+      },
+      "counting-house-gray": {
+        "role": "neutral",
+        "displayName": "Counting-House Gray",
+        "canonical": "#f6f7f9",
+        "tonalRamp": [
+          "#344054",
+          "#475467",
+          "#667085",
+          "#98a2b3",
+          "#d0d5dd",
+          "#e4e7ec",
+          "#f2f4f7",
+          "#f6f7f9"
+        ]
+      },
+      "deal-green": {
+        "role": "success",
+        "displayName": "Deal Green",
+        "canonical": "#067647",
+        "tonalRamp": [
+          "#053321",
+          "#054f31",
+          "#05603a",
+          "#067647",
+          "#17b26a",
+          "#75e0a7",
+          "#abefc6",
+          "#ecfdf3"
+        ]
+      },
+      "approval-amber": {
+        "role": "warning",
+        "displayName": "Approval Amber",
+        "canonical": "#b54708",
+        "tonalRamp": [
+          "#4e1d09",
+          "#7a2e0e",
+          "#93370d",
+          "#b54708",
+          "#f59e0b",
+          "#fec84b",
+          "#fedf89",
+          "#fffaeb"
+        ]
+      },
+      "walkaway-red": {
+        "role": "error",
+        "displayName": "Walk-away Red",
+        "canonical": "#d92d20",
+        "tonalRamp": [
+          "#55160c",
+          "#7a271a",
+          "#b42318",
+          "#d92d20",
+          "#f04438",
+          "#fda29b",
+          "#fecdca",
+          "#fef3f2"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Marketing hero headline only."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Marketing section titles."
+      },
+      "metric": {
+        "displayName": "Metric",
+        "purpose": "KPI values; always tabular figures."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Card and section headings in the app."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Running text and table cells."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Form labels, uppercase table headers and sidebar groups."
+      }
+    },
+    "shadows": [
+      {
+        "name": "whisper",
+        "value": "0 1px 2px rgba(16,24,40,0.05)",
+        "purpose": "Cards, KPI tiles, inputs, buttons, active tab. The app ceiling."
+      },
+      {
+        "name": "resting",
+        "value": "0 1px 3px rgba(16,24,40,0.08), 0 1px 2px rgba(16,24,40,0.04)",
+        "purpose": "Occasional raised containers."
+      },
+      {
+        "name": "lifted",
+        "value": "0 12px 32px -8px rgba(16,24,40,0.16)",
+        "purpose": "Marketing showcase only: hero demo card, highlighted pricing tier."
+      }
+    ],
+    "motion": [
+      {
+        "name": "control-feedback",
+        "value": "0.12s ease",
+        "purpose": "Button hover/press feedback."
+      },
+      {
+        "name": "live-pulse",
+        "value": "pulse 1.6s infinite",
+        "purpose": "Green ring pulse on the Live indicator for active negotiations."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "nav",
+        "value": "860px"
+      },
+      {
+        "name": "marketing",
+        "value": "900px"
+      },
+      {
+        "name": "split",
+        "value": "960px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The single 'act here' action per view.",
+      "html": "<button class=\"ds-btn ds-btn-primary\">Run negotiation</button>",
+      "css": ".ds-btn{display:inline-flex;align-items:center;gap:.4rem;padding:.55rem 1rem;border-radius:8px;font:600 .9rem system-ui,sans-serif;cursor:pointer;box-shadow:0 1px 2px rgba(16,24,40,.05);transition:background .12s ease}.ds-btn-primary{background:#4338ca;border:1px solid #4338ca;color:#fff}.ds-btn-primary:hover{background:#3730a3;border-color:#3730a3}.ds-btn:focus-visible{outline:2px solid #4338ca;outline-offset:2px}"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Default button for every non-primary action.",
+      "html": "<button class=\"ds-btn2\">Pause</button>",
+      "css": ".ds-btn2{display:inline-flex;align-items:center;gap:.4rem;padding:.55rem 1rem;border-radius:8px;font:600 .9rem system-ui,sans-serif;cursor:pointer;background:#fff;color:#101828;border:1px solid #d0d5dd;box-shadow:0 1px 2px rgba(16,24,40,.05)}.ds-btn2:hover{background:#f2f4f7}.ds-btn2:focus-visible{outline:2px solid #4338ca;outline-offset:2px}"
+    },
+    {
+      "name": "Approve Button",
+      "kind": "button",
+      "refersTo": "button-success",
+      "description": "Reserved for approving a deal.",
+      "html": "<button class=\"ds-btn-ok\">Approve &amp; create PO</button>",
+      "css": ".ds-btn-ok{padding:.55rem 1rem;border-radius:8px;font:600 .9rem system-ui,sans-serif;cursor:pointer;background:#067647;border:1px solid #067647;color:#fff}.ds-btn-ok:hover{background:#05603a}.ds-btn-ok:focus-visible{outline:2px solid #4338ca;outline-offset:2px}"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Labelled field with indigo focus halo.",
+      "html": "<label class=\"ds-field\"><span>Walk-away price (AED)</span><input class=\"ds-input\" value=\"42,000\"></label>",
+      "css": ".ds-field{display:flex;flex-direction:column;gap:.35rem;font-family:system-ui,sans-serif}.ds-field span{font-size:.78rem;font-weight:600;color:#475467}.ds-input{padding:.6rem .75rem;border:1px solid #d0d5dd;border-radius:8px;background:#fff;color:#101828;font-size:.92rem;box-shadow:0 1px 2px rgba(16,24,40,.05)}.ds-input:focus{outline:none;border-color:#4338ca;box-shadow:0 0 0 3px #eef2ff}"
+    },
+    {
+      "name": "Status Badges",
+      "kind": "chip",
+      "refersTo": "badge-success",
+      "description": "Fixed status vocabulary: deal, awaiting approval, walk-away.",
+      "html": "<span class=\"ds-badge ds-ok\">completed</span> <span class=\"ds-badge ds-warn\">awaiting approval</span> <span class=\"ds-badge ds-bad\">walk away</span>",
+      "css": ".ds-badge{display:inline-flex;padding:.15rem .55rem;border-radius:999px;font:600 .72rem system-ui,sans-serif;border:1px solid;text-transform:capitalize}.ds-ok{color:#067647;background:#ecfdf3;border-color:#abefc6}.ds-warn{color:#b54708;background:#fffaeb;border-color:#fedf89}.ds-bad{color:#b42318;background:#fef3f2;border-color:#fecdca}"
+    },
+    {
+      "name": "KPI Tile",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Label, tabular metric and sub-line; one accent tile per screen.",
+      "html": "<div class=\"ds-kpi\"><div class=\"ds-kpi-l\">Total savings</div><div class=\"ds-kpi-v\">AED 48,320</div><div class=\"ds-kpi-s\">vs opening quotes</div></div>",
+      "css": ".ds-kpi{background:#fff;border:1px solid #e4e7ec;border-radius:12px;padding:1.1rem 1.2rem;box-shadow:0 1px 2px rgba(16,24,40,.05);font-family:system-ui,sans-serif;max-width:240px}.ds-kpi-l{color:#475467;font-size:.82rem;font-weight:500}.ds-kpi-v{font-size:1.75rem;font-weight:700;letter-spacing:-.025em;margin-top:.35rem;font-variant-numeric:tabular-nums;color:#101828}.ds-kpi-s{font-size:.8rem;color:#667085;margin-top:.15rem}"
+    },
+    {
+      "name": "Sidebar Navigation",
+      "kind": "nav",
+      "refersTo": "sidebar",
+      "description": "Night-ink frame with indigo-washed active link and amber count.",
+      "html": "<nav class=\"ds-side\"><div class=\"ds-grp\">Buy</div><a class=\"ds-link\">Overview</a><a class=\"ds-link ds-on\">Negotiations <span class=\"ds-count\">1</span></a><a class=\"ds-link\">Savings</a></nav>",
+      "css": ".ds-side{width:248px;background:#0b1020;padding:1rem .85rem;display:flex;flex-direction:column;gap:.25rem;font-family:system-ui,sans-serif}.ds-grp{font-size:.68rem;text-transform:uppercase;letter-spacing:.08em;color:#64748b;padding:.6rem .6rem .35rem;font-weight:600}.ds-link{display:flex;align-items:center;padding:.5rem .6rem;border-radius:8px;font-size:.89rem;font-weight:500;color:#cbd5e1;cursor:pointer}.ds-link:hover{background:rgba(255,255,255,.06);color:#fff}.ds-on{background:rgba(99,102,241,.22);color:#fff}.ds-count{margin-left:auto;font-size:.7rem;background:#f59e0b;color:#1f1300;border-radius:999px;padding:0 .45rem;font-weight:700}"
+    },
+    {
+      "name": "Negotiation Round",
+      "kind": "custom",
+      "refersTo": "card",
+      "description": "Timeline item: status dot, meta, tabular price move, agent's reason.",
+      "html": "<div class=\"ds-tl\"><span class=\"ds-dot\"></span><div><div class=\"ds-meta\">Gulf Packaging Co · Round 2</div><div class=\"ds-move\">AED 41,200 → 39,535</div><div class=\"ds-quote\">We have a competing offer within mandate; can you meet 39,535?</div></div></div>",
+      "css": ".ds-tl{display:grid;grid-template-columns:28px 1fr;gap:.75rem;font-family:system-ui,sans-serif;max-width:420px}.ds-dot{width:28px;height:28px;border-radius:999px;background:#eef2ff;border:6px solid #eef2ff;box-shadow:inset 0 0 0 8px #4338ca}.ds-meta{font-size:.82rem;color:#667085}.ds-move{font-weight:650;color:#101828;font-variant-numeric:tabular-nums;margin-top:.2rem}.ds-quote{margin-top:.4rem;background:#f2f4f7;border-radius:10px;padding:.6rem .8rem;font-size:.86rem;color:#475467}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Souk, Digitized",
+    "overview": "A Gulf trading floor is loud, crowded and full of offers. TradeBridge keeps the crowd (many suppliers, many quotes, many rounds of haggling) and takes away the noise. Every offer gets its own row, every counter shows its reason, and every dirham saved is visible. The energy comes from the volume of trade on screen, not from decoration.\n\nThe look is refined and restrained. White trading surfaces sit on a cool counting-house gray, under a night-ink sidebar that frames the floor. Hairline borders and near-flat shadows separate things; one indigo accent marks where the owner should act.",
+    "keyCharacteristics": [
+      "Night-ink navigation frame around light, white working surfaces.",
+      "One accent (Gulf Night Indigo) for primary actions, active nav and links.",
+      "Hairline borders (1px) and whisper shadows instead of heavy elevation.",
+      "Tabular figures for every price, saving and metric.",
+      "Fixed status colors: deal green, approval amber, walk-away red.",
+      "Inline SVG line icons (`web/components/Icon.tsx`), no emoji or icon fonts."
+    ],
+    "rules": [
+      {
+        "name": "The One Merchant Rule",
+        "body": "Indigo is the only brand hue in the app. Status colors carry meaning, not decoration; never use green, amber or red just for variety.",
+        "section": "colors"
+      },
+      {
+        "name": "The Status Vocabulary Rule",
+        "body": "Green means a deal closed or money saved, amber means the owner must act, red means no deal or an error. A color always means the same thing on every screen.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tabular Money Rule",
+        "body": "Every price, saving, total and count uses tabular figures (`font-variant-numeric: tabular-nums`), so columns of offers line up like a ledger.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat Floor Rule",
+        "body": "In the app, the Whisper shadow is the ceiling. Lifted shadows belong to marketing showcase elements, never to working UI.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** keep working surfaces Paper White (#ffffff) on Counting-House Gray (#f6f7f9), with 1px Hairline (#e4e7ec) borders.",
+      "**Do** use Gulf Night Indigo (#4338ca) for exactly one primary action per view, plus links, focus and active states.",
+      "**Do** set every price, saving and count in tabular figures, with the currency code shown (e.g. \"AED 39,535\").",
+      "**Do** show what each negotiation round did and why: price move, status color, and the agent's reason.",
+      "**Do** use inline SVG line icons from `web/components/Icon.tsx`, sized 16–20px.",
+      "**Do** keep text at Slate Faint (#667085) or darker for AA contrast."
+    ],
+    "donts": [
+      "**Don't** use emoji or glyph characters as icons; they were removed for rendering inconsistency.",
+      "**Don't** introduce a second brand hue or use status colors as decoration (see The One Merchant Rule).",
+      "**Don't** put Lifted shadows or hover lifts on app UI; elevation stays at Whisper.",
+      "**Don't** add gradients beyond the three that exist (brand mark, single KPI accent tile, marketing hero accent and CTA band).",
+      "**Don't** return to the old dark theme for app content areas; dark is reserved for the sidebar frame and the marketing CTA band."
+    ]
+  }
+}
