@@ -135,8 +135,16 @@ export const saveStrategy = (token: string, rfqId: string, input: StrategyInput)
 export const runNegotiation = (token: string, rfqId: string) => call<NegotiationView>(token, "POST", `${base(rfqId)}/run`, {});
 export const pauseNegotiation = (token: string, rfqId: string) => call<NegotiationView>(token, "POST", `${base(rfqId)}/pause`, {});
 export const resumeNegotiation = (token: string, rfqId: string) => call<NegotiationView>(token, "POST", `${base(rfqId)}/resume`, {});
-export const approveNegotiation = (token: string, rfqId: string) =>
-  call<{ order_id: string; total_cents: number; currency: string }>(token, "POST", `${base(rfqId)}/approve`, {});
+export const approveNegotiation = (token: string, rfqId: string, quoteId?: string) =>
+  call<{ order_id: string; total_cents: number; currency: string }>(
+    token,
+    "POST",
+    `${base(rfqId)}/approve`,
+    quoteId ? { quote_id: quoteId } : {},
+  );
+
+export const declineNegotiation = (token: string, rfqId: string) =>
+  call<NegotiationView>(token, "POST", `${base(rfqId)}/decline`, {});
 export const listNegotiations = (token: string) =>
   call<{ negotiations: NegotiationListItem[] }>(token, "GET", "/v1/negotiations");
 export const getSavings = (token: string) => call<Savings>(token, "GET", "/v1/negotiations/savings");
@@ -191,4 +199,28 @@ export function dollarsToCents(v: string): number | null {
   const n = Number(v.replace(/[,\s$]/g, ""));
   if (!Number.isFinite(n) || n <= 0) return null;
   return Math.round(n * 100);
+}
+
+const days = (n: number) => `${n} day${n === 1 ? "" : "s"}`;
+
+// explainPick says in plain words why `pick` beats `other`, naming the
+// mandate weight only when the two trade price against delivery.
+export function explainPick(pick: Supplier, other: Supplier, priceWeight: number): string {
+  const cur = pick.currency || DEFAULT_CURRENCY;
+  const priceGap = other.price_cents - pick.price_cents;
+  const dayGap =
+    pick.delivery_days != null && other.delivery_days != null ? pick.delivery_days - other.delivery_days : 0;
+  const price =
+    priceGap > 0
+      ? `${money(priceGap, cur)} cheaper than ${other.seller_name}`
+      : priceGap < 0
+        ? `${money(-priceGap, cur)} more than ${other.seller_name}`
+        : `Same price as ${other.seller_name}`;
+  const delivery = dayGap > 0 ? `${days(dayGap)} slower` : dayGap < 0 ? `${days(-dayGap)} sooner` : "";
+  const tradeOff = (priceGap > 0 && dayGap > 0) || (priceGap < 0 && dayGap < 0);
+  const sentence = delivery ? `${price}, ${tradeOff ? "but " : "and "}${delivery}.` : `${price}.`;
+  if (!tradeOff) return sentence;
+  const pw = Math.round(priceWeight * 100);
+  const favours = priceGap > 0 ? `price at ${pw}%` : `delivery at ${100 - pw}%`;
+  return `${sentence} Your mandate weighs ${favours}.`;
 }

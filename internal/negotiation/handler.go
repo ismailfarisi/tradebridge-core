@@ -2,6 +2,7 @@ package negotiation
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -35,6 +36,7 @@ func (h *Handler) Register(app *fiber.App, guard ...fiber.Handler) {
 	app.Add("POST", "/v1/rfqs/:id/negotiation/resume", append(guard, h.resume)...)
 	app.Add("POST", "/v1/rfqs/:id/negotiation/run", append(guard, h.run)...)
 	app.Add("POST", "/v1/rfqs/:id/negotiation/approve", append(guard, h.approve)...)
+	app.Add("POST", "/v1/rfqs/:id/negotiation/decline", append(guard, h.decline)...)
 }
 
 type strategyInput struct {
@@ -165,11 +167,30 @@ func (h *Handler) approve(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	order, err := h.eng.Approve(c.Context(), r.BuyerCompanyID, r.ID)
+	var in struct {
+		QuoteID string `json:"quote_id"`
+	}
+	if len(c.Body()) > 0 {
+		if err := c.BodyParser(&in); err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, "invalid body")
+		}
+	}
+	order, err := h.eng.Approve(c.Context(), r.BuyerCompanyID, r.ID, strings.TrimSpace(in.QuoteID))
 	if err != nil {
 		return mapErr(err)
 	}
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"order_id": order.ID, "total_cents": order.TotalCents, "currency": order.Currency})
+}
+
+func (h *Handler) decline(c *fiber.Ctx) error {
+	r, err := h.ownedRFQ(c)
+	if err != nil {
+		return err
+	}
+	if _, err := h.eng.Decline(c.Context(), r.BuyerCompanyID, r.ID); err != nil {
+		return mapErr(err)
+	}
+	return h.respond(c, r)
 }
 
 func mapErr(err error) error {
