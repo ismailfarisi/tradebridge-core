@@ -67,7 +67,7 @@ export default function NegotiationRoom() {
     setErr(null);
     try {
       const order = await approveNegotiation(token, id);
-      setOrderId(order.id);
+      setOrderId(order.order_id);
       load();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Approval failed");

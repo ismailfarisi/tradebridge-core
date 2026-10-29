@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -307,7 +308,8 @@ func (e *Engine) Approve(ctx context.Context, buyerCompanyID, rfqID string) (sql
 	if err != nil {
 		return sqlc.Order{}, err
 	}
-	_, err = e.q.SetNegotiationStatus(ctx, sqlc.SetNegotiationStatusParams{ID: s.ID, Status: StatusCompleted})
+	summary := strings.Replace(s.OutcomeSummary, "Awaiting your approval.", "Approved by buyer; order placed.", 1)
+	_, err = e.q.SetNegotiationStatus(ctx, sqlc.SetNegotiationStatusParams{ID: s.ID, Status: StatusCompleted, OutcomeSummary: &summary})
 	return order, err
 }
 

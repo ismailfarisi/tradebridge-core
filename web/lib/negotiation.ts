@@ -136,7 +136,7 @@ export const runNegotiation = (token: string, rfqId: string) => call<Negotiation
 export const pauseNegotiation = (token: string, rfqId: string) => call<NegotiationView>(token, "POST", `${base(rfqId)}/pause`, {});
 export const resumeNegotiation = (token: string, rfqId: string) => call<NegotiationView>(token, "POST", `${base(rfqId)}/resume`, {});
 export const approveNegotiation = (token: string, rfqId: string) =>
-  call<{ id: string; total_cents: number }>(token, "POST", `${base(rfqId)}/approve`, {});
+  call<{ order_id: string; total_cents: number; currency: string }>(token, "POST", `${base(rfqId)}/approve`, {});
 export const listNegotiations = (token: string) =>
   call<{ negotiations: NegotiationListItem[] }>(token, "GET", "/v1/negotiations");
 export const getSavings = (token: string) => call<Savings>(token, "GET", "/v1/negotiations/savings");
