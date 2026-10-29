@@ -20,6 +20,8 @@ func main() {
 	}
 	defer cleanup()
 
+	sweepCtx, cancelSweep := context.WithCancel(context.Background())
+	defer cancelSweep()
 	f := httpapi.New(app.Queries, httpapi.Config{
 		JWTSecret:       app.Config.JWTSecret,
 		TokenTTL:        24 * time.Hour,
@@ -55,6 +57,10 @@ func main() {
 
 		BillingDevMode: app.Config.BillingDevMode,
 
+		WorkerCtx:                sweepCtx,
+		NegotiationTick:          time.Duration(app.Config.NegotiationTickSeconds) * time.Second,
+		NegotiationSellerTimeout: time.Duration(app.Config.NegotiationSellerTimeoutMinutes) * time.Minute,
+
 		VerifyDNSTimeout:       app.Config.VerifyDNSTimeout,
 		VerifyRequiredForMatch: app.Config.VerifyRequiredForMatch,
 
@@ -67,8 +73,6 @@ func main() {
 		RateLimitDiscovery:   app.Config.RateLimitDiscovery,
 	})
 
-	sweepCtx, cancelSweep := context.WithCancel(context.Background())
-	defer cancelSweep()
 	sweeper := rfq.NewSweeper(
 		app.Queries, app.Pool,
 		eventbus.New(app.Queries, app.Redis, app.Logger),

@@ -48,6 +48,9 @@ const (
 	// TypeDisputeResolved fires when an admin resolves a dispute, notifying
 	// both parties.
 	TypeDisputeResolved = "dispute.resolved"
+	// TypeNegotiationUpdate fires when the buyer's negotiation agent closes a
+	// deal, needs approval, or ends without a deal.
+	TypeNegotiationUpdate = "negotiation.update"
 )
 
 // Event is a single thing worth telling a company about.

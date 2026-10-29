@@ -180,6 +180,42 @@ type InvoiceLineItem struct {
 	AmountCents    int64  `json:"amount_cents"`
 }
 
+type NegotiationRound struct {
+	ID                 string    `json:"id"`
+	StrategyID         string    `json:"strategy_id"`
+	QuoteID            string    `json:"quote_id"`
+	Round              int32     `json:"round"`
+	RespondedToVersion int32     `json:"responded_to_version"`
+	Action             string    `json:"action"`
+	SellerPriceCents   int64     `json:"seller_price_cents"`
+	SellerDeliveryDays *int32    `json:"seller_delivery_days"`
+	OfferPriceCents    *int64    `json:"offer_price_cents"`
+	OfferDeliveryDays  *int32    `json:"offer_delivery_days"`
+	Utility            float64   `json:"utility"`
+	Rationale          string    `json:"rationale"`
+	Message            string    `json:"message"`
+	CreatedAt          time.Time `json:"created_at"`
+}
+
+type NegotiationStrategy struct {
+	ID               string    `json:"id"`
+	RfqID            string    `json:"rfq_id"`
+	BuyerCompanyID   string    `json:"buyer_company_id"`
+	CreatedBy        *string   `json:"created_by"`
+	TargetPriceCents int64     `json:"target_price_cents"`
+	MaxPriceCents    int64     `json:"max_price_cents"`
+	MaxDeliveryDays  *int32    `json:"max_delivery_days"`
+	PriceWeight      float64   `json:"price_weight"`
+	MaxRounds        int32     `json:"max_rounds"`
+	AutoAccept       bool      `json:"auto_accept"`
+	Tone             string    `json:"tone"`
+	Status           string    `json:"status"`
+	OutcomeQuoteID   *string   `json:"outcome_quote_id"`
+	OutcomeSummary   string    `json:"outcome_summary"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+}
+
 type Notification struct {
 	ID        string             `json:"id"`
 	UserID    string             `json:"user_id"`
