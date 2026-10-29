@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { getSellerAnalytics, type SellerAnalytics } from "@/lib/analytics";
+import { money } from "@/lib/negotiation";
 
 export function SellerAnalyticsPanel({ token }: { token: string }) {
   const [a, setA] = useState<SellerAnalytics | null>(null);
   useEffect(() => { getSellerAnalytics(token).then(setA).catch(() => {}); }, [token]);
   if (!a) return null;
-  const money = (c: number) => `$${(c / 100).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
   return (
     <div className="card" style={{ marginTop: "1.5rem" }}>
       <h2 style={{ marginTop: 0 }}>Performance</h2>

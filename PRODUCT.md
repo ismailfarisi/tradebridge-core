@@ -40,7 +40,7 @@ Enterprise negotiation tools (Pactum-style) sell to large procurement teams. Tra
 - Terminology: RFQ, quote (versioned), counter-offer, mandate, negotiation round, walk-away price, order / PO, savings.
 - Market: UAE/GCC first, so AED should be the expected currency and Dubai the default supplier location.
 - **Open decisions / known gaps:**
-  - Currency defaults to USD in the schema (`currency DEFAULT 'USD'`), and the demo seed and landing copy use USD; AED-first is not implemented yet.
+  - Deal amounts default to AED (schema defaults, quote normalization, simulated sellers, web formatting). Subscription plans are still billed in USD via Stripe.
   - Arabic / RTL support is undecided; the app is English-only (`lang="en"`).
   - Landing and marketing copy still speaks to procurement teams ("long tail of spend") rather than SMB owners.
 

@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/AppShell";
 import { Icon } from "@/components/Icon";
 import { SpendChart } from "@/components/SpendChart";
 import { useToken } from "@/lib/auth";
-import { getSavings, money, pct, type Savings } from "@/lib/negotiation";
+import { DEFAULT_CURRENCY, getSavings, money, pct, type Savings } from "@/lib/negotiation";
 
 export default function SavingsPage() {
   const token = useToken();
@@ -70,7 +70,7 @@ export default function SavingsPage() {
                 <div key={s.id}>
                   <div className="row small" style={{ justifyContent: "space-between" }}>
                     <strong>{s.name}</strong>
-                    <span className="num muted">{money(s.spend_cents, "USD", { compact: true })} · {s.deals} deal{s.deals === 1 ? "" : "s"}</span>
+                    <span className="num muted">{money(s.spend_cents, DEFAULT_CURRENCY, { compact: true })} · {s.deals} deal{s.deals === 1 ? "" : "s"}</span>
                   </div>
                   <div className="bar" style={{ marginTop: "0.35rem" }}><span style={{ width: `${(s.spend_cents / maxSupplier) * 100}%` }} /></div>
                 </div>

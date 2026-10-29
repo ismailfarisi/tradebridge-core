@@ -1,16 +1,20 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { needsConsent, writeConsent } from "@/lib/consent";
 
 export default function CookieConsent() {
-  const [visible, setVisible] = useState(false);
+  // Consent lives in localStorage, so the server render assumes no banner and
+  // the client reads the real value after hydration.
+  const needed = useSyncExternalStore(
+    subscribeNoop,
+    () => needsConsent(),
+    () => false,
+  );
+  const [dismissed, setDismissed] = useState(false);
+  const visible = needed && !dismissed;
   const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    setVisible(needsConsent());
-  }, []);
 
   // Publish the banner's height as a CSS variable so layouts with
   // bottom-anchored content (the chat composer) can reserve space and avoid
@@ -32,7 +36,7 @@ export default function CookieConsent() {
 
   const choose = (v: "accepted" | "rejected") => {
     writeConsent(v);
-    setVisible(false);
+    setDismissed(true);
   };
 
   return (
@@ -67,3 +71,5 @@ export default function CookieConsent() {
     </div>
   );
 }
+
+const subscribeNoop = () => () => {};

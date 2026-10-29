@@ -1,8 +1,8 @@
-import { money, monthLabel, type Savings } from "@/lib/negotiation";
+import { DEFAULT_CURRENCY, money, monthLabel, type Savings } from "@/lib/negotiation";
 
 // SpendChart is a dependency-free SVG stacked bar chart: negotiated spend with
 // the savings captured on top, one bar per month.
-export function SpendChart({ data, currency = "USD", height = 220 }: { data: Savings["monthly"]; currency?: string; height?: number }) {
+export function SpendChart({ data, currency = DEFAULT_CURRENCY, height = 220 }: { data: Savings["monthly"]; currency?: string; height?: number }) {
   const W = 720;
   const padL = 56;
   const padB = 26;
