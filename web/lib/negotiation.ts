@@ -224,3 +224,12 @@ export function explainPick(pick: Supplier, other: Supplier, priceWeight: number
   const favours = priceGap > 0 ? `price at ${pw}%` : `delivery at ${100 - pw}%`;
   return `${sentence} Your mandate weighs ${favours}.`;
 }
+
+export const when = (iso: string, timeZone?: string) =>
+  new Date(iso).toLocaleString("en-AE", {
+    day: "numeric",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone,
+  });

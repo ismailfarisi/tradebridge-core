@@ -6,6 +6,7 @@ import {
   monthLabel,
   statusClass,
   type Supplier,
+  when,
 } from "./negotiation";
 
 describe("negotiation helpers", () => {
@@ -73,5 +74,11 @@ describe("explainPick", () => {
     expect(
       explainPick(sup("A", 1000000, null), sup("B", 1000000, 6), 0.7),
     ).toBe("Same price as B.");
+  });
+});
+
+describe("when", () => {
+  it("shows day, month and time without seconds", () => {
+    expect(when("2026-10-29T17:54:07Z", "Asia/Dubai")).toBe("29 Oct, 9:54 PM");
   });
 });

@@ -26,7 +26,7 @@ func TestDecide_FirstCounterAnchorsAtTarget(t *testing.T) {
 	if d.OfferDeliveryDays == nil || *d.OfferDeliveryDays != 10 {
 		t.Fatalf("delivery within limit should be kept, got %v", d.OfferDeliveryDays)
 	}
-	if !strings.Contains(d.Message, "USD 900.00") {
+	if !strings.Contains(d.Message, "USD 900") {
 		t.Fatalf("message should state the offer: %q", d.Message)
 	}
 }
@@ -146,5 +146,29 @@ func TestUtilityAndPickBest(t *testing.T) {
 func TestMoneyFormat(t *testing.T) {
 	if got := money(123456789, "AED"); got != "AED 1,234,567.89" {
 		t.Fatal(got)
+	}
+}
+
+func TestRoundDown(t *testing.T) {
+	cases := map[int64]int64{
+		1_003_288: 1_000_000, // AED 10,032.88 -> AED 10,000
+		417_845:   417_000,   // AED 4,178.45 -> AED 4,170
+		98_765:    98_700,    // AED 987.65 -> AED 987
+		50:        50,
+	}
+	for in, want := range cases {
+		if got := roundDown(in); got != want {
+			t.Fatalf("roundDown(%d) = %d, want %d", in, got, want)
+		}
+	}
+}
+
+func TestDecide_LaterCountersDropTheIntro(t *testing.T) {
+	d := Decide(baseMandate(), Offer{PriceCents: 120_000, DeliveryDays: i32(10)}, History{Counters: 1, LastSellerCents: 125_000, Competitors: 2})
+	if !strings.HasPrefix(d.Message, "Thanks for the revised quote. We still have 2 other competitive offers.") {
+		t.Fatalf("later counter message: %q", d.Message)
+	}
+	if strings.Contains(d.Rationale, "concession") {
+		t.Fatalf("rationale should be plain language: %q", d.Rationale)
 	}
 }

@@ -25,6 +25,7 @@ import {
   type Round,
   type Supplier,
   type Tone,
+  when,
 } from "@/lib/negotiation";
 
 const LIVE_POLL_MS = 5000;
@@ -95,6 +96,7 @@ export default function NegotiationRoom() {
   const closed = view.rfq.status === "closed";
   const showForm = !s || editing;
   const deciding = s?.status === "awaiting_approval" && !orderId;
+  const done = s?.status === "completed" || !!orderId;
   const ranked = [...view.suppliers].sort((a, b) => (s ? b.utility - a.utility : a.price_cents - b.price_cents));
   const chosen = view.suppliers.find((x) => x.quote_id === (chosenId ?? winner?.quote_id));
   const overriding = !!chosen && !!winner && chosen.quote_id !== winner.quote_id;
@@ -240,17 +242,16 @@ export default function NegotiationRoom() {
           <div className="kpi-value">{money(view.summary.initial_best_cents || null, cur)}</div>
         </div>
         <div className="kpi">
-          <div className="kpi-label"><Icon name="target" size={16} /> Target / walk-away</div>
-          <div className="kpi-value" style={{ fontSize: "1.3rem" }}>
-            {s ? `${money(s.target_price_cents, cur)} / ${money(s.max_price_cents, cur)}` : "—"}
-          </div>
+          <div className="kpi-label"><Icon name="target" size={16} /> Your target</div>
+          <div className="kpi-value">{s ? money(s.target_price_cents, cur) : "—"}</div>
+          {s && <div className="kpi-sub">Walk away above {money(s.max_price_cents, cur)}</div>}
         </div>
         <div className="kpi">
-          <div className="kpi-label"><Icon name="handshake" size={16} /> Best current offer</div>
+          <div className="kpi-label"><Icon name="handshake" size={16} /> {done ? "Agreed price" : "Best current offer"}</div>
           <div className="kpi-value">{money(view.summary.current_best_cents || null, cur)}</div>
         </div>
         <div className="kpi kpi-accent">
-          <div className="kpi-label"><Icon name="trending" size={16} /> Saved so far</div>
+          <div className="kpi-label"><Icon name="trending" size={16} /> {done ? "Saved" : "Saved so far"}</div>
           <div className="kpi-value">{money(view.summary.savings_cents, cur)}</div>
           <div className="kpi-sub">{pct(view.summary.savings_pct)} vs opening</div>
         </div>
@@ -366,7 +367,7 @@ function RoundItem({ r, currency }: { r: Round; currency: string }) {
   const kind = r.action === "counter" ? "" : r.action === "accept_ready" ? " ok" : " bad";
   const icon = r.action === "counter" ? "arrowDown" : r.action === "accept_ready" ? "check" : "x";
   const title =
-    r.action === "counter" ? `Countered ${r.seller_name}` : r.action === "accept_ready" ? `Acceptable offer from ${r.seller_name}` : `Walked away from ${r.seller_name}`;
+    r.action === "counter" ? "Countered" : r.action === "accept_ready" ? "Within your limits" : "Walked away";
   return (
     <li className="tl-item">
       <span className={`tl-dot${kind}`}><Icon name={icon} size={14} strokeWidth={2.2} /></span>
@@ -384,8 +385,7 @@ function RoundItem({ r, currency }: { r: Round; currency: string }) {
           </span>
         </div>
         <div className="tl-meta">
-          <span>Round {r.round}</span>·<span>quote v{r.responded_to_version}</span>·<span>score {Math.round(r.utility * 100)}</span>·
-          <span>{new Date(r.created_at).toLocaleString()}</span>
+          <span>Round {r.round}</span>·<time dateTime={r.created_at}>{when(r.created_at)}</time>
         </div>
         <div className="small muted" style={{ marginTop: "0.3rem" }}>{r.rationale}</div>
         {r.message && <div className="tl-quote">“{r.message}”</div>}
@@ -425,7 +425,7 @@ function MandateForm({ view, busy, onSubmit }: { view: NegotiationView; busy: bo
           <h2 className="row" style={{ gap: "0.45rem" }}><Icon name="bot" /> Negotiation mandate</h2>
           <p className="small muted" style={{ margin: "0.2rem 0 0" }}>
             The agent counters each supplier between your target and walk-away price, using rival quotes as leverage.
-            {view.suggested && !s && <> Suggested values start 12% under the best opening quote of {money(view.summary.current_best_cents, view.summary.currency)}.</>}
+            {view.suggested && !s && <> Suggested values start about 12% under the best opening quote of {money(view.summary.current_best_cents, view.summary.currency)}.</>}
           </p>
         </div>
       </div>

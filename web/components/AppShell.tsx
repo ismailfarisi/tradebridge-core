@@ -133,12 +133,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <div className="row" style={{ gap: "0.6rem", minWidth: 0 }}>
             <span className="avatar" aria-hidden>{initials}</span>
             <strong style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{me.company_name ?? "—"}</strong>
-            <span className="badge badge-info">{me.company_type ?? "company"}</span>
+            <span className="badge badge-info topbar-role">{me.company_type ?? "company"}</span>
           </div>
           <div className="row" style={{ gap: "0.5rem" }}>
             {isBuyer(me) && (
-              <Link href="/chat" className="btn btn-sm btn-primary">
-                <Icon name="plus" size={16} /> New RFQ
+              <Link href="/chat" className="btn btn-sm btn-primary" aria-label="New RFQ">
+                <Icon name="plus" size={16} /> <span className="topbar-label">New RFQ</span>
               </Link>
             )}
             {token && <NotificationBell token={token} />}
