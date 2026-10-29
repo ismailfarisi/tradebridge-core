@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+  deadlineDays,
+  describeLimits,
   dollarsToCents,
   explainPick,
   money,
   monthLabel,
+  parseLimits,
+  quoteRange,
+  roundDownCents,
   statusClass,
+  suggestTarget,
   type Supplier,
   when,
 } from "./negotiation";
@@ -80,5 +86,38 @@ describe("explainPick", () => {
 describe("when", () => {
   it("shows day, month and time without seconds", () => {
     expect(when("2026-10-29T17:54:07Z", "Asia/Dubai")).toBe("29 Oct, 9:54 PM");
+  });
+});
+
+describe("parseLimits", () => {
+  it("reads budget, timeframe and priority", () => {
+    expect(parseLimits("Up to AED 50k, need it within 2 weeks, price matters most")).toEqual({ maxCents: 5_000_000, days: 14, weight: 0.7 });
+    expect(parseLimits("around 30,000 dirhams, urgent, by next week")).toEqual({ maxCents: 3_000_000, days: 7, weight: 0.3 });
+    expect(parseLimits("budget 12500 for 2,000 boxes, balanced")).toEqual({ maxCents: 1_250_000, weight: 0.5 });
+    expect(parseLimits("no rush")).toEqual({});
+  });
+
+  it("describes what it understood", () => {
+    expect(describeLimits({ maxCents: 5_000_000, days: 14, weight: 0.7 })).toBe(`Understood: up to ${money(5_000_000)} · within 14 days · lowest price first`);
+    expect(describeLimits({})).toBe("");
+  });
+});
+
+describe("mandate suggestions", () => {
+  it("turns an RFQ deadline into days", () => {
+    expect(deadlineDays("within 10 days")).toBe(10);
+    expect(deadlineDays("2026-11-12", new Date("2026-10-29T12:00:00Z"))).toBe(14);
+    expect(deadlineDays("whenever")).toBeUndefined();
+  });
+
+  it("suggests a rounded target about 12% under the cap", () => {
+    expect(roundDownCents(1_003_288)).toBe(1_000_000);
+    expect(roundDownCents(98_765)).toBe(98_700);
+    expect(suggestTarget(4_731_000)).toBe(4_160_000);
+  });
+
+  it("summarises the quote range", () => {
+    expect(quoteRange([sup("A", 4_731_000, 18), sup("B", 5_315_500, 7)])).toEqual({ count: 2, minCents: 4_731_000, maxCents: 5_315_500, minDays: 7, maxDays: 18 });
+    expect(quoteRange([])).toBeNull();
   });
 });

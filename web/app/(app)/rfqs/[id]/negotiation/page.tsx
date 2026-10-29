@@ -8,19 +8,25 @@ import { Icon } from "@/components/Icon";
 import { useToken } from "@/lib/auth";
 import {
   DEFAULT_CURRENCY,
+  PRIORITIES,
   approveNegotiation,
+  deadlineDays,
   declineNegotiation,
+  describeLimits,
   dollarsToCents,
   explainPick,
   getNegotiation,
   money,
+  parseLimits,
   pauseNegotiation,
   pct,
+  quoteRange,
   resumeNegotiation,
   runNegotiation,
   saveStrategy,
   STATUS_LABEL,
   statusClass,
+  suggestTarget,
   type NegotiationView,
   type Round,
   type Supplier,
@@ -236,26 +242,28 @@ export default function NegotiationRoom() {
         )}
       </section>
 
-      <div className="kpis">
-        <div className="kpi">
-          <div className="kpi-label"><Icon name="file" size={16} /> Best opening quote</div>
-          <div className="kpi-value">{money(view.summary.initial_best_cents || null, cur)}</div>
+      {s && (
+        <div className="kpis">
+          <div className="kpi">
+            <div className="kpi-label"><Icon name="file" size={16} /> Best opening quote</div>
+            <div className="kpi-value">{money(view.summary.initial_best_cents || null, cur)}</div>
+          </div>
+          <div className="kpi">
+            <div className="kpi-label"><Icon name="target" size={16} /> Your target</div>
+            <div className="kpi-value">{s ? money(s.target_price_cents, cur) : "—"}</div>
+            {s && <div className="kpi-sub">Walk away above {money(s.max_price_cents, cur)}</div>}
+          </div>
+          <div className="kpi">
+            <div className="kpi-label"><Icon name="handshake" size={16} /> {done ? "Agreed price" : "Best current offer"}</div>
+            <div className="kpi-value">{money(view.summary.current_best_cents || null, cur)}</div>
+          </div>
+          <div className="kpi kpi-accent">
+            <div className="kpi-label"><Icon name="trending" size={16} /> {done ? "Saved" : "Saved so far"}</div>
+            <div className="kpi-value">{money(view.summary.savings_cents, cur)}</div>
+            <div className="kpi-sub">{pct(view.summary.savings_pct)} vs opening</div>
+          </div>
         </div>
-        <div className="kpi">
-          <div className="kpi-label"><Icon name="target" size={16} /> Your target</div>
-          <div className="kpi-value">{s ? money(s.target_price_cents, cur) : "—"}</div>
-          {s && <div className="kpi-sub">Walk away above {money(s.max_price_cents, cur)}</div>}
-        </div>
-        <div className="kpi">
-          <div className="kpi-label"><Icon name="handshake" size={16} /> {done ? "Agreed price" : "Best current offer"}</div>
-          <div className="kpi-value">{money(view.summary.current_best_cents || null, cur)}</div>
-        </div>
-        <div className="kpi kpi-accent">
-          <div className="kpi-label"><Icon name="trending" size={16} /> {done ? "Saved" : "Saved so far"}</div>
-          <div className="kpi-value">{money(view.summary.savings_cents, cur)}</div>
-          <div className="kpi-sub">{pct(view.summary.savings_pct)} vs opening</div>
-        </div>
-      </div>
+      )}
 
       {showForm && token && (
         <MandateForm
@@ -265,22 +273,24 @@ export default function NegotiationRoom() {
         />
       )}
 
-      <section className="card">
-        <div className="section-head">
-          <h2>Agent moves by supplier</h2>
-          {live && <span className="faint small">Updates every {LIVE_POLL_MS / 1000}s</span>}
-        </div>
-        {view.rounds.length === 0 ? (
-          <div className="empty">
-            <Icon name="bot" size={28} />
-            <p style={{ margin: 0 }}>{s ? "The agent will respond as soon as suppliers quote." : "Set a mandate and the agent will counter every supplier."}</p>
+      {(s || view.rounds.length > 0) && (
+        <section className="card">
+          <div className="section-head">
+            <h2>Agent moves by supplier</h2>
+            {live && <span className="faint small">Updates every {LIVE_POLL_MS / 1000}s</span>}
           </div>
-        ) : (
-          <div className="log-groups">
-            {groupRounds(view.rounds, ranked).map((g) => <LogGroup key={g.quoteId} name={g.name} rounds={g.rounds} currency={cur} />)}
-          </div>
-        )}
-      </section>
+          {view.rounds.length === 0 ? (
+            <div className="empty">
+              <Icon name="bot" size={28} />
+              <p style={{ margin: 0 }}>{s ? "The agent will respond as soon as suppliers quote." : "Set a mandate and the agent will counter every supplier."}</p>
+            </div>
+          ) : (
+            <div className="log-groups">
+              {groupRounds(view.rounds, ranked).map((g) => <LogGroup key={g.quoteId} name={g.name} rounds={g.rounds} currency={cur} />)}
+            </div>
+          )}
+        </section>
+      )}
     </>
   );
 }
@@ -396,83 +406,148 @@ function RoundItem({ r, currency }: { r: Round; currency: string }) {
 
 function MandateForm({ view, busy, onSubmit }: { view: NegotiationView; busy: boolean; onSubmit: (i: Parameters<typeof saveStrategy>[2]) => void }) {
   const s = view.strategy;
+  const cur = view.summary.currency || DEFAULT_CURRENCY;
+  const range = quoteRange(view.suppliers);
+  const best = view.summary.current_best_cents || range?.minCents || 0;
   const seed = s ?? view.suggested;
-  const [target, setTarget] = useState(seed ? String(seed.target_price_cents / 100) : "");
+  const fromRfq = s ? undefined : deadlineDays(view.rfq.deadline ?? "");
+  const [text, setText] = useState("");
   const [max, setMax] = useState(seed ? String(seed.max_price_cents / 100) : "");
-  const [delivery, setDelivery] = useState(s?.max_delivery_days ? String(s.max_delivery_days) : "");
+  const [delivery, setDelivery] = useState(s?.max_delivery_days ? String(s.max_delivery_days) : fromRfq ? String(fromRfq) : "");
   const [weight, setWeight] = useState(s?.price_weight ?? 0.7);
+  const [targetText, setTargetText] = useState(s ? String(s.target_price_cents / 100) : "");
   const [rounds, setRounds] = useState(s?.max_rounds ?? 4);
   const [tone, setTone] = useState<Tone>(s?.tone ?? "collaborative");
   const [auto, setAuto] = useState(s?.auto_accept ?? false);
   const [formErr, setFormErr] = useState<string | null>(null);
 
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const t = dollarsToCents(target);
-    const m = dollarsToCents(max);
-    if (!t || !m) return setFormErr("Enter a target and walk-away price.");
-    if (m < t) return setFormErr("Walk-away price must be at or above the target.");
-    const d = delivery ? Number(delivery) : null;
-    if (d !== null && (!Number.isInteger(d) || d <= 0)) return setFormErr("Delivery limit must be a whole number of days.");
-    setFormErr(null);
-    onSubmit({ target_price_cents: t, max_price_cents: m, max_delivery_days: d, price_weight: weight, max_rounds: rounds, tone, auto_accept: auto });
+  const maxCents = dollarsToCents(max);
+  const cap = maxCents && best ? Math.min(maxCents, best) : maxCents || best;
+  const autoTarget = cap ? suggestTarget(cap) : null;
+  const targetCents = targetText.trim() ? dollarsToCents(targetText) : autoTarget;
+  const days = delivery.trim() ? Number(delivery) : null;
+  const understood = text.trim() ? parseLimits(text) : null;
+  const priority = PRIORITIES.find((p) => p.weight === weight);
+  const belowAll = !!maxCents && !!range && maxCents < range.minCents;
+
+  const describe = (v: string) => {
+    setText(v);
+    const l = parseLimits(v);
+    if (l.maxCents) setMax(String(l.maxCents / 100));
+    if (l.days) setDelivery(String(l.days));
+    if (l.weight != null) setWeight(l.weight);
   };
 
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!maxCents) return setFormErr("Enter the most you'll pay.");
+    if (!targetCents) return setFormErr("Enter an opening target, or leave it blank to use the suggestion.");
+    if (maxCents < targetCents) return setFormErr("The opening target must be at or below the most you'll pay.");
+    if (days !== null && (!Number.isInteger(days) || days <= 0)) return setFormErr("Delivery limit must be a whole number of days.");
+    setFormErr(null);
+    onSubmit({ target_price_cents: targetCents, max_price_cents: maxCents, max_delivery_days: days, price_weight: weight, max_rounds: rounds, tone, auto_accept: auto });
+  };
+
+  const plan =
+    maxCents && targetCents
+      ? `The agent opens near ${money(targetCents, cur)} and won't agree to more than ${money(maxCents, cur)}${days ? `, with delivery within ${days} days` : ""}. ${
+          auto ? "If it closes a deal, the order is placed automatically." : "You approve the final deal before any order is placed."
+        }`
+      : "Enter the most you'll pay to see the agent's plan.";
+
   return (
-    <form className="card" onSubmit={submit} style={{ marginBottom: "1rem" }}>
+    <form className="card mandate" onSubmit={submit} style={{ marginBottom: "1rem" }}>
       <div className="section-head">
         <div>
-          <h2 className="row" style={{ gap: "0.45rem" }}><Icon name="bot" /> Negotiation mandate</h2>
-          <p className="small muted" style={{ margin: "0.2rem 0 0" }}>
-            The agent counters each supplier between your target and walk-away price, using rival quotes as leverage.
-            {view.suggested && !s && <> Suggested values start about 12% under the best opening quote of {money(view.summary.current_best_cents, view.summary.currency)}.</>}
-          </p>
+          <h2 className="row" style={{ gap: "0.45rem" }}><Icon name="bot" /> {s ? "Agent's limits" : "Set the agent's limits"}</h2>
+          <p className="small muted" style={{ margin: "0.2rem 0 0" }}>The agent haggles with each supplier inside these limits and never goes past them.</p>
         </div>
+      </div>
+      {range && (
+        <p className="mandate-market small">
+          {range.count} quote{range.count === 1 ? "" : "s"} so far:{" "}
+          <span className="num">
+            {money(range.minCents, cur)}
+            {range.maxCents !== range.minCents && <> – {money(range.maxCents, cur)}</>}
+          </span>
+          {range.minDays != null && <>, delivery in {range.minDays === range.maxDays ? range.minDays : `${range.minDays}–${range.maxDays}`} days</>}.
+        </p>
+      )}
+      <div className="field">
+        <label htmlFor="m-text">Describe your limits <span className="faint">(optional)</span></label>
+        <textarea id="m-text" className="input" rows={2} value={text} onChange={(e) => describe(e.target.value)} placeholder="e.g. Up to AED 50k, need it within 2 weeks, price matters most" />
+        {understood && (
+          <span className="field-hint" aria-live="polite">
+            {describeLimits(understood, cur) || "No amount, timeframe or priority found. Fill in the fields below."}
+          </span>
+        )}
       </div>
       <div className="seg">
         <div className="field">
-          <label htmlFor="m-target">Target price ({view.summary.currency || DEFAULT_CURRENCY})</label>
-          <input id="m-target" className="input" inputMode="decimal" value={target} onChange={(e) => setTarget(e.target.value)} placeholder="e.g. 48,000" />
+          <label htmlFor="m-max">Most you&apos;ll pay ({cur})</label>
+          <input id="m-max" className="input" inputMode="decimal" value={max} onChange={(e) => setMax(e.target.value)} placeholder="e.g. 50,000" />
+          {belowAll && <span className="field-hint warn-text">Below every quote so far, so the agent may walk away from all suppliers.</span>}
         </div>
         <div className="field">
-          <label htmlFor="m-max">Walk-away price</label>
-          <input id="m-max" className="input" inputMode="decimal" value={max} onChange={(e) => setMax(e.target.value)} placeholder="e.g. 54,000" />
-        </div>
-        <div className="field">
-          <label htmlFor="m-del">Max delivery (days, optional)</label>
-          <input id="m-del" className="input" inputMode="numeric" value={delivery} onChange={(e) => setDelivery(e.target.value)} placeholder="e.g. 14" />
-        </div>
-        <div className="field">
-          <label htmlFor="m-rounds">Rounds per supplier: {rounds}</label>
-          <input id="m-rounds" className="range" type="range" min={1} max={10} value={rounds} onChange={(e) => setRounds(Number(e.target.value))} />
-        </div>
-        <div className="field">
-          <label htmlFor="m-weight">Priority: {Math.round(weight * 100)}% price / {100 - Math.round(weight * 100)}% delivery</label>
-          <input id="m-weight" className="range" type="range" min={0} max={1} step={0.05} value={weight} onChange={(e) => setWeight(Number(e.target.value))} />
-        </div>
-        <div className="field">
-          <label>Negotiation style</label>
-          <div className="tabs" role="radiogroup" aria-label="Negotiation style">
-            {(["collaborative", "firm"] as Tone[]).map((t) => (
-              <button type="button" key={t} role="radio" aria-checked={tone === t} className={`tab${tone === t ? " on" : ""}`} onClick={() => setTone(t)} style={{ textTransform: "capitalize" }}>
-                {t}
-              </button>
-            ))}
-          </div>
-          <span className="faint small">{tone === "firm" ? "Holds near target until late rounds." : "Concedes evenly each round."}</span>
+          <label htmlFor="m-del">Need it within (days)</label>
+          <input id="m-del" className="input" inputMode="numeric" value={delivery} onChange={(e) => setDelivery(e.target.value)} placeholder="Any time" />
+          {fromRfq && delivery === String(fromRfq) && view.rfq.deadline && <span className="field-hint">From your request: &ldquo;{view.rfq.deadline}&rdquo;</span>}
         </div>
       </div>
-      <label className="switch" style={{ marginTop: "1rem" }}>
-        <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} />
-        <span>
-          <strong>Auto-accept the best deal</strong>
-          <span className="muted small" style={{ display: "block" }}>Create the purchase order automatically when the agent closes within your walk-away price (Pro). Otherwise it waits for your approval.</span>
-        </span>
-      </label>
+      <div className="field">
+        <label id="m-prio">What matters more?</label>
+        <div className="tabs" role="radiogroup" aria-labelledby="m-prio">
+          {PRIORITIES.map((p) => (
+            <button type="button" key={p.key} role="radio" aria-checked={priority?.key === p.key} className={`tab${priority?.key === p.key ? " on" : ""}`} onClick={() => setWeight(p.weight)}>
+              {p.label}
+            </button>
+          ))}
+        </div>
+        {!priority && <span className="field-hint">Custom: {Math.round(weight * 100)}% price, {100 - Math.round(weight * 100)}% delivery</span>}
+      </div>
+      <p className="mandate-plan" aria-live="polite">{plan}</p>
+      <details className="mandate-more" open={!!s}>
+        <summary>Fine-tune</summary>
+        <div className="seg">
+          <div className="field">
+            <label htmlFor="m-target">Opening target ({cur})</label>
+            <input id="m-target" className="input" inputMode="decimal" value={targetText} onChange={(e) => setTargetText(e.target.value)} placeholder={autoTarget ? `Suggested: ${(autoTarget / 100).toLocaleString("en-US")}` : "e.g. 44,000"} />
+            <span className="field-hint">Where the agent starts. Leave blank to start about 12% under the best quote.</span>
+          </div>
+          <div className="field">
+            <label htmlFor="m-rounds">Counters per supplier: {rounds}</label>
+            <input id="m-rounds" className="range" type="range" min={1} max={10} value={rounds} onChange={(e) => setRounds(Number(e.target.value))} />
+            <span className="field-hint">After this many, the agent takes the supplier&apos;s best offer or walks away.</span>
+          </div>
+          <div className="field">
+            <label htmlFor="m-weight">Price vs delivery: {Math.round(weight * 100)}% / {100 - Math.round(weight * 100)}%</label>
+            <input id="m-weight" className="range" type="range" min={0} max={1} step={0.05} value={weight} onChange={(e) => setWeight(Number(e.target.value))} />
+            <span className="field-hint">How the agent ranks a cheaper offer against a faster one.</span>
+          </div>
+          <div className="field">
+            <label id="m-tone">Negotiation style</label>
+            <div className="tabs" role="radiogroup" aria-labelledby="m-tone">
+              {(["collaborative", "firm"] as Tone[]).map((t) => (
+                <button type="button" key={t} role="radio" aria-checked={tone === t} className={`tab${tone === t ? " on" : ""}`} onClick={() => setTone(t)} style={{ textTransform: "capitalize" }}>
+                  {t}
+                </button>
+              ))}
+            </div>
+            <span className="field-hint">{tone === "firm" ? "Stays near your target until the last counters." : "Moves a little each counter."}</span>
+          </div>
+        </div>
+        <label className="switch" style={{ marginTop: "0.5rem" }}>
+          <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} />
+          <span>
+            <strong>Place the order automatically</strong>
+            <span className="muted small" style={{ display: "block" }}>When the agent closes a deal within your limits (Pro). Otherwise it waits for your approval.</span>
+          </span>
+        </label>
+      </details>
       {formErr && <p className="err" style={{ marginBottom: 0 }}>{formErr}</p>}
       <div className="row" style={{ marginTop: "1rem" }}>
         <button className="btn btn-primary" disabled={busy}>
-          <Icon name="zap" size={16} /> {s ? "Update mandate" : "Start negotiating"}
+          <Icon name="zap" size={16} /> {s ? "Update limits" : "Start negotiating"}
         </button>
       </div>
     </form>

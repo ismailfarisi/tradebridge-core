@@ -57,7 +57,7 @@ export type Supplier = {
 };
 
 export type NegotiationView = {
-  rfq: { id: string; title: string; status: string; category: string; created_at: string };
+  rfq: { id: string; title: string; status: string; category: string; created_at: string; deadline?: string };
   strategy: Strategy | null;
   rounds: Round[];
   suppliers: Supplier[];
@@ -233,3 +233,100 @@ export const when = (iso: string, timeZone?: string) =>
     minute: "2-digit",
     timeZone,
   });
+
+export const PRIORITIES = [
+  { key: "price", label: "Lowest price", weight: 0.7 },
+  { key: "balanced", label: "Balanced", weight: 0.5 },
+  { key: "delivery", label: "Fastest delivery", weight: 0.3 },
+] as const;
+
+export type Limits = { maxCents?: number; days?: number; weight?: number };
+
+const WORD_NUM: Record<string, number> = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, ten: 10 };
+const UNIT_DAYS: Record<string, number> = { day: 1, week: 7, wk: 7, month: 30 };
+const DURATION = /\b(\d+|an?|one|two|three|four|five|six|ten)\s*(days?|weeks?|wks?|months?)\b/i;
+const AMOUNT = /(aed\s*|dhs?\s*|dirhams?\s*)?(\d[\d,]*(?:\.\d+)?)\s*(k|thousand|m|million)?\b(\s*(?:aed|dhs?|dirhams?))?/gi;
+const FAST = /\b(fast|faster|fastest|urgent|urgently|asap|quick|quickly|soon|speed|delivery (matters|first|is (more )?important))\b/i;
+const CHEAP = /\b(cheap|cheaper|cheapest|lowest|best price|save|saving|price (matters|first|is (more )?important))\b/i;
+const BOTH = /\b(balanced?|both)\b/i;
+
+function parseDuration(text: string): number | undefined {
+  const m = text.match(DURATION);
+  if (m) {
+    const n = /^\d+$/.test(m[1]) ? Number(m[1]) : WORD_NUM[m[1].toLowerCase()];
+    return n * UNIT_DAYS[m[2].toLowerCase().replace(/s$/, "")];
+  }
+  if (/\btomorrow\b/i.test(text)) return 1;
+  if (/\bnext week\b/i.test(text)) return 7;
+  return undefined;
+}
+
+// parseLimits reads a budget, timeframe and priority from plain words, e.g.
+// "Up to AED 50k, need it within 2 weeks, price matters most".
+export function parseLimits(text: string): Limits {
+  const out: Limits = {};
+  const days = parseDuration(text);
+  if (days) out.days = days;
+  const rest = text.replace(new RegExp(DURATION.source, "gi"), " ");
+  let amount: number | undefined;
+  let marked = false;
+  for (const m of rest.matchAll(AMOUNT)) {
+    const mult = m[3]?.toLowerCase();
+    const n = Number(m[2].replace(/,/g, "")) * (mult === "k" || mult === "thousand" ? 1000 : mult === "m" || mult === "million" ? 1_000_000 : 1);
+    if (!Number.isFinite(n) || n <= 0) continue;
+    if (m[1] || m[3] || m[4]) {
+      if (!marked) [amount, marked] = [n, true];
+    } else if (!marked && n >= 100 && (amount === undefined || n > amount)) {
+      amount = n;
+    }
+  }
+  if (amount !== undefined) out.maxCents = Math.round(amount * 100);
+  const fast = FAST.test(text);
+  const cheap = CHEAP.test(text);
+  if (BOTH.test(text) || (fast && cheap)) out.weight = 0.5;
+  else if (fast) out.weight = 0.3;
+  else if (cheap) out.weight = 0.7;
+  return out;
+}
+
+export function describeLimits(l: Limits, currency = DEFAULT_CURRENCY): string {
+  const parts: string[] = [];
+  if (l.maxCents) parts.push(`up to ${money(l.maxCents, currency)}`);
+  if (l.days) parts.push(`within ${days(l.days)}`);
+  const p = PRIORITIES.find((x) => x.weight === l.weight);
+  if (p) parts.push(p.label.toLowerCase() + " first");
+  return parts.length ? `Understood: ${parts.join(" · ")}` : "";
+}
+
+// deadlineDays turns the RFQ's free-text deadline into a delivery limit in days.
+export function deadlineDays(text: string, now = new Date()): number | undefined {
+  const d = parseDuration(text);
+  if (d) return d;
+  const iso = text.match(/\b\d{4}-\d{2}-\d{2}\b/);
+  if (!iso) return undefined;
+  const diff = Math.ceil((Date.parse(iso[0]) - now.getTime()) / 86_400_000);
+  return diff > 0 ? diff : undefined;
+}
+
+// roundDownCents mirrors the server's suggestion rounding.
+export function roundDownCents(cents: number): number {
+  const step = cents >= 1_000_000 ? 10_000 : cents >= 100_000 ? 1_000 : 100;
+  const r = cents - (cents % step);
+  return r > 0 ? r : cents;
+}
+
+export const suggestTarget = (capCents: number) => roundDownCents(Math.round(capCents * 0.88));
+
+export function quoteRange(suppliers: Supplier[]) {
+  const live = suppliers.filter((q) => q.price_cents > 0);
+  if (!live.length) return null;
+  const prices = live.map((q) => q.price_cents);
+  const ds = live.map((q) => q.delivery_days).filter((d): d is number => d != null);
+  return {
+    count: live.length,
+    minCents: Math.min(...prices),
+    maxCents: Math.max(...prices),
+    minDays: ds.length ? Math.min(...ds) : null,
+    maxDays: ds.length ? Math.max(...ds) : null,
+  };
+}
