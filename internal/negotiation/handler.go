@@ -369,7 +369,7 @@ func (h *Handler) list(c *fiber.Ctx) error {
 	out := make([]listItem, 0, len(rows))
 	for _, r := range rows {
 		it := listItem{ListNegotiationsByBuyerRow: r}
-		if r.InitialBestCents > r.CurrentBestCents && r.CurrentBestCents > 0 {
+		if r.Status != "cancelled" && r.InitialBestCents > r.CurrentBestCents && r.CurrentBestCents > 0 {
 			it.SavingsCents = r.InitialBestCents - r.CurrentBestCents
 		}
 		out = append(out, it)

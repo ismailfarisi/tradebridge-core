@@ -177,16 +177,40 @@ export const STATUS_LABEL: Record<NegotiationStatus, string> = {
 export function statusClass(s: NegotiationStatus): string {
   switch (s) {
     case "active":
-      return "badge badge-info";
+      return "badge sc badge-info";
     case "awaiting_approval":
-      return "badge badge-warning";
+      return "badge sc badge-warning";
     case "completed":
-      return "badge badge-success";
+      return "badge sc badge-success";
     case "cancelled":
-      return "badge badge-danger";
+      return "badge sc badge-danger";
     default:
       return "badge";
   }
+}
+
+// shortDate renders a UAE-style calendar date, e.g. "29 Oct 2026".
+export const shortDate = (iso: string, timeZone?: string) =>
+  new Date(iso).toLocaleDateString("en-AE", { day: "numeric", month: "short", year: "numeric", timeZone });
+
+// wholeAmount drops fils from older stored targets so they read like typed figures.
+export const wholeAmount = (cents: number) => Math.round(cents / 100) * 100;
+
+// listSaving is the saving to show for a negotiation row: none when no deal was made.
+export const listSaving = (n: Pick<NegotiationListItem, "status" | "savings_cents">) =>
+  n.status === "cancelled" ? 0 : n.savings_cents;
+
+const RFQ_STATUS: Record<string, { label: string; cls: string }> = {
+  draft: { label: "Draft", cls: "badge sc" },
+  open: { label: "Waiting for quotes", cls: "badge sc" },
+  quoted: { label: "Quotes in", cls: "badge sc badge-info" },
+  awarded: { label: "Ordered", cls: "badge sc badge-success" },
+  closed: { label: "Closed", cls: "badge sc badge-success" },
+  cancelled: { label: "Cancelled", cls: "badge sc badge-danger" },
+};
+
+export function rfqStatus(s: string): { label: string; cls: string } {
+  return RFQ_STATUS[s] ?? { label: s.replace(/_/g, " "), cls: "badge sc" };
 }
 
 export function monthLabel(ym: string): string {

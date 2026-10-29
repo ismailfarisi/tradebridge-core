@@ -40,7 +40,7 @@ LIMIT @lim;
 -- name: ListNegotiationsByBuyer :many
 SELECT s.*, r.title AS rfq_title, r.status AS rfq_status,
     (SELECT COUNT(*) FROM quotes q WHERE q.rfq_id = s.rfq_id)::bigint AS quote_count,
-    (SELECT COUNT(*) FROM negotiation_rounds nr WHERE nr.strategy_id = s.id)::bigint AS round_count,
+    (SELECT COUNT(*) FROM negotiation_rounds nr WHERE nr.strategy_id = s.id AND nr.action = 'counter')::bigint AS round_count,
     COALESCE((SELECT MIN(qv.price_cents) FROM quote_versions qv JOIN quotes q ON q.id = qv.quote_id
               WHERE q.rfq_id = s.rfq_id AND qv.version = 1), 0)::bigint AS initial_best_cents,
     COALESCE((SELECT MIN(q.price_cents) FROM quotes q
@@ -77,8 +77,9 @@ FROM quote_versions qv JOIN quotes q ON q.id = qv.quote_id
 WHERE q.rfq_id = $1 AND qv.version = 1;
 
 -- name: BuyerSavingsTotals :one
--- Spend and savings across the buyer's orders. Baseline = the winning
--- supplier's opening (v1) price; savings = baseline - final order total.
+-- Spend and savings across the buyer's orders. Baseline = the cheapest
+-- opening (v1) quote any supplier gave on the RFQ, matching the negotiation
+-- room and list; savings = baseline - final order total, floored at 0.
 SELECT
     COUNT(*)::bigint AS deals,
     COALESCE(SUM(o.total_cents), 0)::bigint AS spend_cents,
@@ -86,7 +87,8 @@ SELECT
     COALESCE(SUM(COALESCE(qv.price_cents, o.total_cents)), 0)::bigint AS baseline_cents,
     COUNT(*) FILTER (WHERE s.id IS NOT NULL)::bigint AS negotiated_deals
 FROM orders o
-LEFT JOIN quote_versions qv ON qv.quote_id = o.quote_id AND qv.version = 1
+LEFT JOIN LATERAL (SELECT MIN(v1.price_cents) AS price_cents FROM quote_versions v1 JOIN quotes q1 ON q1.id = v1.quote_id
+                   WHERE q1.rfq_id = o.rfq_id AND v1.version = 1) qv ON true
 LEFT JOIN negotiation_strategies s ON s.rfq_id = o.rfq_id
 WHERE o.buyer_company_id = @buyer_company_id AND o.status <> 'cancelled';
 
@@ -108,7 +110,8 @@ SELECT to_char(date_trunc('month', o.created_at), 'YYYY-MM') AS month,
     COALESCE(SUM(o.total_cents), 0)::bigint AS spend_cents,
     COALESCE(SUM(GREATEST(COALESCE(qv.price_cents, o.total_cents) - o.total_cents, 0)), 0)::bigint AS savings_cents
 FROM orders o
-LEFT JOIN quote_versions qv ON qv.quote_id = o.quote_id AND qv.version = 1
+LEFT JOIN LATERAL (SELECT MIN(v1.price_cents) AS price_cents FROM quote_versions v1 JOIN quotes q1 ON q1.id = v1.quote_id
+                   WHERE q1.rfq_id = o.rfq_id AND v1.version = 1) qv ON true
 WHERE o.buyer_company_id = @buyer_company_id AND o.status <> 'cancelled'
   AND o.created_at >= date_trunc('month', NOW()) - INTERVAL '11 months'
 GROUP BY 1
@@ -125,11 +128,15 @@ LIMIT 5;
 -- name: BuyerRecentDeals :many
 SELECT o.id AS order_id, o.created_at, o.total_cents, o.currency, r.id AS rfq_id, r.title AS rfq_title,
     c.name AS seller_name, COALESCE(qv.price_cents, o.total_cents)::bigint AS initial_cents,
-    (SELECT COUNT(*) FROM negotiation_rounds nr WHERE nr.quote_id = o.quote_id AND nr.action = 'counter')::bigint AS rounds
+    -- Counters the agent sent across every supplier on the RFQ, matching
+    -- round_count in ListNegotiationsByBuyer.
+    (SELECT COUNT(*) FROM negotiation_rounds nr JOIN negotiation_strategies ns ON ns.id = nr.strategy_id
+     WHERE ns.rfq_id = o.rfq_id AND nr.action = 'counter')::bigint AS rounds
 FROM orders o
 JOIN rfqs r ON r.id = o.rfq_id
 JOIN companies c ON c.id = o.seller_company_id
-LEFT JOIN quote_versions qv ON qv.quote_id = o.quote_id AND qv.version = 1
+LEFT JOIN LATERAL (SELECT MIN(v1.price_cents) AS price_cents FROM quote_versions v1 JOIN quotes q1 ON q1.id = v1.quote_id
+                   WHERE q1.rfq_id = o.rfq_id AND v1.version = 1) qv ON true
 WHERE o.buyer_company_id = @buyer_company_id
 ORDER BY o.created_at DESC
 LIMIT 8;

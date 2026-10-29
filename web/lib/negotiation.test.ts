@@ -4,15 +4,19 @@ import {
   describeLimits,
   dollarsToCents,
   explainPick,
+  listSaving,
   money,
   monthLabel,
   parseLimits,
   quoteRange,
+  rfqStatus,
   roundDownCents,
+  shortDate,
   statusClass,
   suggestTarget,
   type Supplier,
   when,
+  wholeAmount,
 } from "./negotiation";
 
 describe("negotiation helpers", () => {
@@ -119,5 +123,24 @@ describe("mandate suggestions", () => {
   it("summarises the quote range", () => {
     expect(quoteRange([sup("A", 4_731_000, 18), sup("B", 5_315_500, 7)])).toEqual({ count: 2, minCents: 4_731_000, maxCents: 5_315_500, minDays: 7, maxDays: 18 });
     expect(quoteRange([])).toBeNull();
+  });
+
+  it("hides the saving when there was no deal", () => {
+    expect(listSaving({ status: "cancelled", savings_cents: 124_500 })).toBe(0);
+    expect(listSaving({ status: "completed", savings_cents: 124_500 })).toBe(124_500);
+  });
+
+  it("drops fils from stored targets", () => {
+    expect(wholeAmount(7_595_808)).toBe(7_595_800);
+  });
+
+  it("formats calendar dates UAE-style", () => {
+    expect(shortDate("2026-10-29T10:00:00Z", "Asia/Dubai")).toBe("29 Oct 2026");
+  });
+
+  it("labels RFQ statuses in plain words", () => {
+    expect(rfqStatus("quoted")).toEqual({ label: "Quotes in", cls: "badge sc badge-info" });
+    expect(rfqStatus("open").label).toBe("Waiting for quotes");
+    expect(rfqStatus("on_hold").label).toBe("on hold");
   });
 });
