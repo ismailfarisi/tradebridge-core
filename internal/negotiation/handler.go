@@ -287,6 +287,7 @@ func (h *Handler) respond(c *fiber.Ctx, r sqlc.Rfq) error {
 	if v.Strategy != nil {
 		m = mandateOf(s)
 	}
+	var recommendedCents int64
 	for _, q := range qs {
 		sv := supplierView{
 			QuoteID: q.ID, SellerCompanyID: q.SellerCompanyID, SellerName: q.SellerName,
@@ -301,6 +302,9 @@ func (h *Handler) respond(c *fiber.Ctx, r sqlc.Rfq) error {
 		if v.Strategy != nil {
 			sv.Utility = Utility(m, Offer{PriceCents: q.PriceCents, DeliveryDays: q.DeliveryDays})
 			sv.Recommended = s.OutcomeQuoteID != nil && *s.OutcomeQuoteID == q.ID
+			if sv.Recommended {
+				recommendedCents = q.PriceCents
+			}
 		}
 		if v.Summary.Currency == "" {
 			v.Summary.Currency = q.Currency
@@ -312,6 +316,10 @@ func (h *Handler) respond(c *fiber.Ctx, r sqlc.Rfq) error {
 			v.Summary.CurrentBestCents = q.PriceCents
 		}
 		v.Suppliers = append(v.Suppliers, sv)
+	}
+	// Once the agent has picked a deal, report that deal rather than the cheapest quote.
+	if recommendedCents > 0 {
+		v.Summary.CurrentBestCents = recommendedCents
 	}
 	v.Summary.QuoteCount = len(qs)
 	if v.Summary.InitialBestCents > v.Summary.CurrentBestCents && v.Summary.CurrentBestCents > 0 {

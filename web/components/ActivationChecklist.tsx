@@ -24,7 +24,7 @@ export function ActivationChecklist() {
       </div>
       <div role="progressbar" aria-valuenow={act.percent_complete} aria-valuemin={0} aria-valuemax={100}
         style={{ height: 6, borderRadius: 3, background: "var(--border, #e5e7eb)", margin: "0.6rem 0 1rem", overflow: "hidden" }}>
-        <div style={{ width: `${act.percent_complete}%`, height: "100%", background: "var(--primary-hover, #2563eb)" }} />
+        <div style={{ width: `${act.percent_complete}%`, height: "100%", background: "var(--primary)" }} />
       </div>
       <ul className="col" style={{ listStyle: "none", padding: 0, margin: 0, gap: "0.5rem" }}>
         {act.steps.map((s) => (
