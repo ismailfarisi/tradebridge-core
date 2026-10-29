@@ -356,14 +356,16 @@ table.tbl {
 .side-link:hover { background: rgba(255, 255, 255, 0.06); color: #fff; }
 .side-link.active { background: rgba(99, 102, 241, 0.22); color: #fff; }
 .side-link.active svg { color: #a5b4fc; }
-.side-link .count { margin-left: auto; font-size: 0.7rem; background: #f59e0b; color: #1f1300; border-radius: 999px; padding: 0 0.45rem; font-weight: 700; }
+.side-link .count { margin-left: auto; font-size: 0.75rem; line-height: 1.25rem; min-width: 1.25rem; text-align: center; background: #f59e0b; color: #1f1300; border-radius: 999px; padding: 0 0.4rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* Indigo focus rings vanish on Night Ink; use the light indigo on the sidebar. */
+.side a:focus-visible { outline-color: #a5b4fc; outline-offset: 1px; }
 .side-foot { margin-top: auto; padding: 0.9rem 0.6rem 0.2rem; border-top: 1px solid rgba(255, 255, 255, 0.08); font-size: 0.82rem; }
 .topbar {
   height: 60px; border-bottom: 1px solid var(--border); background: var(--surface);
   display: flex; align-items: center; justify-content: space-between; padding: 0 1.75rem; gap: 1rem;
   position: sticky; top: 0; z-index: 10;
 }
-.content { padding: 1.75rem; max-width: 1240px; width: 100%; }
+.content { padding: 1.75rem 1.75rem 4.5rem; max-width: 1240px; width: 100%; }
 .icon-btn {
   width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface);
   display: inline-flex; align-items: center; justify-content: center; color: var(--muted); cursor: pointer; position: relative;
@@ -373,13 +375,80 @@ table.tbl {
   width: 32px; height: 32px; border-radius: 999px; background: var(--primary-soft); color: var(--primary);
   display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.8rem;
 }
+.truncate { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+/* Top bar: where you are on the left, actions and account on the right. */
+.topbar-brand { display: none; flex-shrink: 0; }
+.crumb { display: flex; align-items: center; gap: 0.45rem; min-width: 0; font-size: 0.95rem; }
+.crumb-back { display: inline-flex; align-items: center; gap: 0.3rem; color: var(--muted); font-weight: 500; white-space: nowrap; }
+.crumb-back:hover { color: var(--text); }
+.crumb-sep { color: var(--border-2); }
+.crumb-cur { font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+.acct { position: relative; }
+.acct-btn {
+  height: 36px; display: inline-flex; align-items: center; gap: 0.25rem; padding: 0 0.4rem 0 0.15rem;
+  border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); cursor: pointer;
+}
+.acct-btn:hover { background: var(--surface-2); color: var(--text); }
+.acct-btn .avatar { width: 30px; height: 30px; font-size: 0.75rem; }
+.acct-menu {
+  position: absolute; right: 0; top: calc(100% + 8px); width: 264px; z-index: 50; padding: 0.35rem;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-lg);
+}
+.acct-head { display: flex; flex-direction: column; gap: 0.1rem; padding: 0.55rem 0.65rem 0.7rem; margin-bottom: 0.3rem; border-bottom: 1px solid var(--border); min-width: 0; }
+.acct-link {
+  font: inherit; font-size: 0.89rem; font-weight: 500; color: var(--text);
+  display: flex; width: 100%; align-items: center; gap: 0.65rem; padding: 0.55rem 0.65rem; min-height: 40px;
+  border: none; border-radius: 8px; background: none; cursor: pointer; text-align: left;
+}
+.acct-link:hover { background: var(--surface-2); }
+.acct-link svg { color: var(--muted); flex-shrink: 0; }
+.acct-link.active { background: var(--primary-soft); color: var(--primary); }
+.acct-link.active svg { color: var(--primary); }
+.acct-sep { height: 1px; background: var(--border); margin: 0.3rem 0; }
+
+/* Phones and tablets: bottom tab bar + "More" sheet replace the sidebar. */
+.tabbar { display: none; }
+.sheet {
+  margin: auto 0 0; width: 100%; max-width: 100%; max-height: 85vh; overflow-y: auto;
+  border: none; border-radius: 16px 16px 0 0; background: var(--surface); color: var(--text);
+  padding: 0.75rem 0.75rem calc(1rem + env(safe-area-inset-bottom));
+  box-shadow: 0 -12px 32px -8px rgba(16, 24, 40, 0.2);
+}
+.sheet::backdrop { background: rgba(11, 16, 32, 0.45); }
+.sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.25rem 0.4rem 0.75rem; margin-bottom: 0.35rem; border-bottom: 1px solid var(--border); }
+.sheet-group { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--faint); font-weight: 600; padding: 0.85rem 0.65rem 0.3rem; }
+body:has(dialog[open]) { overflow: hidden; }
+
 @media (max-width: 860px) {
   .side { display: none; }
-  .content { padding: 1.1rem; }
+  .content { padding: 1.1rem 1.1rem calc(5.5rem + env(safe-area-inset-bottom)); }
+  .topbar-brand { display: inline-flex; }
+  .acct, .fb-launch { display: none; }
+  .tabbar {
+    display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+    background: var(--surface); border-top: 1px solid var(--border);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .tb-item {
+    font: inherit; flex: 1 1 0; min-width: 0; min-height: 58px; padding: 0.45rem 0.15rem 0.4rem;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.2rem;
+    background: none; border: none; cursor: pointer; color: var(--muted); font-size: 0.6875rem; font-weight: 500;
+  }
+  .tb-item.active { color: var(--primary); font-weight: 600; }
+  .tb-label { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tb-ic { position: relative; display: inline-flex; }
+  .tb-count {
+    position: absolute; top: -6px; left: 13px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px;
+    background: #f59e0b; color: #1f1300; font-size: 11px; line-height: 18px; font-weight: 700; text-align: center;
+  }
 }
 @media (max-width: 640px) {
   .topbar { padding: 0 1rem; gap: 0.5rem; }
-  .topbar-role, .topbar-label { display: none; }
+  .topbar-label { display: none; }
+  .crumb-has-back .crumb-sep, .crumb-has-back .crumb-cur { display: none; }
 }
 
 /* ── Data display ──────────────────────────────────────────── */
