@@ -8,6 +8,7 @@ import { chatReducer, initialChatState } from "@/lib/chat";
 import { Composer } from "@/components/Composer";
 import { AttachmentView } from "@/components/AttachmentView";
 import { AssistImprove } from "@/components/AssistImprove";
+import { Icon } from "@/components/Icon";
 
 const SAMPLE_RFQS = [
   "Need 500 corrugated shipping cartons (30×30×30cm), delivered to Dubai within 3 weeks.",
@@ -65,11 +66,11 @@ export default function NewChat() {
                 <button
                   key={s}
                   type="button"
-                  className="card"
+                  className="sample-prompt"
                   onClick={() => setDraft(s)}
-                  style={{ textAlign: "left", cursor: "pointer", border: "1px solid var(--border)", background: "var(--surface)" }}
                 >
-                  <span className="small">{s}</span>
+                  <Icon name="sparkles" size={16} />
+                  <span>{s}</span>
                 </button>
               ))}
             </div>
@@ -114,7 +115,9 @@ function Bubble({
         className="card"
         style={{
           maxWidth: "80%",
-          background: mine ? "var(--surface-2)" : "var(--surface)",
+          background: mine ? "var(--primary)" : "var(--surface)",
+          color: mine ? "#fff" : "var(--text)",
+          borderColor: mine ? "var(--primary)" : undefined,
           padding: "0.6rem 0.85rem",
         }}
       >

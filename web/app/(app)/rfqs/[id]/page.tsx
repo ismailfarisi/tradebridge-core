@@ -10,6 +10,7 @@ import { StarRating } from "@/components/StarRating";
 import { AssistExplain } from "@/components/AssistExplain";
 import { NegotiationThread } from "@/components/NegotiationThread";
 import { useToken } from "@/lib/auth";
+import { Icon } from "@/components/Icon";
 import { getRfq, rfqQuotes, type QuoteRow, type RFQ } from "@/lib/api";
 
 export default function RfqDetail() {
@@ -53,9 +54,16 @@ export default function RfqDetail() {
       <PageHeader
         title={rfq.title}
         subtitle={`${rfq.category || "uncategorized"} · ${rfq.match_count} matched`}
-        action={<StatusBadge status={rfq.status} />}
+        action={
+          <div className="row">
+            <StatusBadge status={rfq.status} />
+            <Link href={`/rfqs/${id}/negotiation`} className="btn btn-primary btn-sm">
+              <Icon name="zap" size={14} /> {rfq.status === "closed" ? "Negotiation log" : "Negotiate with agent"}
+            </Link>
+          </div>
+        }
       />
-      <div style={{ marginBottom: "-0.75rem" }}><Link href="/rfqs" className="small">← All RFQs</Link></div>
+      <div style={{ marginBottom: "-0.75rem" }}><Link href="/rfqs" className="small row" style={{ display: "inline-flex", gap: "0.3rem" }}><Icon name="arrowLeft" size={14} /> All RFQs</Link></div>
 
       <div className="card" style={{ margin: "1rem 0 1.5rem" }}>
         <h2>Extracted requirements</h2>

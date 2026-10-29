@@ -1,5 +1,6 @@
 "use client";
 
+import { Icon } from "@/components/Icon";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -64,12 +65,12 @@ export default function NotificationBell({ token }: { token: string }) {
   return (
     <div ref={boxRef} style={{ position: "relative" }}>
       <button
-        className="btn btn-sm btn-ghost"
+        className="icon-btn"
         aria-label={`Notifications${unread ? ` (${unread} unread)` : ""}`}
         onClick={() => { setOpen((o) => !o); if (!open) refresh(); }}
         style={{ position: "relative" }}
       >
-        <span aria-hidden>🔔</span>
+        <Icon name="bell" />
         {unread > 0 && (
           <span
             style={{

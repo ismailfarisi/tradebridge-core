@@ -87,3 +87,11 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  web-image:
+    name: Web Docker image builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build web image
+        run: docker build --build-arg NEXT_PUBLIC_CORE_URL=https://api.example.com -t tradebridge-web web/
