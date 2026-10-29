@@ -244,7 +244,7 @@ func toneLabel(t string) string {
 
 func money(cents int64, currency string) string {
 	if currency == "" {
-		currency = "USD"
+		currency = "AED"
 	}
 	return fmt.Sprintf("%s %s", currency, formatThousands(cents))
 }

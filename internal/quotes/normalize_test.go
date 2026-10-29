@@ -22,8 +22,8 @@ func TestNormalize(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n.Currency != "USD" {
-		t.Errorf("currency default = %q, want USD", n.Currency)
+	if n.Currency != "AED" {
+		t.Errorf("currency default = %q, want AED", n.Currency)
 	}
 	if n.Completeness < 0.33 || n.Completeness > 0.34 {
 		t.Errorf("completeness = %v, want ~0.333", n.Completeness)

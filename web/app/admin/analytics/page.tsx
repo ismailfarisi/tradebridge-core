@@ -41,11 +41,11 @@ function AnalyticsConsole() {
       {summary && (
         <>
           <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", marginBottom: "1.5rem" }}>
-            <Stat n={formatDollars(summary.gmv_cents)} label={`GMV (${summary.orders} orders)`} />
+            <Stat n={formatMoney(summary.gmv_cents)} label={`GMV (${summary.orders} orders)`} />
             <Stat n={summary.active_buyers} label="Active buyers (30d)" />
             <Stat n={summary.active_sellers} label="Active sellers (30d)" />
             <Stat
-              n={summary.prices_set && summary.mrr_cents != null ? formatDollars(summary.mrr_cents) : "prices unset"}
+              n={summary.prices_set && summary.mrr_cents != null ? formatMoney(summary.mrr_cents) : "prices unset"}
               label="MRR"
             />
             <Stat n={`${summary.churn_pct.toFixed(1)}%`} label={`Churn (${summary.canceled_subs}/${summary.active_subs + summary.canceled_subs})`} />
@@ -86,7 +86,7 @@ function AnalyticsConsole() {
                   {summary.gmv_by_week.map((w) => (
                     <tr key={w.week}>
                       <td className="small">{w.week}</td>
-                      <td className="small">{formatDollars(w.gmv_cents)}</td>
+                      <td className="small">{formatMoney(w.gmv_cents)}</td>
                     </tr>
                   ))}
                   {summary.gmv_by_week.length === 0 && (
@@ -129,8 +129,8 @@ function AnalyticsConsole() {
   );
 }
 
-function formatDollars(cents: number): string {
-  return (cents / 100).toLocaleString(undefined, { style: "currency", currency: "USD" });
+function formatMoney(cents: number): string {
+  return (cents / 100).toLocaleString(undefined, { style: "currency", currency: "AED" });
 }
 
 function Stat({ n, label }: { n: number | string; label: string }) {

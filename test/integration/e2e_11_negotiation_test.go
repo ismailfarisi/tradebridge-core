@@ -31,6 +31,16 @@ func negotiationBuyerRFQ(t *testing.T, name string) (token, companyID, rfqID str
 	return token, buyer["company_id"].(string), created["rfq"].(map[string]any)["id"].(string)
 }
 
+// ensureMatched pins the seller to the RFQ. Matching caps each needle at
+// maxMatches, and the shared test DB accumulates many "packaging" sellers, so
+// a freshly registered seller is not guaranteed to make the cut.
+func ensureMatched(t *testing.T, rfqID, sellerCompanyID string) {
+	t.Helper()
+	_, err := poolOrSkip(t).Exec(context.Background(), `INSERT INTO rfq_matches (rfq_id, seller_company_id, score, reason)
+		VALUES ($1, $2, 1, 'test') ON CONFLICT (rfq_id, seller_company_id) DO NOTHING`, rfqID, sellerCompanyID)
+	require.NoError(t, err)
+}
+
 func submitQuote(t *testing.T, secret, key, rfqID string, price float64) {
 	t.Helper()
 	st, _ := doJSON(t, buildGateway(t), "POST", "/agent/v1/commands", secret, map[string]any{
@@ -55,9 +65,11 @@ func counterQuote(t *testing.T, secret, key, quoteID string, price float64) {
 // auto-accepts the concession, producing an order at the negotiated price.
 func TestE2E11_AutonomousNegotiationAutoAccept(t *testing.T) {
 	api := buildAPI(t)
-	_, _, secretA := registerSeller(t, api, "NegPackA")
-	_, _, secretB := registerSeller(t, api, "NegPackB")
+	_, coA, secretA := registerSeller(t, api, "NegPackA")
+	_, coB, secretB := registerSeller(t, api, "NegPackB")
 	buyerToken, buyerCo, rfqID := negotiationBuyerRFQ(t, "NegBuyer")
+	ensureMatched(t, rfqID, coA)
+	ensureMatched(t, rfqID, coB)
 
 	submitQuote(t, secretA, "neg-a-submit-"+rfqID, rfqID, 1000)
 	submitQuote(t, secretB, "neg-b-submit-"+rfqID, rfqID, 1100)
@@ -124,8 +136,9 @@ func TestE2E11_AutonomousNegotiationAutoAccept(t *testing.T) {
 // is held for the buyer, who approves it into an order.
 func TestE2E11_NegotiationApprovalFlow(t *testing.T) {
 	api := buildAPI(t)
-	_, _, secret := registerSeller(t, api, "NegApprovePack")
+	_, sellerCo, secret := registerSeller(t, api, "NegApprovePack")
 	buyerToken, _, rfqID := negotiationBuyerRFQ(t, "NegApproveBuyer")
+	ensureMatched(t, rfqID, sellerCo)
 	submitQuote(t, secret, "neg-ap-submit-"+rfqID, rfqID, 800)
 
 	st, view := doJSON(t, api, "GET", "/v1/rfqs/"+rfqID+"/negotiation", buyerToken, nil)

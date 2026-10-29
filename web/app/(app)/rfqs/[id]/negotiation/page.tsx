@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/AppShell";
 import { Icon } from "@/components/Icon";
 import { useToken } from "@/lib/auth";
 import {
+  DEFAULT_CURRENCY,
   approveNegotiation,
   dollarsToCents,
   getNegotiation,
@@ -79,7 +80,7 @@ export default function NegotiationRoom() {
   if (!view) return err ? <p className="err">{err}</p> : <p className="muted">Loading negotiation…</p>;
 
   const s = view.strategy;
-  const cur = view.summary.currency || "USD";
+  const cur = view.summary.currency || DEFAULT_CURRENCY;
   const winner = view.suppliers.find((x) => x.recommended);
   const closed = view.rfq.status === "closed";
   const showForm = !s || editing;
@@ -317,7 +318,7 @@ function MandateForm({ view, busy, onSubmit }: { view: NegotiationView; busy: bo
       </div>
       <div className="seg">
         <div className="field">
-          <label htmlFor="m-target">Target price ({view.summary.currency || "USD"})</label>
+          <label htmlFor="m-target">Target price ({view.summary.currency || DEFAULT_CURRENCY})</label>
           <input id="m-target" className="input" inputMode="decimal" value={target} onChange={(e) => setTarget(e.target.value)} placeholder="e.g. 48,000" />
         </div>
         <div className="field">

@@ -78,7 +78,7 @@ func Normalize(payload []byte) (Normalized, error) {
 	}
 	currency := strings.ToUpper(strings.TrimSpace(p.Currency))
 	if currency == "" {
-		currency = "USD"
+		currency = "AED"
 	}
 	n := Normalized{
 		PriceCents:   int64(math.Round(*p.Price * 100)),

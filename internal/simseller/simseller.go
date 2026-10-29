@@ -209,7 +209,7 @@ func (a *Agent) onMatched(ctx context.Context, data []byte) error {
 	a.deals[ev.RFQID] = &deal{Opening: opening, Current: opening, Delivery: a.Persona.DeliveryDays}
 	a.mu.Unlock()
 	return a.command(ctx, "quote.submit", "sim-"+ev.RFQID+"-submit", ev.RFQID, map[string]any{
-		"price": float64(opening) / 100, "currency": "USD", "delivery_days": a.Persona.DeliveryDays,
+		"price": float64(opening) / 100, "currency": "AED", "delivery_days": a.Persona.DeliveryDays,
 		"notes": "Standard spec, FOB origin. Price valid 14 days.",
 	})
 }
@@ -265,18 +265,18 @@ func (a *Agent) onCounter(ctx context.Context, data []byte) error {
 	n, delivery := d.Counters, d.Delivery
 	a.mu.Unlock()
 
-	notes := fmt.Sprintf("We can do %s.", usd(next))
+	notes := fmt.Sprintf("We can do %s.", aed(next))
 	if held {
-		notes = fmt.Sprintf("%s is our best and final price.", usd(next))
+		notes = fmt.Sprintf("%s is our best and final price.", aed(next))
 	} else if next == offer {
 		notes = "Agreed — we can meet your price."
 	}
 	return a.command(ctx, "quote.counter", fmt.Sprintf("sim-%s-c%d-%d", ev.QuoteID, n, offer), "", map[string]any{
-		"quote_id": ev.QuoteID, "price": float64(next) / 100, "currency": "USD", "delivery_days": delivery, "notes": notes,
+		"quote_id": ev.QuoteID, "price": float64(next) / 100, "currency": "AED", "delivery_days": delivery, "notes": notes,
 	})
 }
 
-func usd(c int64) string { return fmt.Sprintf("USD %.2f", float64(c)/100) }
+func aed(c int64) string { return fmt.Sprintf("AED %.2f", float64(c)/100) }
 
 func (a *Agent) command(ctx context.Context, typ, key, rfqID string, payload map[string]any) error {
 	body := map[string]any{"type": typ, "idempotency_key": key, "payload": payload}

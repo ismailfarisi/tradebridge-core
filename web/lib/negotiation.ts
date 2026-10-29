@@ -141,11 +141,14 @@ export const listNegotiations = (token: string) =>
   call<{ negotiations: NegotiationListItem[] }>(token, "GET", "/v1/negotiations");
 export const getSavings = (token: string) => call<Savings>(token, "GET", "/v1/negotiations/savings");
 
-export function money(cents: number | null | undefined, currency = "USD", opts: { compact?: boolean } = {}): string {
+// UAE/GCC first: amounts without a recorded currency are shown in AED.
+export const DEFAULT_CURRENCY = "AED";
+
+export function money(cents: number | null | undefined, currency = DEFAULT_CURRENCY, opts: { compact?: boolean } = {}): string {
   if (cents == null) return "—";
   return new Intl.NumberFormat("en-US", {
     style: "currency",
-    currency: currency || "USD",
+    currency: currency || DEFAULT_CURRENCY,
     notation: opts.compact ? "compact" : "standard",
     maximumFractionDigits: opts.compact ? 1 : cents % 100 === 0 ? 0 : 2,
   }).format(cents / 100);

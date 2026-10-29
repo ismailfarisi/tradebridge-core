@@ -3,8 +3,8 @@ import { dollarsToCents, money, monthLabel, statusClass } from "./negotiation";
 
 describe("negotiation helpers", () => {
   it("formats money from cents", () => {
-    expect(money(1250000)).toBe("$12,500");
-    expect(money(1250050)).toBe("$12,500.50");
+    expect(money(1250000)).toBe("AED\u00a012,500");
+    expect(money(1250050)).toBe("AED\u00a012,500.50");
     expect(money(null)).toBe("—");
     expect(money(3625950000, "USD", { compact: true })).toBe("$36.3M");
   });

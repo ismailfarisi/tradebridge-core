@@ -172,11 +172,11 @@ A cool, near-neutral palette with one confident indigo accent and three semantic
 
 ## Typography
 
-**Body and Display Font:** Inter (declared), falling back to system-ui / -apple-system / Segoe UI / Roboto.
+**Body and Display Font:** Inter (loaded via `next/font`), falling back to system-ui / -apple-system / Segoe UI / Roboto.
 
 **Character:** A single neutral grotesque used at many weights, so hierarchy comes from weight, size and tracking rather than contrasting families. Large text is tightened (negative tracking) and small labels are opened up.
 
-Inter is declared in `globals.css` but never loaded (no `next/font` or `@font-face`), so most visitors see their platform's system font. Loading Inter properly is an open decision.
+Inter is self-hosted through `next/font/google` in `app/layout.tsx` and exposed as `--font-inter`; `globals.css` puts it first in the stack.
 
 ### Hierarchy
 - **Display** (750, 3.3rem, line-height 1.04, -0.035em): marketing hero headline only; drops to 2.3rem under 900px.
