@@ -428,6 +428,15 @@ table.tbl {
 .range { width: 100%; accent-color: var(--primary); }
 .switch { display: flex; align-items: flex-start; gap: 0.6rem; cursor: pointer; font-size: 0.88rem; }
 .switch input { margin-top: 0.2rem; accent-color: var(--primary); }
+.mandate .field { margin-bottom: 0.9rem; }
+.mandate textarea.input { resize: vertical; min-height: 3.6rem; }
+.mandate-market { margin: 0 0 1rem; color: var(--muted); }
+.field-hint { font-size: 0.8rem; color: var(--faint); }
+.warn-text { color: var(--warning); }
+.mandate-plan { margin: 0.25rem 0 1rem; padding: 0.75rem 0.9rem; background: var(--primary-soft); border-radius: 8px; max-width: 75ch; text-wrap: pretty; }
+.mandate-more { border-top: 1px solid var(--border); padding-top: 0.75rem; }
+.mandate-more > summary { cursor: pointer; font-weight: 600; font-size: 0.9rem; color: var(--primary); width: fit-content; }
+.mandate-more[open] > summary { margin-bottom: 0.75rem; }
 .banner { display: flex; align-items: center; gap: 0.9rem; padding: 0.9rem 1.1rem; border-radius: var(--radius); border: 1px solid; margin-bottom: 1rem; }
 .banner-ok { background: var(--success-soft); border-color: #abefc6; color: #054f31; }
 .banner-warn { background: var(--warning-soft); border-color: #fedf89; color: #7a2e0e; }

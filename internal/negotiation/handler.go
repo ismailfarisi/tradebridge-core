@@ -1,6 +1,7 @@
 package negotiation
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -262,7 +263,7 @@ func (h *Handler) respond(c *fiber.Ctx, r sqlc.Rfq) error {
 		r = fresh
 	}
 	v := negotiationView{
-		RFQ:       fiber.Map{"id": r.ID, "title": r.Title, "status": r.Status, "category": r.Category, "created_at": r.CreatedAt},
+		RFQ:       fiber.Map{"id": r.ID, "title": r.Title, "status": r.Status, "category": r.Category, "created_at": r.CreatedAt, "deadline": rfqDeadline(r)},
 		Rounds:    []roundView{},
 		Suppliers: []supplierView{},
 	}
@@ -447,4 +448,15 @@ func roundDown(cents int64) int64 {
 		return r
 	}
 	return cents
+}
+
+// rfqDeadline is the buyer's stated delivery deadline from the RFQ intake, as free text.
+func rfqDeadline(r sqlc.Rfq) string {
+	var req struct {
+		Deadline string `json:"deadline"`
+	}
+	if len(r.Requirements) == 0 || json.Unmarshal(r.Requirements, &req) != nil {
+		return ""
+	}
+	return strings.TrimSpace(req.Deadline)
 }
