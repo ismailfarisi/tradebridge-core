@@ -2,47 +2,71 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import LandingNav from "@/components/LandingNav";
 import SiteFooter from "@/components/SiteFooter";
-import { Icon, type IconName } from "@/components/Icon";
+import { Icon } from "@/components/Icon";
 
 export const metadata: Metadata = {
-  title: "Autonomous procurement negotiation",
+  title: "Suppliers quote, your agent negotiates",
   description:
-    "TradeBridge sources suppliers from a plain-language RFQ, then an AI agent negotiates every quote within your limits — and shows you exactly what it saved.",
+    "Tell TradeBridge what your business needs. UAE suppliers send quotes, and an AI agent bargains with each of them inside the budget you set. You approve the deal.",
   openGraph: {
-    title: "TradeBridge — Your AI procurement negotiator",
-    description: "Post an RFQ. Supplier agents quote. Your agent negotiates every one of them, 24/7.",
+    title: "TradeBridge: stop haggling with suppliers",
+    description: "Suppliers quote. Your agent bargains with every one of them inside your budget. You approve the deal.",
   },
 };
 
-const FEATURES: { icon: IconName; title: string; body: string }[] = [
-  { icon: "chat", title: "RFQs in plain language", body: "Describe what you need like you would to a colleague. Requirements are extracted and matched to verified suppliers instantly." },
-  { icon: "handshake", title: "Autonomous negotiation", body: "Set a target, a walk-away price and delivery limits. Your agent counters every supplier, round after round, and never exceeds your mandate." },
-  { icon: "scale", title: "Competitive leverage", body: "Rival quotes are used as leverage automatically, so every supplier is pushed toward the best price in the market — without revealing who is bidding." },
-  { icon: "target", title: "Price and delivery, balanced", body: "Weight price against lead time. Each offer gets a deal score, so a slightly pricier supplier who delivers on time can still win." },
-  { icon: "shield", title: "You stay in control", body: "Auto-accept within limits, or approve each deal with one click. Every move is logged with the agent's reasoning for a full audit trail." },
-  { icon: "trending", title: "Savings you can prove", body: "Spend, savings vs opening quotes, and supplier performance tracked automatically — ready for your next finance review." },
+type RowState = "agreed" | "countered" | "walked" | "waiting";
+
+const FLOOR: { supplier: string; opened: number; latest: number | null; round: number; state: RowState }[] = [
+  { supplier: "Al Noor Packaging", opened: 10400, latest: 8650, round: 3, state: "agreed" },
+  { supplier: "Gulf Print House", opened: 9900, latest: 8900, round: 3, state: "countered" },
+  { supplier: "Desert Box Trading", opened: 11200, latest: 10100, round: 2, state: "walked" },
+  { supplier: "Creekside Supplies", opened: 9600, latest: null, round: 1, state: "waiting" },
+];
+
+const STATE_LABEL: Record<RowState, { text: string; cls: string }> = {
+  agreed: { text: "Best deal", cls: "badge badge-success" },
+  countered: { text: "Countered", cls: "badge badge-info" },
+  walked: { text: "Over budget", cls: "badge badge-danger" },
+  waiting: { text: "Waiting", cls: "badge" },
+};
+
+const aed = (n: number) => `AED ${n.toLocaleString("en-US")}`;
+
+const PROOFS = [
+  {
+    title: "It haggles so you don't",
+    body: "Your agent counters every quote, round after round, and uses rival offers as leverage without telling suppliers who else is bidding.",
+  },
+  {
+    title: "It never goes past your limit",
+    body: "You set the price you want, the most you'll pay and when you need delivery. Those limits are enforced on our servers, not left to the AI.",
+  },
+  {
+    title: "You approve, and you see the saving",
+    body: "Every counter-offer is recorded with the reason it was made. Approve the deal in one tap and the purchase order goes to the supplier.",
+  },
 ];
 
 const STEPS = [
-  { title: "Describe the need", body: "Post an RFQ in chat. Quantities, specs and deadlines are captured for you." },
-  { title: "Suppliers quote", body: "Verified seller agents reason over their catalogs and quote within minutes." },
-  { title: "Your agent negotiates", body: "It counters each supplier inside your mandate and plays offers against each other." },
-  { title: "Approve and order", body: "The best deal is accepted or held for approval, and the purchase order is issued." },
+  { title: "Tell us what you need", body: "Type it like a message to a supplier: what, how many, by when." },
+  { title: "Suppliers send quotes", body: "Verified suppliers reply with prices and delivery times." },
+  { title: "Your agent bargains", body: "It counters each one inside your budget and plays the offers against each other." },
+  { title: "You approve the deal", body: "Pick the agent's best deal and the purchase order goes out." },
 ];
 
 const TRUST = [
-  "Domain-verified suppliers",
-  "Every agent move logged with reasoning",
-  "Tenant-isolated data, export or delete anytime",
-  "Disputes, ratings and reviews built in",
-  "Hard walk-away limits, never exceeded",
-  "Neutral marketplace — we never touch payments",
+  "Suppliers verify their business domain",
+  "Every move your agent makes is recorded with its reason",
+  "Your agent can't go over your limit",
+  "Your data stays yours: export or delete it anytime",
+  "Ratings, reviews and disputes built in",
+  "We never handle your payments",
 ];
 
 const TIERS = [
-  { name: "Free", price: "$0", blurb: "Source and compare quotes.", features: ["Plain-language RFQs", "Supplier matching", "Agent negotiation with approval"] },
-  { name: "Pro", price: "$49", blurb: "Hands-off negotiation.", features: ["Everything in Free", "Auto-accept within your limits", "Savings analytics"], highlight: true },
-  { name: "Business", price: "$199", blurb: "Procurement for the whole team.", features: ["Everything in Pro", "Team seats and roles", "Priority support"] },
+  { name: "Free", price: "$0", blurb: "Get quotes and approve every deal yourself.", features: ["Requests in plain language", "Supplier matching", "Agent negotiation with your approval"] },
+  { name: "Pro", price: "$49", blurb: "Let your agent close deals inside your limits.", features: ["Everything in Free", "Auto-accept within your limits", "Savings reports"], highlight: true },
+  { name: "Business", price: "$199", blurb: "For a business with several people buying.", features: ["Everything in Pro", "Team seats and roles", "Priority support"] },
 ];
 
 export default function Landing() {
@@ -53,97 +77,91 @@ export default function Landing() {
           <LandingNav />
           <section className="lp-hero">
             <div>
-              <span className="lp-eyebrow"><Icon name="sparkles" size={14} /> AI procurement negotiation</span>
-              <h1 className="lp-title">
-                Every quote, negotiated.<br />
-                <span className="lp-accent">Automatically.</span>
-              </h1>
+              <h1 className="lp-title">Stop haggling with suppliers. Your agent does it.</h1>
               <p className="lp-sub">
-                Post what you need in plain language. Suppliers&apos; agents quote, and your TradeBridge agent negotiates
-                each of them within the limits you set — then shows you exactly what it saved.
+                Tell TradeBridge what your business needs. Suppliers across the UAE send quotes, and your agent bargains
+                with each of them inside the budget you set. You approve the deal, and see exactly how much it saved.
               </p>
               <div className="lp-cta-row">
                 <Link className="btn btn-primary lp-btn-lg" href="/register">
-                  Start negotiating — free <Icon name="arrowRight" size={16} />
+                  Get quotes free <Icon name="arrowRight" size={16} />
                 </Link>
                 <Link className="btn lp-btn-lg" href="/register?role=seller">
                   I&apos;m a supplier
                 </Link>
               </div>
-              <div className="lp-proof">
-                <div><b>24/7</b><span>agent coverage</span></div>
-                <div><b>Minutes</b><span>from RFQ to quotes</span></div>
-                <div><b>100%</b><span>moves audited</span></div>
-              </div>
+              <p className="lp-reassure">Free to start · No card needed · Nothing is bought without your OK</p>
             </div>
 
-            <div className="lp-demo" aria-label="Example negotiation">
-              <div className="lp-demo-head">
+            <figure className="lp-floor" aria-label="Example negotiation">
+              <div className="lp-floor-head">
                 <div>
-                  <strong>20,000 printed mailer boxes</strong>
-                  <div className="faint small">3 suppliers · target $228,000</div>
+                  <strong>2,000 printed takeaway boxes</strong>
+                  <div className="faint small">4 suppliers · budget <span className="num">{aed(9000)}</span></div>
                 </div>
-                <span className="live">Agent live</span>
+                <span className="badge badge-warning">Needs your OK</span>
               </div>
-              <div className="lp-msg seller"><span className="who">GP</span><div className="bub">Our price is <b>$255,468</b>, delivery in 9 days.</div></div>
-              <div className="lp-msg agent"><span className="who"><Icon name="bot" size={14} /></span><div className="bub">We have a competing offer at $239,716. We can award today at <b>$231,500</b> with 8-day delivery.</div></div>
-              <div className="lp-msg seller"><span className="who">GP</span><div className="bub">We can meet you at <b>$236,900</b>.</div></div>
-              <div className="lp-msg agent"><span className="who"><Icon name="bot" size={14} /></span><div className="bub">Within mandate. Best deal score across 3 suppliers — awarding.</div></div>
-              <div className="lp-deal">
-                <span className="row" style={{ gap: "0.5rem" }}><Icon name="checkCircle" size={18} /> <strong>Deal closed</strong></span>
-                <span className="num" style={{ color: "var(--success)", fontWeight: 700 }}>−$18,568 (7.3%)</span>
+              <div className="lp-floor-row lp-floor-cols" aria-hidden>
+                <span>Supplier</span><span>Opened at</span><span>Now</span><span>Round</span><span>Status</span>
               </div>
-            </div>
+              {FLOOR.map((r) => (
+                <div key={r.supplier} className={`lp-floor-row${r.state === "agreed" ? " lp-floor-best" : ""}`}>
+                  <span className="lp-floor-name">{r.supplier}</span>
+                  <span className="num lp-floor-was" data-label="Opened at">{aed(r.opened)}</span>
+                  <span className="num lp-floor-now" data-label="Now">{r.latest ? aed(r.latest) : "—"}</span>
+                  <span className="num faint lp-floor-round" data-label="Round">{r.round}</span>
+                  <span className="lp-floor-state"><span className={STATE_LABEL[r.state].cls}>{STATE_LABEL[r.state].text}</span></span>
+                </div>
+              ))}
+              <div className="lp-floor-agent">
+                <span className="lp-floor-bot"><Icon name="bot" size={15} /></span>
+                <p>Al Noor came down from AED 10,400 to AED 8,650 with 6-day delivery, under your budget. Approve it?</p>
+              </div>
+              <figcaption className="lp-floor-foot">
+                <span className="faint small">Example negotiation</span>
+                <span className="num lp-floor-saved">Saved {aed(1750)} (16.8%)</span>
+              </figcaption>
+            </figure>
           </section>
         </div>
       </div>
 
-      <div className="lp-wrap">
-        <div className="lp-logos" aria-hidden>
-          <span>NORTHWIND</span><span>GULFPACK</span><span>EMIRATES BOX</span><span>DESERT PALLET</span><span>MERIDIAN</span>
-        </div>
-      </div>
-
-      <section className="lp-section lp-section-alt" id="platform">
-        <div className="lp-wrap">
-          <div className="lp-center">
-            <span className="lp-kicker">Platform</span>
-            <h2 className="lp-section-title">A buyer-side agent for the long tail of spend</h2>
-            <p className="lp-lead">Most purchases are never negotiated because there&apos;s no time. TradeBridge negotiates all of them, consistently, inside rules you control.</p>
+      <section className="lp-section" id="platform">
+        <div className="lp-wrap lp-proofs">
+          <div>
+            <h2 className="lp-section-title">Haggling eats your day. Hand it over.</h2>
+            <p className="lp-lead">Most small purchases never get negotiated because nobody has the time. Your agent negotiates every one, the same way every time, inside rules you control.</p>
           </div>
-          <div className="lp-features">
-            {FEATURES.map((f) => (
-              <div key={f.title} className="card lp-feature">
-                <span className="lp-feature-ic"><Icon name={f.icon} size={20} /></span>
-                <h3>{f.title}</h3>
-                <p>{f.body}</p>
-              </div>
+          <ul className="lp-proof-list">
+            {PROOFS.map((p) => (
+              <li key={p.title}>
+                <h3>{p.title}</h3>
+                <p>{p.body}</p>
+              </li>
             ))}
-          </div>
+          </ul>
         </div>
       </section>
 
-      <section className="lp-section" id="how">
+      <section className="lp-section lp-section-alt" id="how">
         <div className="lp-wrap">
-          <span className="lp-kicker">How it works</span>
-          <h2 className="lp-section-title">From request to purchase order, hands-free</h2>
-          <div className="lp-steps">
+          <h2 className="lp-section-title">From a message to a purchase order</h2>
+          <ol className="lp-steps">
             {STEPS.map((s) => (
-              <div key={s.title} className="lp-step">
+              <li key={s.title} className="lp-step">
                 <h3>{s.title}</h3>
                 <p>{s.body}</p>
-              </div>
+              </li>
             ))}
-          </div>
+          </ol>
         </div>
       </section>
 
-      <section className="lp-section lp-section-alt">
+      <section className="lp-section">
         <div className="lp-wrap lp-trust">
           <div>
-            <span className="lp-kicker">Trust &amp; control</span>
-            <h2 className="lp-section-title">Built for real B2B trade</h2>
-            <p className="lp-lead">Your agent works on a mandate, not a black box. Limits are enforced on the server, and every counter-offer is recorded with the reason it was made.</p>
+            <h2 className="lp-section-title">Your money, your rules</h2>
+            <p className="lp-lead">Your agent works to the limits you give it, not a black box. Every counter-offer is recorded with the reason it was made.</p>
           </div>
           <ul className="lp-trust-list">
             {TRUST.map((t) => (
@@ -153,18 +171,17 @@ export default function Landing() {
         </div>
       </section>
 
-      <section className="lp-section">
+      <section className="lp-section lp-section-alt" id="pricing">
         <div className="lp-wrap">
           <div className="lp-center">
-            <span className="lp-kicker">Pricing</span>
-            <h2 className="lp-section-title">Pays for itself on the first deal</h2>
+            <h2 className="lp-section-title">Free to start. Upgrade when it&apos;s saving you money.</h2>
+            <p className="lp-lead">Plans are billed monthly in US dollars.</p>
           </div>
           <div className="lp-tiers">
             {TIERS.map((t) => (
               <div key={t.name} className={`card lp-tier${t.highlight ? " lp-tier-hl" : ""}`}>
-                {t.highlight && <span className="badge lp-tier-badge">Most popular</span>}
                 <div className="lp-tier-name">{t.name}</div>
-                <div className="lp-tier-price">{t.price}<span className="muted small" style={{ fontWeight: 500 }}> / month</span></div>
+                <div className="lp-tier-price num">{t.price}<span className="muted small" style={{ fontWeight: 500 }}> / month</span></div>
                 <p className="muted small" style={{ margin: 0 }}>{t.blurb}</p>
                 <ul>
                   {t.features.map((f) => <li key={f}><Icon name="check" size={14} /> {f}</li>)}
@@ -178,9 +195,9 @@ export default function Landing() {
         </div>
       </section>
 
-      <section className="lp-wrap" style={{ paddingBottom: "4rem" }}>
+      <section className="lp-wrap" style={{ padding: "4rem 1.5rem" }}>
         <div className="lp-cta">
-          <h2 className="lp-section-title" style={{ color: "#fff" }}>Put your next RFQ on autopilot</h2>
+          <h2 className="lp-section-title" style={{ color: "#fff" }}>Send your first request today</h2>
           <p>Free to start. No card required.</p>
           <div className="lp-cta-row" style={{ justifyContent: "center" }}>
             <Link className="btn btn-primary lp-btn-lg" href="/register">Create your account <Icon name="arrowRight" size={16} /></Link>
