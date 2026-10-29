@@ -167,3 +167,69 @@ func TestE2E11_NegotiationApprovalFlow(t *testing.T) {
 	st, _ = doJSON(t, api, "POST", "/v1/rfqs/"+rfqID+"/negotiation/approve", buyerToken, map[string]any{})
 	require.Equal(t, http.StatusConflict, st)
 }
+
+func TestE2E11_NegotiationAwardAnotherSupplier(t *testing.T) {
+	api := buildAPI(t)
+	_, cheapCo, cheapSecret := registerSeller(t, api, "NegAwardCheap")
+	_, fastCo, fastSecret := registerSeller(t, api, "NegAwardFast")
+	buyerToken, _, rfqID := negotiationBuyerRFQ(t, "NegAwardBuyer")
+	ensureMatched(t, rfqID, cheapCo)
+	ensureMatched(t, rfqID, fastCo)
+	submitQuote(t, cheapSecret, "neg-aw-cheap-"+rfqID, rfqID, 800)
+	submitQuote(t, fastSecret, "neg-aw-fast-"+rfqID, rfqID, 820)
+
+	st, view := doJSON(t, api, "PUT", "/v1/rfqs/"+rfqID+"/negotiation", buyerToken, map[string]any{
+		"target_price_cents": 85000, "max_price_cents": 95000,
+	})
+	require.Equal(t, http.StatusOK, st)
+	require.Equal(t, "awaiting_approval", view["strategy"].(map[string]any)["status"])
+
+	var other string
+	for _, s := range view["suppliers"].([]any) {
+		sup := s.(map[string]any)
+		if sup["recommended"] != true {
+			other = sup["quote_id"].(string)
+		}
+	}
+	require.NotEmpty(t, other)
+
+	st, _ = doJSON(t, api, "POST", "/v1/rfqs/"+rfqID+"/negotiation/approve", buyerToken, map[string]any{"quote_id": "01NOTAQUOTE"})
+	require.Equal(t, http.StatusNotFound, st)
+
+	st, order := doJSON(t, api, "POST", "/v1/rfqs/"+rfqID+"/negotiation/approve", buyerToken, map[string]any{"quote_id": other})
+	require.Equal(t, http.StatusCreated, st)
+	require.EqualValues(t, 82000, order["total_cents"])
+
+	st, view = doJSON(t, api, "GET", "/v1/rfqs/"+rfqID+"/negotiation", buyerToken, nil)
+	require.Equal(t, http.StatusOK, st)
+	strat := view["strategy"].(map[string]any)
+	require.Equal(t, "completed", strat["status"])
+	require.Contains(t, strat["outcome_summary"], "over the agent's pick")
+}
+
+func TestE2E11_NegotiationDecline(t *testing.T) {
+	api := buildAPI(t)
+	_, sellerCo, secret := registerSeller(t, api, "NegDeclinePack")
+	buyerToken, _, rfqID := negotiationBuyerRFQ(t, "NegDeclineBuyer")
+	ensureMatched(t, rfqID, sellerCo)
+	submitQuote(t, secret, "neg-dc-submit-"+rfqID, rfqID, 800)
+
+	st, _ := doJSON(t, api, "POST", "/v1/rfqs/"+rfqID+"/negotiation/decline", buyerToken, nil)
+	require.Equal(t, http.StatusNotFound, st)
+
+	st, view := doJSON(t, api, "PUT", "/v1/rfqs/"+rfqID+"/negotiation", buyerToken, map[string]any{
+		"target_price_cents": 85000, "max_price_cents": 95000,
+	})
+	require.Equal(t, http.StatusOK, st)
+	require.Equal(t, "awaiting_approval", view["strategy"].(map[string]any)["status"])
+
+	st, view = doJSON(t, api, "POST", "/v1/rfqs/"+rfqID+"/negotiation/decline", buyerToken, nil)
+	require.Equal(t, http.StatusOK, st)
+	require.Equal(t, "cancelled", view["strategy"].(map[string]any)["status"])
+	require.NotEqual(t, "closed", view["rfq"].(map[string]any)["status"])
+
+	st, _ = doJSON(t, api, "POST", "/v1/rfqs/"+rfqID+"/negotiation/approve", buyerToken, map[string]any{})
+	require.Equal(t, http.StatusConflict, st)
+	st, _ = doJSON(t, api, "POST", "/v1/rfqs/"+rfqID+"/negotiation/decline", buyerToken, nil)
+	require.Equal(t, http.StatusConflict, st)
+}

@@ -540,3 +540,51 @@ table.tbl {
 .sample-prompt:hover { border-color: #c7d2fe; background: var(--primary-soft); }
 .chat-nav { display: flex; align-items: center; gap: 0.55rem; padding: 0.45rem 0.55rem; border-radius: 7px; font-size: 0.87rem; color: var(--muted); font-weight: 500; }
 .chat-nav:hover { background: var(--surface-2); color: var(--text); }
+
+/* Supplier ledger: the decision surface of the negotiation room. */
+.ledger-card { margin-bottom: 1.25rem; }
+.ledger-card.is-deciding { border-color: #fedf89; }
+.ledger { display: flex; flex-direction: column; }
+.ledger-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1.6fr) minmax(0, 1.1fr) minmax(0, 0.7fr) minmax(0, 1.1fr) 7.5rem;
+  grid-template-areas: "rank sup price del saved status";
+  align-items: center;
+  gap: 0.35rem 1rem;
+  padding: 0.75rem 0.5rem;
+  border-top: 1px solid var(--border);
+  border-radius: 8px;
+}
+.ledger-head { border-top: 0; padding-top: 0; padding-bottom: 0.4rem; font-size: 0.78rem; font-weight: 600; color: var(--muted); }
+label.ledger-row { cursor: pointer; }
+label.ledger-row:hover { background: var(--surface-2); }
+.ledger-row.is-pick { background: var(--success-soft); }
+.ledger-row.is-selected { box-shadow: inset 0 0 0 1.5px var(--primary); }
+.ledger-row:has(input:focus-visible) { outline: 2px solid var(--primary); outline-offset: 2px; }
+.ledger-rank { grid-area: rank; display: inline-flex; justify-content: center; }
+.ledger-rank input { width: 16px; height: 16px; accent-color: var(--primary); margin: 0; }
+.ledger-supplier { grid-area: sup; display: inline-flex; align-items: center; gap: 0.35rem; min-width: 0; }
+.ledger-verified { color: var(--primary); display: inline-flex; }
+.ledger-price { grid-area: price; display: inline-flex; gap: 0.45rem; align-items: baseline; justify-content: flex-end; flex-wrap: wrap; }
+.ledger-price s { font-weight: 500; }
+.ledger-delivery { grid-area: del; }
+.ledger-saved { grid-area: saved; display: flex; flex-direction: column; align-items: flex-end; gap: 0.1rem; }
+.ledger-status { grid-area: status; justify-self: end; }
+.ledger-head .num { text-align: right; }
+.decision { display: flex; flex-direction: column; gap: 0.75rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+.decision-why { margin: 0; max-width: 70ch; }
+.log-groups { display: flex; flex-direction: column; gap: 1.25rem; }
+.log-group + .log-group { border-top: 1px solid var(--border); padding-top: 1.1rem; }
+.log-group-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.6rem; }
+.log-group .timeline { margin-bottom: 0.25rem; }
+.tl-quote { max-width: 72ch; }
+@media (max-width: 720px) {
+  .ledger-head { display: none; }
+  .ledger-row {
+    grid-template-columns: 24px minmax(0, 1fr) auto;
+    grid-template-areas: "rank sup status" "rank price price" "rank del saved";
+  }
+  .ledger-row:first-of-type, .ledger-head + .ledger-row { border-top: 0; }
+  .ledger-price { justify-content: flex-start; }
+  .decision .btn-success { width: 100%; text-align: left; }
+}

@@ -294,8 +294,10 @@ func (e *Engine) notify(ctx context.Context, s sqlc.NegotiationStrategy, title, 
 	})
 }
 
-// Approve accepts the deal the engine is holding for buyer approval.
-func (e *Engine) Approve(ctx context.Context, buyerCompanyID, rfqID string) (sqlc.Order, error) {
+// Approve accepts the deal the engine is holding for buyer approval. A
+// non-empty quoteID awards a different live quote on the same RFQ instead of
+// the agent's pick.
+func (e *Engine) Approve(ctx context.Context, buyerCompanyID, rfqID, quoteID string) (sqlc.Order, error) {
 	defer e.lock(rfqID)()
 	s, err := e.ownedStrategy(ctx, buyerCompanyID, rfqID)
 	if err != nil {
@@ -304,13 +306,49 @@ func (e *Engine) Approve(ctx context.Context, buyerCompanyID, rfqID string) (sql
 	if s.Status != StatusAwaitingApproval || s.OutcomeQuoteID == nil {
 		return sqlc.Order{}, ConflictError{Msg: "negotiation has no deal awaiting approval"}
 	}
-	order, err := e.quotes.Accept(ctx, buyerCompanyID, *s.OutcomeQuoteID)
+	if quoteID == "" || quoteID == *s.OutcomeQuoteID {
+		order, err := e.quotes.Accept(ctx, buyerCompanyID, *s.OutcomeQuoteID)
+		if err != nil {
+			return sqlc.Order{}, err
+		}
+		summary := strings.Replace(s.OutcomeSummary, "Awaiting your approval.", "Approved by buyer; order placed.", 1)
+		_, err = e.q.SetNegotiationStatus(ctx, sqlc.SetNegotiationStatusParams{ID: s.ID, Status: StatusCompleted, OutcomeQuoteID: s.OutcomeQuoteID, OutcomeSummary: &summary})
+		return order, err
+	}
+	quotes, err := e.q.RankQuotesByRFQ(ctx, rfqID)
 	if err != nil {
 		return sqlc.Order{}, err
 	}
-	summary := strings.Replace(s.OutcomeSummary, "Awaiting your approval.", "Approved by buyer; order placed.", 1)
-	_, err = e.q.SetNegotiationStatus(ctx, sqlc.SetNegotiationStatusParams{ID: s.ID, Status: StatusCompleted, OutcomeSummary: &summary})
+	var chosen *sqlc.RankQuotesByRFQRow
+	for i := range quotes {
+		if quotes[i].ID == quoteID {
+			chosen = &quotes[i]
+		}
+	}
+	if chosen == nil {
+		return sqlc.Order{}, ErrNotFound
+	}
+	order, err := e.quotes.Accept(ctx, buyerCompanyID, chosen.ID)
+	if err != nil {
+		return sqlc.Order{}, err
+	}
+	summary := fmt.Sprintf("Buyer chose %s at %s over the agent's pick; order placed.", chosen.SellerName, money(chosen.PriceCents, chosen.Currency))
+	_, err = e.q.SetNegotiationStatus(ctx, sqlc.SetNegotiationStatusParams{ID: s.ID, Status: StatusCompleted, OutcomeQuoteID: &chosen.ID, OutcomeSummary: &summary})
 	return order, err
+}
+
+// Decline rejects the deal held for approval. No order is placed and the
+// supplier quotes stay open, so the buyer can still accept one by hand.
+func (e *Engine) Decline(ctx context.Context, buyerCompanyID, rfqID string) (sqlc.NegotiationStrategy, error) {
+	defer e.lock(rfqID)()
+	s, err := e.ownedStrategy(ctx, buyerCompanyID, rfqID)
+	if err != nil {
+		return s, err
+	}
+	if s.Status != StatusAwaitingApproval {
+		return s, ConflictError{Msg: "negotiation has no deal awaiting approval"}
+	}
+	return e.setStatus(ctx, s.ID, StatusCancelled, nil, "You declined the agent's deal. No order was placed; supplier quotes are still open.")
 }
 
 // SetPaused pauses or resumes an active/paused negotiation.

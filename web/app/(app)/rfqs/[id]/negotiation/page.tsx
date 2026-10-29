@@ -9,7 +9,9 @@ import { useToken } from "@/lib/auth";
 import {
   DEFAULT_CURRENCY,
   approveNegotiation,
+  declineNegotiation,
   dollarsToCents,
+  explainPick,
   getNegotiation,
   money,
   pauseNegotiation,
@@ -21,6 +23,7 @@ import {
   statusClass,
   type NegotiationView,
   type Round,
+  type Supplier,
   type Tone,
 } from "@/lib/negotiation";
 
@@ -34,6 +37,8 @@ export default function NegotiationRoom() {
   const [busy, setBusy] = useState(false);
   const [orderId, setOrderId] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [chosenId, setChosenId] = useState<string | null>(null);
+  const [confirmDecline, setConfirmDecline] = useState(false);
 
   const load = useCallback(() => {
     if (!token || !id) return;
@@ -62,12 +67,12 @@ export default function NegotiationRoom() {
     }
   };
 
-  const approve = async () => {
+  const approve = async (quoteId?: string) => {
     if (!token) return;
     setBusy(true);
     setErr(null);
     try {
-      const order = await approveNegotiation(token, id);
+      const order = await approveNegotiation(token, id, quoteId);
       setOrderId(order.order_id);
       load();
     } catch (e) {
@@ -77,6 +82,11 @@ export default function NegotiationRoom() {
     }
   };
 
+  const decline = () => {
+    if (!token) return;
+    act(() => declineNegotiation(token, id)).then(() => setConfirmDecline(false));
+  };
+
   if (!view) return err ? <p className="err">{err}</p> : <p className="muted">Loading negotiation…</p>;
 
   const s = view.strategy;
@@ -84,6 +94,20 @@ export default function NegotiationRoom() {
   const winner = view.suppliers.find((x) => x.recommended);
   const closed = view.rfq.status === "closed";
   const showForm = !s || editing;
+  const deciding = s?.status === "awaiting_approval" && !orderId;
+  const ranked = [...view.suppliers].sort((a, b) => (s ? b.utility - a.utility : a.price_cents - b.price_cents));
+  const chosen = view.suppliers.find((x) => x.quote_id === (chosenId ?? winner?.quote_id));
+  const overriding = !!chosen && !!winner && chosen.quote_id !== winner.quote_id;
+  const rival = ranked.find((x) => x.quote_id !== winner?.quote_id && x.status === "submitted");
+  const why =
+    !s || !chosen || !winner
+      ? ""
+      : overriding
+        ? explainPick(chosen, winner, s.price_weight)
+        : rival
+          ? explainPick(winner, rival, s.price_weight)
+          : "It's the only supplier still in the running.";
+  const awarded = view.suppliers.find((x) => x.status === "accepted");
 
   return (
     <>
@@ -131,28 +155,84 @@ export default function NegotiationRoom() {
       {err && <div className="banner" style={{ borderColor: "#fecdca", background: "var(--danger-soft)", color: "#b42318" }}><Icon name="x" /> {err}</div>}
 
       {orderId && (
-        <div className="banner banner-ok">
+        <div className="banner banner-ok" role="status">
           <Icon name="checkCircle" />
           <div className="grow"><strong>Deal approved.</strong> A purchase order was created.</div>
           <Link className="btn btn-sm" href={`/orders/${orderId}`}>View order</Link>
         </div>
       )}
-
-      {s?.status === "awaiting_approval" && !orderId && (
-        <div className="banner banner-warn">
-          <Icon name="award" />
-          <div className="grow">
-            <strong>Ready for approval.</strong> <span className="small">{s.outcome_summary}</span>
-          </div>
-          <button className="btn btn-success" disabled={busy} onClick={approve}><Icon name="check" size={16} /> Approve &amp; create PO</button>
-        </div>
-      )}
       {s?.status === "completed" && !orderId && (
-        <div className="banner banner-ok"><Icon name="checkCircle" /><div className="grow">{s.outcome_summary}</div></div>
+        <div className="banner banner-ok" role="status"><Icon name="checkCircle" /><div className="grow">{s.outcome_summary}</div></div>
       )}
       {s?.status === "cancelled" && (
-        <div className="banner banner-info"><Icon name="x" /><div className="grow">{s.outcome_summary || "Negotiation ended without a deal."}</div></div>
+        <div className="banner banner-info" role="status"><Icon name="x" /><div className="grow">{s.outcome_summary || "Negotiation ended without a deal."}</div></div>
       )}
+
+      <section className={`card ledger-card${deciding ? " is-deciding" : ""}`} aria-labelledby="ledger-title">
+        <div className="section-head">
+          <div>
+            <h2 id="ledger-title">{deciding ? "Ready for your approval" : "Suppliers"}</h2>
+            {deciding && winner && (
+              <p className="small muted" style={{ margin: "0.2rem 0 0" }}>
+                The agent recommends {winner.seller_name}. Choose another supplier if you prefer.
+              </p>
+            )}
+          </div>
+        </div>
+        {ranked.length === 0 ? (
+          <p className="muted small">Waiting for supplier quotes.</p>
+        ) : (
+          <div className="ledger" role={deciding ? "radiogroup" : undefined} aria-label={deciding ? "Supplier to award" : undefined}>
+            <div className="ledger-row ledger-head" aria-hidden="true">
+              <span />
+              <span>Supplier</span>
+              <span className="num">Price</span>
+              <span>Delivery</span>
+              <span className="num">Saved</span>
+              <span>Status</span>
+            </div>
+            {ranked.map((q, i) => (
+              <LedgerRow
+                key={q.quote_id}
+                q={q}
+                rank={i + 1}
+                selectable={deciding && q.status === "submitted"}
+                selected={deciding && chosen?.quote_id === q.quote_id}
+                onSelect={() => setChosenId(q.quote_id)}
+              />
+            ))}
+          </div>
+        )}
+        {deciding && chosen && (
+          <div className="decision">
+            <p className="decision-why">
+              <strong>{overriding ? "You're overriding the agent. " : "Why this deal: "}</strong>
+              {why}
+            </p>
+            <div className="row wrap" style={{ gap: "0.6rem" }}>
+              <button className="btn btn-success" disabled={busy} onClick={() => approve(overriding ? chosen.quote_id : undefined)}>
+                <Icon name="check" size={16} />
+                <span>
+                  {overriding ? "Award" : "Approve"} {chosen.seller_name} · <span className="num">{money(chosen.price_cents, chosen.currency)}</span>
+                </span>
+              </button>
+              {confirmDecline ? (
+                <span className="row wrap" style={{ gap: "0.5rem" }}>
+                  <span className="small">No order will be placed. Quotes stay open.</span>
+                  <button className="btn btn-danger btn-sm" disabled={busy} onClick={decline}>Decline deal</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setConfirmDecline(false)}>Keep</button>
+                </span>
+              ) : (
+                <button className="btn btn-ghost" disabled={busy} onClick={() => setConfirmDecline(true)}>Decline</button>
+              )}
+            </div>
+            <p className="small faint" style={{ margin: 0 }}>Approving creates a purchase order with the chosen supplier.</p>
+          </div>
+        )}
+        {awarded && !deciding && (
+          <p className="small muted" style={{ marginTop: "0.9rem" }}>Awarded to {awarded.seller_name}. <Link href="/orders">See orders</Link></p>
+        )}
+      </section>
 
       <div className="kpis">
         <div className="kpi">
@@ -184,69 +264,102 @@ export default function NegotiationRoom() {
         />
       )}
 
-      <div className="split">
-        <section className="card">
-          <div className="section-head">
-            <h2>Negotiation log</h2>
-            {live && <span className="faint small">Updates every {LIVE_POLL_MS / 1000}s</span>}
+      <section className="card">
+        <div className="section-head">
+          <h2>Agent moves by supplier</h2>
+          {live && <span className="faint small">Updates every {LIVE_POLL_MS / 1000}s</span>}
+        </div>
+        {view.rounds.length === 0 ? (
+          <div className="empty">
+            <Icon name="bot" size={28} />
+            <p style={{ margin: 0 }}>{s ? "The agent will respond as soon as suppliers quote." : "Set a mandate and the agent will counter every supplier."}</p>
           </div>
-          {view.rounds.length === 0 ? (
-            <div className="empty">
-              <Icon name="bot" size={28} />
-              <p style={{ margin: 0 }}>{s ? "The agent will respond as soon as suppliers quote." : "Set a mandate and the agent will counter every supplier."}</p>
-            </div>
-          ) : (
-            <ol className="timeline">
-              {[...view.rounds].reverse().map((r) => <RoundItem key={r.id} r={r} currency={cur} />)}
-            </ol>
-          )}
-        </section>
-
-        <section className="card">
-          <div className="section-head"><h2>Supplier leaderboard</h2></div>
-          {view.suppliers.length === 0 ? (
-            <p className="muted small">Waiting for supplier quotes.</p>
-          ) : (
-            <div className="col" style={{ gap: "0.75rem" }}>
-              {[...view.suppliers]
-                .sort((a, b) => (s ? b.utility - a.utility : a.price_cents - b.price_cents))
-                .map((q, i) => {
-                  const drop = q.initial_price_cents - q.price_cents;
-                  return (
-                    <div key={q.quote_id} className="card" style={{ padding: "0.85rem 1rem", boxShadow: "none", borderColor: q.recommended ? "var(--success)" : undefined, background: q.recommended ? "var(--success-soft)" : undefined }}>
-                      <div className="row" style={{ justifyContent: "space-between" }}>
-                        <strong className="row" style={{ gap: "0.4rem" }}>
-                          <span className="faint num">#{i + 1}</span> {q.seller_name}
-                          {q.verification_status === "verified" && <span title="Verified" style={{ color: "var(--primary)", display: "inline-flex" }}><Icon name="shield" size={14} /></span>}
-                        </strong>
-                        {q.recommended ? <span className="badge badge-success">{q.status === "accepted" ? "Awarded" : "Best deal"}</span> : q.last_action === "walk_away" ? <span className="badge">Walked away</span> : q.status === "rejected" ? <span className="badge">Rejected</span> : null}
-                      </div>
-                      <div className="row" style={{ justifyContent: "space-between", marginTop: "0.45rem" }}>
-                        <span className="price-move">
-                          {drop > 0 && <span className="faint" style={{ textDecoration: "line-through", fontWeight: 500 }}>{money(q.initial_price_cents, q.currency)}</span>}
-                          {money(q.price_cents, q.currency)}
-                        </span>
-                        <span className="small muted">{q.delivery_days != null ? `${q.delivery_days} days` : "—"} · v{q.version}</span>
-                      </div>
-                      {drop > 0 && <div className="small up" style={{ marginTop: "0.2rem" }}>−{money(drop, q.currency)} ({pct((drop / q.initial_price_cents) * 100)}) after {q.counters} counter{q.counters === 1 ? "" : "s"}</div>}
-                      {s && (
-                        <div style={{ marginTop: "0.5rem" }}>
-                          <div className="row small faint" style={{ justifyContent: "space-between" }}><span>Deal score</span><span className="num">{Math.round(q.utility * 100)}</span></div>
-                          <div className="bar" style={{ marginTop: "0.25rem" }}><span style={{ width: `${Math.max(2, q.utility * 100)}%`, background: q.recommended ? "var(--success)" : undefined }} /></div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-            </div>
-          )}
-          {winner && s?.status === "completed" && (
-            <p className="small muted" style={{ marginTop: "0.9rem" }}>Awarded to {winner.seller_name}. <Link href="/orders">See orders</Link></p>
-          )}
-        </section>
-      </div>
+        ) : (
+          <div className="log-groups">
+            {groupRounds(view.rounds, ranked).map((g) => <LogGroup key={g.quoteId} name={g.name} rounds={g.rounds} currency={cur} />)}
+          </div>
+        )}
+      </section>
     </>
   );
+}
+
+// groupRounds buckets rounds per supplier quote, newest move first, ordered
+// like the supplier table.
+function groupRounds(rounds: Round[], ranked: Supplier[]) {
+  const order = new Map(ranked.map((q, i) => [q.quote_id, i]));
+  const groups = new Map<string, { quoteId: string; name: string; rounds: Round[] }>();
+  for (const r of rounds) {
+    const g = groups.get(r.quote_id) ?? { quoteId: r.quote_id, name: r.seller_name, rounds: [] };
+    g.rounds.push(r);
+    groups.set(r.quote_id, g);
+  }
+  return [...groups.values()]
+    .map((g) => ({ ...g, rounds: [...g.rounds].sort((a, b) => b.created_at.localeCompare(a.created_at) || b.round - a.round) }))
+    .sort((a, b) => (order.get(a.quoteId) ?? 99) - (order.get(b.quoteId) ?? 99));
+}
+
+function LogGroup({ name, rounds, currency }: { name: string; rounds: Round[]; currency: string }) {
+  const [open, setOpen] = useState(false);
+  const shown = open ? rounds : rounds.slice(0, 1);
+  return (
+    <div className="log-group">
+      <div className="log-group-head">
+        <strong>{name}</strong>
+        <span className="faint small">{rounds.length} agent move{rounds.length === 1 ? "" : "s"}</span>
+      </div>
+      <ol className="timeline">
+        {shown.map((r) => <RoundItem key={r.id} r={r} currency={currency} />)}
+      </ol>
+      {rounds.length > 1 && (
+        <button type="button" className="btn btn-ghost btn-sm" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+          {open ? "Show latest move only" : `Show all ${rounds.length} moves`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function supplierBadge(q: Supplier) {
+  if (q.status === "accepted") return <span className="badge badge-success">Awarded</span>;
+  if (q.status === "rejected") return <span className="badge">Rejected</span>;
+  if (q.status === "withdrawn") return <span className="badge">Withdrawn</span>;
+  if (q.recommended) return <span className="badge badge-success">Agent&apos;s pick</span>;
+  if (q.last_action === "walk_away") return <span className="badge badge-warning">Above walk-away</span>;
+  return <span className="badge">In talks</span>;
+}
+
+function LedgerRow({ q, rank, selectable, selected, onSelect }: { q: Supplier; rank: number; selectable: boolean; selected: boolean; onSelect: () => void }) {
+  const drop = q.initial_price_cents - q.price_cents;
+  const className = `ledger-row${q.recommended || q.status === "accepted" ? " is-pick" : ""}${selected ? " is-selected" : ""}`;
+  const cells = (
+    <>
+      <span className="ledger-rank">
+        {selectable ? (
+          <input type="radio" name="award" checked={selected} onChange={onSelect} aria-label={`Award ${q.seller_name}`} />
+        ) : (
+          <span className="faint num">{rank}</span>
+        )}
+      </span>
+      <span className="ledger-supplier">
+        <strong>{q.seller_name}</strong>
+        {q.verification_status === "verified" && (
+          <span title="Verified supplier" aria-label="Verified supplier" className="ledger-verified"><Icon name="shield" size={14} /></span>
+        )}
+      </span>
+      <span className="ledger-price num">
+        {drop > 0 && <s className="faint">{money(q.initial_price_cents, q.currency)}</s>}
+        <strong>{money(q.price_cents, q.currency)}</strong>
+      </span>
+      <span className="ledger-delivery small">{q.delivery_days != null ? `${q.delivery_days} days` : "—"}</span>
+      <span className="ledger-saved small num">
+        {drop > 0 ? <span className="up">−{money(drop, q.currency)} ({pct((drop / q.initial_price_cents) * 100)})</span> : <span className="faint">—</span>}
+        <span className="faint">{q.counters} counter{q.counters === 1 ? "" : "s"}</span>
+      </span>
+      <span className="ledger-status">{supplierBadge(q)}</span>
+    </>
+  );
+  return selectable ? <label className={className}>{cells}</label> : <div className={className}>{cells}</div>;
 }
 
 function RoundItem({ r, currency }: { r: Round; currency: string }) {
