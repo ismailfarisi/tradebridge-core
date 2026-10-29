@@ -350,7 +350,7 @@ func (h *Handler) respond(c *fiber.Ctx, r sqlc.Rfq) error {
 	if v.Strategy == nil && v.Summary.InitialBestCents > 0 {
 		// Anchor 12% under the best opening quote; walk away above it.
 		best := v.Summary.CurrentBestCents
-		v.Suggested = &suggestionView{TargetPriceCents: best * 88 / 100, MaxPriceCents: best}
+		v.Suggested = &suggestionView{TargetPriceCents: roundDown(best * 88 / 100), MaxPriceCents: best}
 	}
 	return c.JSON(v)
 }
@@ -431,4 +431,20 @@ func fillMonths(rows []sqlc.BuyerMonthlySpendRow, now time.Time) []sqlc.BuyerMon
 		out = append(out, r)
 	}
 	return out
+}
+
+// roundDown trims a suggested price to a figure a person would type:
+// whole AED 100 above AED 10,000, whole AED 10 above AED 1,000, else whole AED.
+func roundDown(cents int64) int64 {
+	step := int64(100)
+	switch {
+	case cents >= 1_000_000:
+		step = 10_000
+	case cents >= 100_000:
+		step = 1_000
+	}
+	if r := cents - cents%step; r > 0 {
+		return r
+	}
+	return cents
 }

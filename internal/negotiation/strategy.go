@@ -131,18 +131,18 @@ func Decide(m Mandate, o Offer, h History) Decision {
 	switch {
 	case o.PriceCents <= m.TargetCents && deliveryOK:
 		return Decision{Action: ActionAcceptReady, Utility: u,
-			Rationale: fmt.Sprintf("Offer %s meets the %s target%s.", money(o.PriceCents, o.Currency), money(m.TargetCents, o.Currency), deliveryNote(m, o))}
+			Rationale: fmt.Sprintf("%s meets your %s target%s.", money(o.PriceCents, o.Currency), money(m.TargetCents, o.Currency), deliveryNote(m, o))}
 	case h.Counters >= m.MaxRounds || (sellerHeld && h.Counters > 0):
-		why := "Round budget used"
+		why := "No rounds left"
 		if h.Counters < m.MaxRounds {
-			why = "Supplier held its price (final offer)"
+			why = "Supplier held its price"
 		}
 		if o.PriceCents <= m.MaxCents {
 			return Decision{Action: ActionAcceptReady, Utility: u,
-				Rationale: fmt.Sprintf("%s; %s is within the %s walk-away price.", why, money(o.PriceCents, o.Currency), money(m.MaxCents, o.Currency))}
+				Rationale: fmt.Sprintf("%s; %s is within your %s walk-away price.", why, money(o.PriceCents, o.Currency), money(m.MaxCents, o.Currency))}
 		}
 		return Decision{Action: ActionWalkAway, Utility: u,
-			Rationale: fmt.Sprintf("%s; %s is above the %s walk-away price.", why, money(o.PriceCents, o.Currency), money(m.MaxCents, o.Currency))}
+			Rationale: fmt.Sprintf("%s; %s is above your %s walk-away price.", why, money(o.PriceCents, o.Currency), money(m.MaxCents, o.Currency))}
 	}
 
 	n := h.Counters + 1
@@ -158,7 +158,7 @@ func Decide(m Mandate, o Offer, h History) Decision {
 		// Our next step would meet or exceed their ask: take their price if acceptable.
 		if o.PriceCents <= m.MaxCents && deliveryOK {
 			return Decision{Action: ActionAcceptReady, Utility: u,
-				Rationale: fmt.Sprintf("Offer %s is at or below our next step; accepting it.", money(o.PriceCents, o.Currency))}
+				Rationale: fmt.Sprintf("%s is at or below what we would offer next, so it is acceptable.", money(o.PriceCents, o.Currency))}
 		}
 		offer = o.PriceCents - 1
 	}
@@ -171,10 +171,10 @@ func Decide(m Mandate, o Offer, h History) Decision {
 		offerDelivery = &d
 	}
 
-	rationale := fmt.Sprintf("Round %d of %d: supplier at %s, countering at %s (%s concession curve).",
-		n, m.MaxRounds, money(o.PriceCents, o.Currency), money(offer, o.Currency), toneLabel(m.Tone))
+	rationale := fmt.Sprintf("They asked %s; we offered %s (round %d of %d).",
+		money(o.PriceCents, o.Currency), money(offer, o.Currency), n, m.MaxRounds)
 	if h.BestRivalCents > 0 && h.BestRivalCents < o.PriceCents {
-		rationale += fmt.Sprintf(" A rival quote is at %s.", money(h.BestRivalCents, o.Currency))
+		rationale += fmt.Sprintf(" Best rival offer is %s.", money(h.BestRivalCents, o.Currency))
 	}
 	return Decision{
 		Action: ActionCounter, OfferCents: offer, OfferDeliveryDays: offerDelivery, Utility: u,
@@ -184,13 +184,20 @@ func Decide(m Mandate, o Offer, h History) Decision {
 
 func counterMessage(m Mandate, o Offer, h History, offer int64, d *int32, n int) string {
 	var b strings.Builder
-	if m.Tone == "firm" {
+	switch {
+	case n > 1:
+		b.WriteString("Thanks for the revised quote. ")
+	case m.Tone == "firm":
 		b.WriteString("Thank you for the quote. ")
-	} else {
+	default:
 		b.WriteString("Thanks for your offer — we'd like to work with you on this. ")
 	}
 	if h.Competitors > 0 {
-		b.WriteString(fmt.Sprintf("We are evaluating %d other competitive offer%s. ", h.Competitors, plural(h.Competitors)))
+		verb := "are evaluating"
+		if n > 1 {
+			verb = "still have"
+		}
+		b.WriteString(fmt.Sprintf("We %s %d other competitive offer%s. ", verb, h.Competitors, plural(h.Competitors)))
 	}
 	b.WriteString(fmt.Sprintf("We can commit today at %s", money(offer, o.Currency)))
 	if d != nil {
@@ -199,7 +206,7 @@ func counterMessage(m Mandate, o Offer, h History, offer int64, d *int32, n int)
 	b.WriteString(".")
 	if n >= m.MaxRounds {
 		b.WriteString(" This is our final offer.")
-	} else if m.Tone != "firm" {
+	} else if m.Tone != "firm" && n == 1 {
 		b.WriteString(" Happy to discuss volume or payment terms if that helps you get there.")
 	}
 	return b.String()
@@ -235,13 +242,6 @@ func deliveryNote(m Mandate, o Offer) string {
 	return fmt.Sprintf(" with %d-day delivery", *o.DeliveryDays)
 }
 
-func toneLabel(t string) string {
-	if t == "firm" {
-		return "firm"
-	}
-	return "collaborative"
-}
-
 func money(cents int64, currency string) string {
 	if currency == "" {
 		currency = "AED"
@@ -259,7 +259,10 @@ func formatThousands(cents int64) string {
 	for i := len(s) - 3; i > 0; i -= 3 {
 		s = s[:i] + "," + s[i:]
 	}
-	out := fmt.Sprintf("%s.%02d", s, frac)
+	out := s
+	if frac != 0 {
+		out = fmt.Sprintf("%s.%02d", s, frac)
+	}
 	if neg {
 		return "-" + out
 	}

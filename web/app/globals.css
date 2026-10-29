@@ -377,6 +377,10 @@ table.tbl {
   .side { display: none; }
   .content { padding: 1.1rem; }
 }
+@media (max-width: 640px) {
+  .topbar { padding: 0 1rem; gap: 0.5rem; }
+  .topbar-role, .topbar-label { display: none; }
+}
 
 /* ── Data display ──────────────────────────────────────────── */
 .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.25rem; }
@@ -386,6 +390,11 @@ table.tbl {
 .kpi-sub { font-size: 0.8rem; color: var(--faint); margin-top: 0.15rem; }
 .kpi-accent { background: linear-gradient(135deg, #312e81, #4338ca 55%, #0891b2); color: #fff; border: none; }
 .kpi-accent .kpi-label, .kpi-accent .kpi-sub { color: rgba(255, 255, 255, 0.78); }
+@media (max-width: 640px) {
+  .kpis { grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+  .kpi { padding: 0.8rem 0.9rem; }
+  .kpi-value { font-size: 1.15rem; }
+}
 .up { color: var(--success); }
 .num { font-variant-numeric: tabular-nums; }
 .section-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 0.85rem; }
