@@ -696,6 +696,8 @@ label.ledger-row:hover { background: var(--surface-2); }
   .stats3 { gap: 0.5rem; }
   .stats3 .stat { padding: 0.75rem; }
   .stats3 .stat .n { font-size: 1.35rem; }
+  /* Other tables scroll inside themselves instead of widening the page. */
+  table.tbl:not(.tbl-cards) { display: block; overflow-x: auto; }
   /* Tables become one card per row so prices stay on screen. */
   .tbl-cards thead { display: none; }
   .tbl-cards, .tbl-cards tbody { display: block; }
