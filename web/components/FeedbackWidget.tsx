@@ -1,10 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useToken } from "@/lib/auth";
 import { sendFeedback } from "@/lib/feedback";
 
 type Tab = "feedback" | "nps";
+
+const OPEN_EVENT = "tb:feedback";
+
+// openFeedback lets other shell controls (account menu, phone "More" sheet) open the dialog.
+export const openFeedback = () => window.dispatchEvent(new Event(OPEN_EVENT));
 
 // FeedbackWidget is a small fixed-position launcher mounted authed-only in
 // AppShell. It opens a modal with two tabs — free-text feedback and a 0-10
@@ -18,6 +23,12 @@ export default function FeedbackWidget() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [toast, setToast] = useState(false);
+
+  useEffect(() => {
+    const onOpen = () => setOpen(true);
+    window.addEventListener(OPEN_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_EVENT, onOpen);
+  }, []);
 
   if (!token) return null;
 
@@ -61,7 +72,7 @@ export default function FeedbackWidget() {
     <>
       <button
         type="button"
-        className="btn btn-sm btn-primary"
+        className="btn btn-sm btn-primary fb-launch"
         onClick={() => setOpen(true)}
         style={{ position: "fixed", right: "1.25rem", bottom: "1.25rem", zIndex: 40, borderRadius: 999 }}
       >
@@ -114,7 +125,7 @@ export default function FeedbackWidget() {
 
             {tab === "feedback" ? (
               <div className="field">
-                <label>What's on your mind?</label>
+                <label>What&apos;s on your mind?</label>
                 <textarea
                   className="input"
                   rows={4}

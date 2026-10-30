@@ -63,7 +63,6 @@ export default function RfqDetail() {
           </div>
         }
       />
-      <div style={{ marginBottom: "-0.75rem" }}><Link href="/rfqs" className="small row" style={{ display: "inline-flex", gap: "0.3rem" }}><Icon name="arrowLeft" size={14} /> All RFQs</Link></div>
 
       <div className="card" style={{ margin: "1rem 0 1.5rem" }}>
         <h2>Extracted requirements</h2>

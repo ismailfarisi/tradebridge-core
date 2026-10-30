@@ -119,11 +119,6 @@ export default function NegotiationRoom() {
 
   return (
     <>
-      <div style={{ marginBottom: "0.6rem" }}>
-        <Link href="/negotiations" className="small row" style={{ gap: "0.3rem", display: "inline-flex" }}>
-          <Icon name="arrowLeft" size={14} /> Negotiations
-        </Link>
-      </div>
       <PageHeader
         title={view.rfq.title}
         subtitle={
