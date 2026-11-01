@@ -4,9 +4,19 @@ import { postQuoteMessage, quoteMessages, type AttachmentMeta, type QuoteMessage
 import { AttachmentView } from "@/components/AttachmentView";
 import { Composer } from "@/components/Composer";
 
-// The buyer↔seller-agent thread under one quote: where the agent's clarifying
-// questions appear and the buyer answers (optionally with images/PDFs).
-export function QuoteThread({ quoteId, token }: { quoteId: string; token: string }) {
+// The buyer↔seller thread under one quote: where the seller agent's clarifying
+// questions and the buyer's answers and counters appear (optionally with
+// images/PDFs). viewer decides whose messages read as "You"; the server
+// decides the real author from the caller's company.
+export function QuoteThread({
+  quoteId,
+  token,
+  viewer = "buyer",
+}: {
+  quoteId: string;
+  token: string;
+  viewer?: "buyer" | "seller";
+}) {
   const [messages, setMessages] = useState<QuoteMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -54,14 +64,14 @@ export function QuoteThread({ quoteId, token }: { quoteId: string; token: string
           className="card"
           style={{
             padding: "0.5rem 0.75rem",
-            alignSelf: m.author === "buyer" ? "flex-end" : "flex-start",
+            alignSelf: m.author === viewer ? "flex-end" : "flex-start",
             maxWidth: "85%",
           }}
         >
           <div className="muted" style={{ fontSize: "0.75rem" }}>
-            {m.author === "buyer" ? "You" : "Seller agent"}
+            {m.author === viewer ? "You" : m.author === "buyer" ? "Buyer" : "Seller agent"}
           </div>
-          {m.body && <div>{m.body}</div>}
+          {m.body && <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{m.body}</div>}
           {m.attachments?.map((a) => (
             <div key={a.id} style={{ marginTop: "0.35rem" }}>
               <AttachmentView meta={a} token={token} />
@@ -77,7 +87,7 @@ export function QuoteThread({ quoteId, token }: { quoteId: string; token: string
         onSend={send}
         disabled={sending}
         token={token}
-        placeholder="Reply to the seller agent…"
+        placeholder={viewer === "seller" ? "Reply to the buyer…" : "Reply to the seller agent…"}
       />
     </div>
   );

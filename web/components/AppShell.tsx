@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { logout, useMe } from "@/lib/auth";
@@ -13,6 +13,15 @@ import { listNegotiations } from "@/lib/negotiation";
 import { Icon, type IconName } from "@/components/Icon";
 
 type NavItem = { href: string; label: string; icon: IconName; show: (me: Me) => boolean; badge?: "approvals" };
+
+// Neither value changes while the shell is mounted, so there is nothing to
+// subscribe to: useSyncExternalStore just gives the server snapshot during
+// SSR and hydration, then the client snapshot.
+const noSubscribe = () => () => {};
+const clientTrue = () => true;
+const serverFalse = () => false;
+const readImpersonating = () => localStorage.getItem(IMPERSONATING_FLAG_KEY);
+const serverNull = () => null;
 
 const isSeller = (m: Me) => m.company_type === "seller" || m.company_type === "both";
 const isBuyer = (m: Me) => m.company_type === "buyer" || m.company_type === "both" || !m.company_type;
@@ -37,6 +46,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
   {
     group: "Selling",
     items: [
+      { href: "/seller/rfqs", label: "RFQ inbox", icon: "list", show: isSeller },
       { href: "/seller/profile", label: "Supplier profile", icon: "store", show: isSeller },
       { href: "/seller/catalog", label: "Catalog", icon: "layers", show: isSeller },
       { href: "/seller/agent", label: "Sales agent", icon: "bot", show: isSeller },
@@ -57,23 +67,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const { token, me, ready } = useMe();
   const router = useRouter();
   const pathname = usePathname();
-  const [hydrated, setHydrated] = useState(false);
-  const [impersonating, setImpersonating] = useState<string | null>(null);
+  const hydrated = useSyncExternalStore(noSubscribe, clientTrue, serverFalse);
+  const impersonating = useSyncExternalStore(noSubscribe, readImpersonating, serverNull);
   const [approvals, setApprovals] = useState(0);
 
   // On a hard page load the token store first returns its *server* snapshot
-  // (null) before the client snapshot (localStorage) is read one tick later.
-  // Redirecting on that first render bounces a logged-in user to /login, so we
-  // wait until the client has mounted — by then the real token has been read.
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => {
-    setHydrated(true);
-    setImpersonating(localStorage.getItem(IMPERSONATING_FLAG_KEY));
-  }, []);
+  // (null) before the client snapshot (localStorage) is read. Redirecting on
+  // that first render bounces a logged-in user to /login, so redirects wait
+  // for `hydrated`, which only turns true once client snapshots are in use.
 
+  // Signed-out visitors to seller pages go to the supplier sign-in.
   useEffect(() => {
-    if (hydrated && ready && !token) router.replace("/login");
-  }, [hydrated, ready, token, router]);
+    if (hydrated && ready && !token) router.replace(pathname.startsWith("/seller") ? "/seller/login" : "/login");
+  }, [hydrated, ready, token, router, pathname]);
 
   useEffect(() => {
     if (!token || !me || !isBuyer(me)) return;
@@ -148,7 +154,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               title="Sign out"
               onClick={() => {
                 logout();
-                router.replace("/login");
+                router.replace(me.company_type === "seller" ? "/seller/login" : "/login");
               }}
             >
               <Icon name="logout" />

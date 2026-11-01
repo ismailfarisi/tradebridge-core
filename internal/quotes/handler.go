@@ -25,9 +25,11 @@ func NewHandler(svc *Service, q *sqlc.Queries) *Handler {
 }
 
 // Register mounts quote routes under the tenant guard. messageRL rate-limits
-// the add-message route.
-func (h *Handler) Register(app *fiber.App, messageRL fiber.Handler, guard ...fiber.Handler) {
+// the add-message route and the seller quote form. verified gates the seller
+// quote form behind email verification, like buyer RFQ creation.
+func (h *Handler) Register(app *fiber.App, messageRL, verified fiber.Handler, guard ...fiber.Handler) {
 	app.Add("GET", "/v1/rfqs/:id/quotes", append(guard, h.listForRFQ)...)
+	app.Add("POST", "/v1/seller/rfqs/:id/quote", append(append([]fiber.Handler{}, guard...), verified, messageRL, h.sellerSubmit)...)
 	g := app.Group("/v1/quotes", guard...)
 	g.Get("/:id", h.get)
 	g.Post("/:id/accept", h.accept)
@@ -81,6 +83,42 @@ func (h *Handler) listForRFQ(c *fiber.Ctx) error {
 		}
 	}
 	return c.JSON(fiber.Map{"quotes": out, "count": len(out)})
+}
+
+// sellerSubmit records a quote the seller typed into the web app: the first
+// call creates their quote, later calls send a revised offer.
+func (h *Handler) sellerSubmit(c *fiber.Ctx) error {
+	var in SellerQuoteInput
+	if err := c.BodyParser(&in); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
+	}
+	res, err := h.svc.SubmitAsSeller(c.Context(), middleware.CompanyID(c), c.Params("id"), in)
+	var invalid InvalidError
+	var conflict ConflictError
+	switch {
+	case errors.Is(err, ErrNotFound):
+		return fiber.NewError(fiber.StatusNotFound, "rfq not found")
+	case errors.As(err, &invalid):
+		return fiber.NewError(fiber.StatusBadRequest, invalid.Msg)
+	case errors.As(err, &conflict):
+		return fiber.NewError(fiber.StatusConflict, conflict.Msg)
+	case err != nil:
+		return err
+	}
+	q := res.Quote
+	status := fiber.StatusCreated
+	if res.Revised {
+		status = fiber.StatusOK
+	}
+	return c.Status(status).JSON(fiber.Map{
+		"revised": res.Revised,
+		"quote": fiber.Map{
+			"id": q.ID, "rfq_id": q.RfqID, "status": q.Status,
+			"price_cents": q.PriceCents, "currency": q.Currency,
+			"delivery_days": q.DeliveryDays, "notes": q.Notes,
+			"version": q.Version, "updated_at": q.UpdatedAt.UTC().Format(time.RFC3339),
+		},
+	})
 }
 
 // mustParty loads a quote and confirms the caller is a party to it (the buyer

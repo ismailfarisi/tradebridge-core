@@ -63,7 +63,7 @@ func TestThreadEndpoint_ReturnsQuoteMessagesAndVersions(t *testing.T) {
 	require.NoError(t, err)
 
 	app := fiber.New()
-	NewHandler(svc, q).Register(app, func(c *fiber.Ctx) error { return c.Next() }, stubThreadGuard(buyer.ID))
+	NewHandler(svc, q).Register(app, func(c *fiber.Ctx) error { return c.Next() }, func(c *fiber.Ctx) error { return c.Next() }, stubThreadGuard(buyer.ID))
 
 	req := httptest.NewRequest("GET", "/v1/quotes/"+head.ID+"/thread", http.NoBody)
 	resp, err := app.Test(req, -1)
@@ -95,7 +95,7 @@ func TestThreadEndpoint_NonPartyGets404(t *testing.T) {
 	require.NoError(t, err)
 
 	app := fiber.New()
-	NewHandler(svc, q).Register(app, func(c *fiber.Ctx) error { return c.Next() }, stubThreadGuard(stranger.ID))
+	NewHandler(svc, q).Register(app, func(c *fiber.Ctx) error { return c.Next() }, func(c *fiber.Ctx) error { return c.Next() }, stubThreadGuard(stranger.ID))
 
 	req := httptest.NewRequest("GET", "/v1/quotes/"+quote.ID+"/thread", http.NoBody)
 	resp, err := app.Test(req, -1)

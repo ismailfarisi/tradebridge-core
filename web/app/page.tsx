@@ -86,7 +86,7 @@ export default function Landing() {
                 <Link className="btn btn-primary lp-btn-lg" href="/register">
                   Get quotes free <Icon name="arrowRight" size={16} />
                 </Link>
-                <Link className="btn lp-btn-lg" href="/register?role=seller">
+                <Link className="btn lp-btn-lg" href="/seller/register">
                   I&apos;m a supplier
                 </Link>
               </div>

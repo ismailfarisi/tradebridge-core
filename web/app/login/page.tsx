@@ -29,7 +29,16 @@ export default function LoginPage() {
   };
 
   return (
-    <AuthWrap title="Sign in" alt={<>No account? <Link href="/register">Create one</Link></>}>
+    <AuthWrap
+      title="Sign in"
+      alt={
+        <>
+          No account? <Link href="/register">Create one</Link>
+          <br />
+          Supplier? <Link href="/seller/login">Supplier sign in</Link>
+        </>
+      }
+    >
       <form className="col" onSubmit={submit}>
         <div className="field">
           <label>Email</label>

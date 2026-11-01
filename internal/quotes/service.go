@@ -312,11 +312,11 @@ func buildThread(ctx context.Context, q *sqlc.Queries, quoteID string) []threadE
 
 // counterBody renders the buyer-facing thread message for a counter-offer:
 // their free-text message, plus a human-readable summary of any proposed
-// terms.
-func counterBody(message string, priceCents *int64, deliveryDays *int32) string {
+// terms. The price is shown in the quote's currency.
+func counterBody(message string, priceCents *int64, deliveryDays *int32, currency string) string {
 	var terms []string
 	if priceCents != nil {
-		terms = append(terms, fmt.Sprintf("price: $%.2f", float64(*priceCents)/100))
+		terms = append(terms, "price: "+formatAmount(*priceCents, currency))
 	}
 	if deliveryDays != nil {
 		terms = append(terms, fmt.Sprintf("delivery: %d days", *deliveryDays))
@@ -350,7 +350,7 @@ func (s *Service) Counter(ctx context.Context, buyerCompanyID, quoteID string, p
 	if r.BuyerCompanyID != buyerCompanyID {
 		return sqlc.QuoteMessage{}, ErrNotFound // party-only, no leak
 	}
-	body := counterBody(message, priceCents, deliveryDays)
+	body := counterBody(message, priceCents, deliveryDays, quote.Currency)
 	msg, err := s.q.CreateQuoteMessage(ctx, sqlc.CreateQuoteMessageParams{
 		QuoteID: quoteID, Author: "buyer", Body: body, Attachments: nil,
 	})
@@ -358,8 +358,20 @@ func (s *Service) Counter(ctx context.Context, buyerCompanyID, quoteID string, p
 		return sqlc.QuoteMessage{}, err
 	}
 	s.thread.PublishMessage(ctx, quoteID, mustJSON(messageView(msg)))
+	autonomous := s.ent != nil && s.ent.For(ctx, quote.SellerCompanyID).AgentAutonomy
+	// Without an autonomous agent a person has to answer, so tell the seller.
+	if !autonomous && s.notifier != nil {
+		s.notifier.NotifyCompany(ctx, quote.SellerCompanyID, notify.Event{
+			Type:     notify.TypeQuoteCountered,
+			Title:    "Buyer sent a counter-offer: " + r.Title,
+			Body:     "Review the buyer's terms and revise your quote or reply.",
+			Data:     map[string]any{"rfq_id": r.ID, "quote_id": quoteID},
+			CTALabel: "View RFQ",
+			CTAPath:  "/seller/rfqs/" + r.ID,
+		})
+	}
 	// Round-trip to the agent ONLY if the seller has agent autonomy.
-	if s.ent != nil && s.ent.For(ctx, quote.SellerCompanyID).AgentAutonomy && s.pub != nil {
+	if autonomous && s.pub != nil {
 		payload, err := json.Marshal(messageReceivedEvent{
 			Type: "message.received", QuoteID: quoteID, RFQID: quote.RfqID,
 			Counter: counterTerms{PriceCents: priceCents, DeliveryDays: deliveryDays},

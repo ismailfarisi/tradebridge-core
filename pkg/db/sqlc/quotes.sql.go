@@ -432,6 +432,57 @@ func (q *Queries) RejectOtherQuotes(ctx context.Context, arg RejectOtherQuotesPa
 	return err
 }
 
+const reviseSubmittedQuote = `-- name: ReviseSubmittedQuote :one
+UPDATE quotes
+SET price_cents = $1, currency = $2, delivery_days = $3,
+    notes = $4, completeness = $5, version = version + 1,
+    agent_command_id = NULL, updated_at = NOW()
+WHERE id = $6 AND seller_company_id = $7 AND status = 'submitted'
+RETURNING id, rfq_id, seller_company_id, agent_command_id, price_cents, currency, delivery_days, notes, completeness, status, created_at, updated_at, version
+`
+
+type ReviseSubmittedQuoteParams struct {
+	PriceCents      int64   `json:"price_cents"`
+	Currency        string  `json:"currency"`
+	DeliveryDays    *int32  `json:"delivery_days"`
+	Notes           string  `json:"notes"`
+	Completeness    float64 `json:"completeness"`
+	ID              string  `json:"id"`
+	SellerCompanyID string  `json:"seller_company_id"`
+}
+
+// A seller's revised offer on its own live quote: new head terms plus a
+// version bump. Only a still-submitted quote can be revised, so a quote the
+// buyer accepted (or that lost) in the meantime returns no row.
+func (q *Queries) ReviseSubmittedQuote(ctx context.Context, arg ReviseSubmittedQuoteParams) (Quote, error) {
+	row := q.db.QueryRow(ctx, reviseSubmittedQuote,
+		arg.PriceCents,
+		arg.Currency,
+		arg.DeliveryDays,
+		arg.Notes,
+		arg.Completeness,
+		arg.ID,
+		arg.SellerCompanyID,
+	)
+	var i Quote
+	err := row.Scan(
+		&i.ID,
+		&i.RfqID,
+		&i.SellerCompanyID,
+		&i.AgentCommandID,
+		&i.PriceCents,
+		&i.Currency,
+		&i.DeliveryDays,
+		&i.Notes,
+		&i.Completeness,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Version,
+	)
+	return i, err
+}
+
 const upsertQuote = `-- name: UpsertQuote :one
 INSERT INTO quotes (rfq_id, seller_company_id, agent_command_id, price_cents, currency, delivery_days, notes, completeness)
 VALUES ($1, $2, $7, $3, $4, $8, $5, $6)

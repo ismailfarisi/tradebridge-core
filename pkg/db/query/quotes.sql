@@ -86,3 +86,14 @@ RETURNING *;
 
 -- name: ListQuoteVersions :many
 SELECT * FROM quote_versions WHERE quote_id = @quote_id ORDER BY version ASC;
+
+-- name: ReviseSubmittedQuote :one
+-- A seller's revised offer on its own live quote: new head terms plus a
+-- version bump. Only a still-submitted quote can be revised, so a quote the
+-- buyer accepted (or that lost) in the meantime returns no row.
+UPDATE quotes
+SET price_cents = @price_cents, currency = @currency, delivery_days = @delivery_days,
+    notes = @notes, completeness = @completeness, version = version + 1,
+    agent_command_id = NULL, updated_at = NOW()
+WHERE id = @id AND seller_company_id = @seller_company_id AND status = 'submitted'
+RETURNING *;

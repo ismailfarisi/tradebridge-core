@@ -9,7 +9,7 @@ const LINKS = [
   { href: "/#how", label: "How it works" },
   { href: "/marketplace", label: "Suppliers" },
   { href: "/pricing", label: "Pricing" },
-  { href: "/register?role=seller", label: "Sell on TradeBridge" },
+  { href: "/seller/register", label: "Sell on TradeBridge" },
 ];
 
 // LandingNav is the public marketing top bar. It is auth-aware: a signed-in

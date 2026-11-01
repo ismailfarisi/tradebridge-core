@@ -85,8 +85,8 @@ export default function Dashboard() {
       {isSeller && seller && (
         <section style={{ marginTop: isBuyer ? "1.5rem" : 0 }}>
           <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", marginBottom: "1rem" }}>
-            <Stat n={seller.incoming_rfqs} label="Incoming RFQs" />
-            <Stat n={seller.review_queue} label="Review queue" />
+            <Link href="/seller/rfqs?tab=all" style={{ color: "inherit", display: "block" }}><Stat n={seller.incoming_rfqs} label="Incoming RFQs" /></Link>
+            <Link href="/seller/rfqs" style={{ color: "inherit", display: "block" }}><Stat n={seller.review_queue} label="Awaiting your quote" /></Link>
             <Stat n={seller.active_orders} label="Active orders" />
             <div className="stat">
               <div className="n" style={{ color: seller.agent.online ? "var(--success)" : "var(--muted)" }}>

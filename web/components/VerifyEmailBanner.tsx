@@ -29,7 +29,7 @@ export default function VerifyEmailBanner({
       }}
     >
       <span className="small">
-        <strong>Verify your email</strong> to post RFQs. Check your inbox for the verification link.
+        <strong>Verify your email</strong> to post RFQs and send quotes. Check your inbox for the verification link.
       </span>
       <span className="row" style={{ gap: "0.5rem" }}>
         {sent ? (
