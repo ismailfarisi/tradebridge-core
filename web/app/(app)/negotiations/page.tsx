@@ -4,7 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { PageHeader } from "@/components/AppShell";
 import { Icon } from "@/components/Icon";
-import { useToken } from "@/lib/auth";
+import { NegotiationPauseControl } from "@/components/NegotiationPauseControl";
+import { useMe } from "@/lib/auth";
+import { NOT_PAUSED, type PauseInfo } from "@/lib/negotiationControls";
 import { listRfqs, type RFQ } from "@/lib/api";
 import {
   getSavings,
@@ -27,8 +29,9 @@ const FILTERS: { key: "" | NegotiationStatus; label: string }[] = [
 ];
 
 export default function NegotiationsPage() {
-  const token = useToken();
+  const { token, me } = useMe();
   const [items, setItems] = useState<NegotiationListItem[] | null>(null);
+  const [pause, setPause] = useState<PauseInfo>(NOT_PAUSED);
   const [savings, setSavings] = useState<Savings | null>(null);
   const [rfqs, setRfqs] = useState<RFQ[]>([]);
   const [filter, setFilter] = useState<"" | NegotiationStatus>("");
@@ -36,7 +39,12 @@ export default function NegotiationsPage() {
 
   useEffect(() => {
     if (!token) return;
-    listNegotiations(token).then((r) => setItems(r.negotiations)).catch((e) => setErr(e.message));
+    listNegotiations(token)
+      .then((r) => {
+        setItems(r.negotiations);
+        setPause(r.pause ?? NOT_PAUSED);
+      })
+      .catch((e) => setErr(e.message));
     getSavings(token).then(setSavings).catch(() => {});
     listRfqs(token).then((r) => setRfqs(r.rfqs)).catch(() => {});
   }, [token]);
@@ -59,6 +67,18 @@ export default function NegotiationsPage() {
         subtitle="Your agent negotiates every supplier quote within the limits you set."
         action={<Link href="/chat" className="btn btn-primary"><Icon name="plus" size={16} /> New RFQ</Link>}
       />
+
+      {token && (
+        <NegotiationPauseControl
+          token={token}
+          role={me?.role}
+          pause={pause}
+          onChange={(p) => {
+            setPause(p);
+            if (!p.paused) listNegotiations(token).then((r) => setItems(r.negotiations)).catch(() => {});
+          }}
+        />
+      )}
 
       {savings && (
         <div className="kpis">
