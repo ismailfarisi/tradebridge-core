@@ -31,6 +31,8 @@ func NewHandler(q *sqlc.Queries, eng *Engine, ent *entitlements.Service) *Handle
 func (h *Handler) Register(app *fiber.App, guard ...fiber.Handler) {
 	app.Add("GET", "/v1/negotiations", append(guard, h.list)...)
 	app.Add("GET", "/v1/negotiations/savings", append(guard, h.savings)...)
+	app.Add("GET", "/v1/negotiations/controls", append(guard, h.getControls)...)
+	app.Add("PUT", "/v1/negotiations/controls", append(guard, middleware.RequireRole("owner", "admin"), h.putControls)...)
 	app.Add("GET", "/v1/rfqs/:id/negotiation", append(guard, h.get)...)
 	app.Add("PUT", "/v1/rfqs/:id/negotiation", append(guard, h.upsert)...)
 	app.Add("POST", "/v1/rfqs/:id/negotiation/pause", append(guard, h.pause)...)
@@ -200,6 +202,8 @@ func mapErr(err error) error {
 	switch {
 	case errors.Is(err, ErrNotFound), errors.Is(err, quotes.ErrNotFound):
 		return fiber.NewError(fiber.StatusNotFound, "negotiation not found")
+	case errors.Is(err, ErrBusy):
+		return fiber.NewError(fiber.StatusConflict, ErrBusy.Msg)
 	case errors.As(err, &conflict):
 		return fiber.NewError(fiber.StatusConflict, conflict.Msg)
 	case errors.As(err, &qconflict):
@@ -249,6 +253,7 @@ type negotiationView struct {
 	Suppliers []supplierView            `json:"suppliers"`
 	Summary   summaryView               `json:"summary"`
 	Suggested *suggestionView           `json:"suggested"`
+	Pause     pauseView                 `json:"pause"`
 }
 
 type roundView struct {
@@ -267,6 +272,11 @@ func (h *Handler) respond(c *fiber.Ctx, r sqlc.Rfq) error {
 		Rounds:    []roundView{},
 		Suppliers: []supplierView{},
 	}
+	ps, err := h.eng.PauseState(ctx, r.BuyerCompanyID)
+	if err != nil {
+		return err
+	}
+	v.Pause = viewOf(ps)
 	qs, err := h.q.RankQuotesByRFQ(ctx, r.ID)
 	if err != nil {
 		return err
@@ -374,7 +384,11 @@ func (h *Handler) list(c *fiber.Ctx) error {
 		}
 		out = append(out, it)
 	}
-	return c.JSON(fiber.Map{"negotiations": out})
+	ps, err := h.eng.PauseState(c.Context(), middleware.CompanyID(c))
+	if err != nil {
+		return err
+	}
+	return c.JSON(fiber.Map{"negotiations": out, "pause": viewOf(ps)})
 }
 
 func (h *Handler) savings(c *fiber.Ctx) error {
