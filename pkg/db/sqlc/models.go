@@ -180,6 +180,28 @@ type InvoiceLineItem struct {
 	AmountCents    int64  `json:"amount_cents"`
 }
 
+type NegotiationBaseline struct {
+	StrategyID            string    `json:"strategy_id"`
+	RfqID                 string    `json:"rfq_id"`
+	QuoteID               string    `json:"quote_id"`
+	Currency              string    `json:"currency"`
+	FinalCents            int64     `json:"final_cents"`
+	OpeningCents          *int64    `json:"opening_cents"`
+	MarketCents           *int64    `json:"market_cents"`
+	MarketQuoteCount      int32     `json:"market_quote_count"`
+	HistoricalCents       *int64    `json:"historical_cents"`
+	HistoricalOrderID     *string   `json:"historical_order_id"`
+	HistoricalNote        string    `json:"historical_note"`
+	Anchored              bool      `json:"anchored"`
+	AnchorPct             *float64  `json:"anchor_pct"`
+	AnchorBasis           *string   `json:"anchor_basis"`
+	VerifiedBaselineCents int64     `json:"verified_baseline_cents"`
+	VerifiedBasis         string    `json:"verified_basis"`
+	Reason                string    `json:"reason"`
+	Source                string    `json:"source"`
+	ComputedAt            time.Time `json:"computed_at"`
+}
+
 type NegotiationRound struct {
 	ID                 string    `json:"id"`
 	StrategyID         string    `json:"strategy_id"`
