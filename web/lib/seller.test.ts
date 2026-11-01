@@ -4,9 +4,12 @@ import {
   getSellerRfq,
   listSellerRfqs,
   parseCategories,
+  parseDeliveryDays,
+  parsePrice,
   sellerLandingPath,
   sellerRfqsPath,
   sellerState,
+  submitSellerQuote,
 } from "./seller";
 
 const realFetch = global.fetch;
@@ -68,5 +71,40 @@ describe("seller helpers", () => {
     expect(daysLeft("2026-10-31T00:00:00Z", now)).toBeNull();
     expect(daysLeft("2026-11-01T12:00:00Z", now)).toBe(1);
     expect(daysLeft("2026-11-15T00:00:00Z", now)).toBe(14);
+  });
+});
+
+describe("seller quote form helpers", () => {
+  it("parses typed prices into major units", () => {
+    expect(parsePrice("12,500.50")).toBe(12500.5);
+    expect(parsePrice("AED 12500")).toBe(12500);
+    expect(parsePrice(" 99 ")).toBe(99);
+    expect(parsePrice("0")).toBeNull();
+    expect(parsePrice("-5")).toBeNull();
+    expect(parsePrice("12.345")).toBeNull();
+    expect(parsePrice("abc")).toBeNull();
+    expect(parsePrice("")).toBeNull();
+  });
+
+  it("parses optional delivery days", () => {
+    expect(parseDeliveryDays("")).toBeNull();
+    expect(parseDeliveryDays(" 7 ")).toBe(7);
+    expect(parseDeliveryDays("0")).toBe(0);
+    expect(parseDeliveryDays("3.5")).toBeUndefined();
+    expect(parseDeliveryDays("-1")).toBeUndefined();
+    expect(parseDeliveryDays("5000")).toBeUndefined();
+  });
+
+  it("posts the quote and surfaces structured errors", async () => {
+    mockFetch(201, JSON.stringify({ revised: false, quote: { id: "q1", status: "submitted", price_cents: 1250050, currency: "AED" } }));
+    const out = await submitSellerQuote("tok", "r1", { price: 12500.5, currency: "AED", delivery_days: 7 });
+    expect(out.quote.id).toBe("q1");
+    const [url, init] = (global.fetch as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls[0];
+    expect(url).toMatch(/\/v1\/seller\/rfqs\/r1\/quote$/);
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body as string)).toEqual({ price: 12500.5, currency: "AED", delivery_days: 7 });
+
+    mockFetch(403, JSON.stringify({ code: "verify_email", message: "verify your email to continue" }));
+    await expect(submitSellerQuote("tok", "r1", { price: 1, currency: "AED" })).rejects.toThrow("verify your email to continue");
   });
 });

@@ -71,7 +71,7 @@ export function QuoteThread({
           <div className="muted" style={{ fontSize: "0.75rem" }}>
             {m.author === viewer ? "You" : m.author === "buyer" ? "Buyer" : "Seller agent"}
           </div>
-          {m.body && <div>{m.body}</div>}
+          {m.body && <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{m.body}</div>}
           {m.attachments?.map((a) => (
             <div key={a.id} style={{ marginTop: "0.35rem" }}>
               <AttachmentView meta={a} token={token} />

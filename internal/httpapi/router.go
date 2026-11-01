@@ -312,7 +312,7 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	invSvc := invoicing.NewService(cfg.Logger)
 	threadPub := thread.NewPublisher(cfg.Redis, cfg.Logger)
 	quotesSvc := quotes.NewService(q, cfg.Pool, pub, attLoader, cfg.Logger, notifier, invSvc, entSvc, threadPub)
-	quotes.NewHandler(quotesSvc, q).Register(f, rlMessage, guard...)
+	quotes.NewHandler(quotesSvc, q).Register(f, rlMessage, middleware.RequireVerified(q), guard...)
 	negEngine := negotiation.NewEngine(q, quotesSvc, notifier, cfg.Logger, cfg.NegotiationSellerTimeout)
 	negotiation.NewHandler(q, negEngine, entSvc).Register(f, guard...)
 	if cfg.WorkerCtx != nil {

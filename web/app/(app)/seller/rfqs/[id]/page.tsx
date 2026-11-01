@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { PageHeader } from "@/components/AppShell";
 import { AttachmentView } from "@/components/AttachmentView";
 import { QuoteThread } from "@/components/QuoteThread";
+import { SellerQuoteForm } from "@/components/SellerQuoteForm";
 import { useToken } from "@/lib/auth";
 import type { AttachmentMeta } from "@/lib/api";
 import { money, when } from "@/lib/negotiation";
@@ -17,6 +18,9 @@ export default function SellerRfqDetailPage() {
   const [rfq, setRfq] = useState<SellerRFQ | null>(null);
   const [atts, setAtts] = useState<AttachmentMeta[]>([]);
   const [err, setErr] = useState<string | null>(null);
+  const [reload, setReload] = useState(0);
+  const [editing, setEditing] = useState(false);
+  const [saved, setSaved] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token || !id) return;
@@ -31,7 +35,7 @@ export default function SellerRfqDetailPage() {
     return () => {
       alive = false;
     };
-  }, [token, id]);
+  }, [token, id, reload]);
 
   const back = <Link href="/seller/rfqs" className="btn btn-sm">← RFQ inbox</Link>;
 
@@ -114,7 +118,20 @@ export default function SellerRfqDetailPage() {
         <div className="col" style={{ gap: "1rem", minWidth: 0 }}>
           <div className="card">
             <h2 style={{ marginTop: 0 }}>Your quote</h2>
-            {rfq.quote ? (
+            {saved && <p className="ok" role="status" style={{ marginTop: 0 }}>{saved}</p>}
+            {rfq.quote && editing && live ? (
+              <SellerQuoteForm
+                token={token}
+                rfqId={rfq.id}
+                existing={rfq.quote}
+                onCancel={() => setEditing(false)}
+                onSaved={() => {
+                  setEditing(false);
+                  setSaved("Revised offer sent. The buyer has been notified.");
+                  setReload((n) => n + 1);
+                }}
+              />
+            ) : rfq.quote ? (
               <>
                 <p style={{ fontSize: "1.4rem", fontWeight: 700, margin: "0 0 0.25rem" }}>
                   {money(rfq.quote.price_cents, rfq.quote.currency)}
@@ -128,13 +145,33 @@ export default function SellerRfqDetailPage() {
                   Status: <strong style={{ textTransform: "capitalize" }}>{rfq.quote.status}</strong>
                 </p>
                 {rfq.quote.notes && <p className="muted" style={{ whiteSpace: "pre-wrap", marginBottom: 0 }}>{rfq.quote.notes}</p>}
+                {live && rfq.quote.status === "submitted" && (
+                  <button
+                    type="button"
+                    className="btn"
+                    style={{ marginTop: "0.9rem" }}
+                    onClick={() => {
+                      setSaved(null);
+                      setEditing(true);
+                    }}
+                  >
+                    Revise quote
+                  </button>
+                )}
               </>
             ) : live ? (
               <>
-                <p className="muted" style={{ marginTop: 0 }}>
-                  You haven&apos;t quoted yet. Your sales agent submits quotes for matched RFQs through the Agent Gateway.
+                <SellerQuoteForm
+                  token={token}
+                  rfqId={rfq.id}
+                  onSaved={() => {
+                    setSaved("Quote sent. The buyer has been notified.");
+                    setReload((n) => n + 1);
+                  }}
+                />
+                <p className="muted small" style={{ marginBottom: 0 }}>
+                  Prefer to quote automatically? <Link href="/seller/agent">Connect your sales agent</Link>.
                 </p>
-                <Link href="/seller/agent" className="btn btn-primary">Set up sales agent</Link>
               </>
             ) : (
               <p className="muted" style={{ margin: 0 }}>This RFQ is no longer accepting quotes.</p>

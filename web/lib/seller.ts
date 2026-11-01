@@ -105,3 +105,51 @@ export function daysLeft(expiresAt: string | null, now = new Date()): number | n
   if (!Number.isFinite(ms) || ms <= 0) return null;
   return Math.ceil(ms / 86_400_000);
 }
+
+// --- seller quote form ---
+
+export type SellerQuoteInput = {
+  price: number; // major units, e.g. 12500.5
+  currency: string;
+  delivery_days?: number | null;
+  notes?: string;
+};
+
+export type SellerQuoteResult = { revised: boolean; quote: SellerQuote };
+
+// Currencies offered in the quote form. AED first: UAE/GCC is the home market.
+export const QUOTE_CURRENCIES = ["AED", "SAR", "QAR", "OMR", "KWD", "BHD", "USD", "EUR", "GBP"] as const;
+
+// submitSellerQuote sends the seller's first quote, or a revised offer when
+// they already have a live quote on this RFQ.
+export async function submitSellerQuote(token: string, rfqId: string, input: SellerQuoteInput): Promise<SellerQuoteResult> {
+  const res = await fetch(`${CORE_URL}/v1/seller/rfqs/${encodeURIComponent(rfqId)}/quote`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify(input),
+    cache: "no-store",
+  });
+  const text = await res.text();
+  if (!res.ok) throw new Error(errorMessage(text, res.status));
+  return JSON.parse(text) as SellerQuoteResult;
+}
+
+// parsePrice reads a typed amount ("12,500.50", "AED 12500") as major units.
+// Returns null for anything that is not a positive number.
+export function parsePrice(text: string): number | null {
+  const cleaned = text.replace(/[A-Za-z\s,]/g, "");
+  if (!/^\d+(\.\d{1,2})?$/.test(cleaned)) return null;
+  const n = Number(cleaned);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+// parseDeliveryDays reads the optional delivery field: "" means not given
+// (null), a whole number of days from 0 to 3650 is accepted, anything else is
+// undefined (invalid).
+export function parseDeliveryDays(text: string): number | null | undefined {
+  const t = text.trim();
+  if (t === "") return null;
+  if (!/^\d+$/.test(t)) return undefined;
+  const n = Number(t);
+  return n <= 3650 ? n : undefined;
+}

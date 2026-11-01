@@ -3,10 +3,17 @@ package integration
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+// sellerTestCategory is the supplier category the seller RFQ tests register
+// under, and a word their RFQs contain so matching finds those sellers. It is
+// deliberately not "packaging": other tests rely on MatchSuppliers (LIMIT 25)
+// still finding their packaging seller, so these tests must not add more.
+const sellerTestCategory = "kraftliner"
 
 // sellerRFQIDs returns the ids in a GET /v1/seller/rfqs response.
 func sellerRFQIDs(t *testing.T, body map[string]any) []string {
@@ -29,13 +36,13 @@ func TestSellerRFQ_InboxListDetailAndIsolation(t *testing.T) {
 	pool := poolOrSkip(t)
 	ctx := context.Background()
 
-	sellerToken, sellerCompanyID, _ := seedSellerWithCatalog(t, app, "packaging")
+	sellerToken, sellerCompanyID, _ := seedSellerWithCatalog(t, app, sellerTestCategory)
 	outsiderToken, _, _ := seedSellerWithCatalog(t, app, "industrial lasers")
 	buyerToken, _ := seedVerifiedBuyer(t, app, pool, "sellerinbox-buyer-")
 
 	st, created := doJSON(t, app, "POST", "/v1/rfqs", buyerToken, map[string]any{
 		"title": "Cartons needed",
-		"text":  "We need 500 cartons for packaging our products, deliver to Dubai by next month.",
+		"text":  "We need 500 kraftliner cartons for packaging our products, deliver to Dubai by next month.",
 	})
 	require.Equal(t, http.StatusCreated, st)
 	rfqID := created["rfq"].(map[string]any)["id"].(string)
@@ -70,7 +77,7 @@ func TestSellerRFQ_InboxListDetailAndIsolation(t *testing.T) {
 	require.Equal(t, http.StatusOK, st)
 	rfq := detail["rfq"].(map[string]any)
 	require.Equal(t, "Cartons needed", rfq["title"])
-	require.Contains(t, rfq["raw_text"], "500 cartons")
+	require.Contains(t, rfq["raw_text"], "500 kraftliner cartons")
 	require.NotNil(t, rfq["requirements"])
 	require.NotNil(t, rfq["expires_at"], "a matched RFQ carries its expiry")
 	require.NotContains(t, rfq, "messages", "the buyer's intake chat is never exposed to sellers")
@@ -138,11 +145,11 @@ func TestSellerRFQ_MatchNotificationLinksToSellerInbox(t *testing.T) {
 	app := buildAPI(t)
 	pool := poolOrSkip(t)
 
-	sellerToken, _, _ := seedSellerWithCatalog(t, app, "packaging")
+	sellerToken, _, _ := seedSellerWithCatalog(t, app, sellerTestCategory)
 	buyerToken, _ := seedVerifiedBuyer(t, app, pool, "sellernotify-buyer-")
 
 	st, created := doJSON(t, app, "POST", "/v1/rfqs", buyerToken, map[string]any{
-		"title": "Boxes", "text": "Need 200 cartons for packaging, Dubai delivery.",
+		"title": "Boxes", "text": "Need 200 kraftliner cartons for packaging, Dubai delivery.",
 	})
 	require.Equal(t, http.StatusCreated, st)
 	rfqID := created["rfq"].(map[string]any)["id"].(string)
@@ -163,4 +170,144 @@ func TestSellerRFQ_MatchNotificationLinksToSellerInbox(t *testing.T) {
 		}
 	}
 	require.True(t, found, "the matched seller gets an rfq.matched notification")
+}
+
+// notificationsOfType returns the caller's notifications of one type, newest first.
+func notificationsOfType(t *testing.T, app fiberApp, token, typ string) []map[string]any {
+	t.Helper()
+	st, body := doJSON(t, app, "GET", "/v1/notifications", token, nil)
+	require.Equal(t, http.StatusOK, st)
+	var out []map[string]any
+	for _, it := range body["notifications"].([]any) {
+		n := it.(map[string]any)
+		if n["type"] == typ {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// TestSellerRFQ_ManualQuoteSubmitReviseAndLock covers the seller quote form:
+// verified-email gate, validation, first quote (RFQ advances to quoted, buyer
+// notified), revised offer (new version, thread message, buyer notified),
+// the seller hearing about a buyer counter, and no changes after acceptance
+// or once the RFQ is closed.
+func TestSellerRFQ_ManualQuoteSubmitReviseAndLock(t *testing.T) {
+	app := buildAPI(t)
+	pool := poolOrSkip(t)
+	ctx := context.Background()
+
+	sellerToken, sellerCompanyID, sellerUserID := seedSellerWithCatalog(t, app, sellerTestCategory)
+	otherToken, _, otherUserID := seedSellerWithCatalog(t, app, sellerTestCategory)
+	outsiderToken, _, outsiderUserID := seedSellerWithCatalog(t, app, "industrial lasers")
+	buyerToken, _ := seedVerifiedBuyer(t, app, pool, "manualquote-buyer-")
+
+	st, created := doJSON(t, app, "POST", "/v1/rfqs", buyerToken, map[string]any{
+		"title": "Cartons for launch",
+		"text":  "We need 800 kraftliner cartons for packaging, deliver to Dubai by next month.",
+	})
+	require.Equal(t, http.StatusCreated, st)
+	rfqID := created["rfq"].(map[string]any)["id"].(string)
+	path := "/v1/seller/rfqs/" + rfqID + "/quote"
+	good := map[string]any{"price": 12500.5, "currency": "aed", "delivery_days": 7, "notes": "Double-wall, printed"}
+
+	// Unverified sellers are asked to verify their email first.
+	st, body := doJSON(t, app, "POST", path, sellerToken, good)
+	require.Equal(t, http.StatusForbidden, st)
+	require.Equal(t, "verify_email", body["code"])
+	verifyUser(t, pool, sellerUserID)
+	verifyUser(t, pool, otherUserID)
+	verifyUser(t, pool, outsiderUserID)
+
+	// Validation.
+	for _, bad := range []map[string]any{
+		{"price": 0},
+		{"price": -5},
+		{"currency": "AED"},
+		{"price": 100, "delivery_days": -1},
+		{"price": 100, "currency": "DIRHAM"},
+		{"price": 100, "notes": strings.Repeat("x", 2001)},
+	} {
+		st, _ = doJSON(t, app, "POST", path, sellerToken, bad)
+		require.Equal(t, http.StatusBadRequest, st, "payload %v", bad)
+	}
+
+	// Unmatched sellers cannot quote (and cannot learn the RFQ exists).
+	st, _ = doJSON(t, app, "POST", path, outsiderToken, good)
+	require.Equal(t, http.StatusNotFound, st)
+
+	// First quote.
+	st, body = doJSON(t, app, "POST", path, sellerToken, good)
+	require.Equal(t, http.StatusCreated, st, "%v", body)
+	require.Equal(t, false, body["revised"])
+	quote := body["quote"].(map[string]any)
+	quoteID := quote["id"].(string)
+	require.Equal(t, float64(1250050), quote["price_cents"])
+	require.Equal(t, "AED", quote["currency"])
+	require.Equal(t, float64(1), quote["version"])
+
+	st, got := doJSON(t, app, "GET", "/v1/rfqs/"+rfqID, buyerToken, nil)
+	require.Equal(t, http.StatusOK, st)
+	require.Equal(t, "quoted", got["rfq"].(map[string]any)["status"], "first quote advances open → quoted")
+	st, ranked := doJSON(t, app, "GET", "/v1/rfqs/"+rfqID+"/quotes", buyerToken, nil)
+	require.Equal(t, http.StatusOK, st)
+	require.Len(t, ranked["quotes"].([]any), 1)
+	require.NotEmpty(t, notificationsOfType(t, app, buyerToken, "quote.submitted"), "buyer is told a quote arrived")
+
+	// Seller detail now shows the quote.
+	st, detail := doJSON(t, app, "GET", "/v1/seller/rfqs/"+rfqID, sellerToken, nil)
+	require.Equal(t, http.StatusOK, st)
+	require.Equal(t, quoteID, detail["rfq"].(map[string]any)["quote"].(map[string]any)["id"])
+
+	// Buyer counters: a seller without an autonomous agent is notified and
+	// sent to the seller RFQ page.
+	st, _ = doJSON(t, app, "POST", "/v1/quotes/"+quoteID+"/counter", buyerToken, map[string]any{
+		"price_cents": 1100000, "message": "Can you do 11,000?",
+	})
+	require.Equal(t, http.StatusOK, st)
+	counters := notificationsOfType(t, app, sellerToken, "quote.countered")
+	require.NotEmpty(t, counters, "seller hears about the buyer's counter")
+	require.Equal(t, "/seller/rfqs/"+rfqID, counters[0]["data"].(map[string]any)["cta_path"])
+
+	// Revised offer: new version, seller thread message, buyer notified.
+	st, body = doJSON(t, app, "POST", path, sellerToken, map[string]any{"price": 11500, "delivery_days": 5})
+	require.Equal(t, http.StatusOK, st, "%v", body)
+	require.Equal(t, true, body["revised"])
+	revised := body["quote"].(map[string]any)
+	require.Equal(t, quoteID, revised["id"], "a revision keeps the same quote")
+	require.Equal(t, float64(1150000), revised["price_cents"])
+	require.Equal(t, float64(2), revised["version"])
+
+	var sources []string
+	rows, err := pool.Query(ctx, `SELECT source FROM quote_versions WHERE quote_id = $1 ORDER BY version`, quoteID)
+	require.NoError(t, err)
+	for rows.Next() {
+		var s string
+		require.NoError(t, rows.Scan(&s))
+		sources = append(sources, s)
+	}
+	require.Equal(t, []string{"seller", "counter"}, sources)
+
+	st, msgs := doJSON(t, app, "GET", "/v1/quotes/"+quoteID+"/messages", buyerToken, nil)
+	require.Equal(t, http.StatusOK, st)
+	list := msgs["messages"].([]any)
+	last := list[len(list)-1].(map[string]any)
+	require.Equal(t, "seller", last["author"])
+	require.Contains(t, last["body"], "Revised offer: 11,500.00 AED, delivery in 5 days")
+	require.NotEmpty(t, notificationsOfType(t, app, buyerToken, "quote.countered"), "buyer is told about the revision")
+
+	// Buyer accepts: the quote is locked.
+	st, accepted := doJSON(t, app, "POST", "/v1/quotes/"+quoteID+"/accept", buyerToken, map[string]any{})
+	require.Equal(t, http.StatusCreated, st, "%v", accepted)
+	st, _ = doJSON(t, app, "POST", path, sellerToken, good)
+	require.Equal(t, http.StatusConflict, st)
+
+	// The RFQ is closed now, so the other matched seller cannot quote either.
+	st, _ = doJSON(t, app, "POST", path, otherToken, good)
+	require.Equal(t, http.StatusConflict, st)
+
+	var count int
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT count(*) FROM quotes WHERE rfq_id = $1 AND seller_company_id = $2`, rfqID, sellerCompanyID).Scan(&count))
+	require.Equal(t, 1, count)
 }

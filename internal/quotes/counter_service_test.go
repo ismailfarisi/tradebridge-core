@@ -57,7 +57,7 @@ func TestCounter_NoAutonomy_RecordsMessageOnly(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "buyer", msg.Author)
 	require.Contains(t, msg.Body, "can you do better?")
-	require.Contains(t, msg.Body, "price: $45.00")
+	require.Contains(t, msg.Body, "price: 45.00 USD", "priced in the quote's currency")
 	require.Contains(t, msg.Body, "delivery: 5 days")
 
 	msgs, err := q.ListQuoteMessages(ctx, quote.ID)

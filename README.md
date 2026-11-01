@@ -54,7 +54,14 @@ quote thread). The API is `GET /v1/seller/rfqs?tab=open|quoted|closed&q=` and
 companies get 404, and the buyer's intake chat is never returned. Suppliers sign
 up at `/seller/register` (creates a seller company and its supplier profile in
 one step so matching works immediately) and sign in at `/seller/login`.
-Quoting still happens through the seller's agent on the Agent Gateway.
+
+Sellers can quote by hand from the RFQ page (`POST /v1/seller/rfqs/:id/quote`,
+email verification required) as well as through their agent on the Agent
+Gateway. The first submission behaves like the agent's `quote.submit`; later
+ones are revised offers that behave like `quote.counter` (new quote version,
+seller thread message, buyer notified). Accepted or rejected quotes and closed
+RFQs cannot be changed. Sellers without an autonomous agent are notified when
+the buyer counters, since a person has to answer.
 
 ## Autonomous negotiation
 
