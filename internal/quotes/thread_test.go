@@ -59,7 +59,7 @@ func TestThreadEndpoint_ReturnsQuoteMessagesAndVersions(t *testing.T) {
 	// The buyer counters — this records a thread message (no new version; a
 	// version only appears when the seller's agent replies via quote.counter).
 	price := int64(4700)
-	_, err = svc.Counter(ctx, buyer.ID, head.ID, &price, nil, "let's meet in the middle")
+	_, err = svc.Counter(ctx, buyer.ID, head.ID, &price, nil, nil, "let's meet in the middle")
 	require.NoError(t, err)
 
 	app := fiber.New()

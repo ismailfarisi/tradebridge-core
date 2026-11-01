@@ -54,15 +54,25 @@ type Normalized struct {
 	PriceCents   int64
 	Currency     string
 	DeliveryDays *int32
-	Notes        string
-	Completeness float64
+	// PaymentTermsDays is the seller's payment terms in days after delivery
+	// (0 = cash / on delivery). Optional: nil means not stated, and on a
+	// revision it leaves the previous terms unchanged.
+	PaymentTermsDays *int32
+	Notes            string
+	Completeness     float64
 }
+
+// MaxPaymentTermsDays bounds payment terms on quotes and counters.
+const MaxPaymentTermsDays = 365
 
 type submitPayload struct {
 	Price        *float64 `json:"price"`
 	Currency     string   `json:"currency"`
 	DeliveryDays *int32   `json:"delivery_days"`
 	Notes        string   `json:"notes"`
+	// PaymentTermsDays is optional, so agents built before payment terms
+	// existed keep working unchanged.
+	PaymentTermsDays *int32 `json:"payment_terms_days"`
 }
 
 // Normalize validates and canonicalizes a quote.submit payload. Price is
@@ -76,6 +86,9 @@ func Normalize(payload []byte) (Normalized, error) {
 	if p.Price == nil || *p.Price <= 0 {
 		return Normalized{}, errors.New("quote payload requires a positive price")
 	}
+	if p.PaymentTermsDays != nil && (*p.PaymentTermsDays < 0 || *p.PaymentTermsDays > MaxPaymentTermsDays) {
+		return Normalized{}, fmt.Errorf("payment_terms_days must be between 0 and %d", MaxPaymentTermsDays)
+	}
 	currency := strings.ToUpper(strings.TrimSpace(p.Currency))
 	if currency == "" {
 		currency = "AED"
@@ -85,6 +98,8 @@ func Normalize(payload []byte) (Normalized, error) {
 		Currency:     currency,
 		DeliveryDays: p.DeliveryDays,
 		Notes:        strings.TrimSpace(p.Notes),
+
+		PaymentTermsDays: p.PaymentTermsDays,
 	}
 	filled := 1.0 // price is always present
 	if p.DeliveryDays != nil {
@@ -121,6 +136,8 @@ func Record(ctx context.Context, q *sqlc.Queries, pool *pgxpool.Pool, rfqID, sel
 		DeliveryDays:    n.DeliveryDays,
 		Notes:           n.Notes,
 		Completeness:    n.Completeness,
+
+		PaymentTermsDays: n.PaymentTermsDays,
 	})
 	if err != nil {
 		return sqlc.Quote{}, err
@@ -132,6 +149,7 @@ func Record(ctx context.Context, q *sqlc.Queries, pool *pgxpool.Pool, rfqID, sel
 		quote, err = qtx.BumpQuoteHead(ctx, sqlc.BumpQuoteHeadParams{
 			ID: quote.ID, PriceCents: n.PriceCents, Currency: n.Currency,
 			DeliveryDays: n.DeliveryDays, Notes: n.Notes, Completeness: n.Completeness,
+			PaymentTermsDays: n.PaymentTermsDays,
 		})
 		if err != nil {
 			return sqlc.Quote{}, err
@@ -142,7 +160,7 @@ func Record(ctx context.Context, q *sqlc.Queries, pool *pgxpool.Pool, rfqID, sel
 	if _, err := qtx.UpsertQuoteVersion(ctx, sqlc.UpsertQuoteVersionParams{
 		QuoteID: quote.ID, Version: quote.Version, PriceCents: quote.PriceCents, Currency: quote.Currency,
 		DeliveryDays: quote.DeliveryDays, Notes: quote.Notes, Completeness: quote.Completeness,
-		Source: "seller", AgentCommandID: cmd,
+		Source: "seller", AgentCommandID: cmd, PaymentTermsDays: quote.PaymentTermsDays,
 	}); err != nil {
 		return sqlc.Quote{}, err
 	}
@@ -165,6 +183,7 @@ func RecordCounter(ctx context.Context, q *sqlc.Queries, pool *pgxpool.Pool, quo
 	head, err := qtx.BumpQuoteHead(ctx, sqlc.BumpQuoteHeadParams{
 		ID: quoteID, PriceCents: n.PriceCents, Currency: n.Currency,
 		DeliveryDays: n.DeliveryDays, Notes: n.Notes, Completeness: n.Completeness,
+		PaymentTermsDays: n.PaymentTermsDays,
 	})
 	if err != nil {
 		return sqlc.Quote{}, sqlc.QuoteVersion{}, err
@@ -176,7 +195,7 @@ func RecordCounter(ctx context.Context, q *sqlc.Queries, pool *pgxpool.Pool, quo
 	ver, err := qtx.UpsertQuoteVersion(ctx, sqlc.UpsertQuoteVersionParams{
 		QuoteID: head.ID, Version: head.Version, PriceCents: head.PriceCents, Currency: head.Currency,
 		DeliveryDays: head.DeliveryDays, Notes: head.Notes, Completeness: head.Completeness,
-		Source: "counter", AgentCommandID: cmd,
+		Source: "counter", AgentCommandID: cmd, PaymentTermsDays: head.PaymentTermsDays,
 	})
 	if err != nil {
 		return sqlc.Quote{}, sqlc.QuoteVersion{}, err
@@ -273,6 +292,9 @@ func (s *Service) AddMessage(ctx context.Context, q sqlc.Quote, authorCompanyID,
 type counterTerms struct {
 	PriceCents   *int64 `json:"price_cents,omitempty"`
 	DeliveryDays *int32 `json:"delivery_days,omitempty"`
+	// PaymentTermsDays is omitted when the buyer proposed no terms, so the
+	// event is byte-identical for agents that predate payment terms.
+	PaymentTermsDays *int32 `json:"payment_terms_days,omitempty"`
 }
 
 // threadEntry is one message in a quote's thread, as carried in the
@@ -313,13 +335,16 @@ func buildThread(ctx context.Context, q *sqlc.Queries, quoteID string) []threadE
 // counterBody renders the buyer-facing thread message for a counter-offer:
 // their free-text message, plus a human-readable summary of any proposed
 // terms. The price is shown in the quote's currency.
-func counterBody(message string, priceCents *int64, deliveryDays *int32, currency string) string {
+func counterBody(message string, priceCents *int64, deliveryDays, paymentTermsDays *int32, currency string) string {
 	var terms []string
 	if priceCents != nil {
 		terms = append(terms, "price: "+formatAmount(*priceCents, currency))
 	}
 	if deliveryDays != nil {
 		terms = append(terms, fmt.Sprintf("delivery: %d days", *deliveryDays))
+	}
+	if paymentTermsDays != nil {
+		terms = append(terms, "payment: "+PaymentTermsLabel(*paymentTermsDays))
 	}
 	if len(terms) == 0 {
 		return message
@@ -336,7 +361,10 @@ func counterBody(message string, priceCents *int64, deliveryDays *int32, currenc
 // seller's agent carrying the proposed terms + thread. Returns the created
 // message. Only the buyer on the quote's RFQ may counter (ErrNotFound
 // otherwise, so as not to leak existence across tenants).
-func (s *Service) Counter(ctx context.Context, buyerCompanyID, quoteID string, priceCents *int64, deliveryDays *int32, message string) (sqlc.QuoteMessage, error) {
+func (s *Service) Counter(ctx context.Context, buyerCompanyID, quoteID string, priceCents *int64, deliveryDays, paymentTermsDays *int32, message string) (sqlc.QuoteMessage, error) {
+	if paymentTermsDays != nil && (*paymentTermsDays < 0 || *paymentTermsDays > MaxPaymentTermsDays) {
+		return sqlc.QuoteMessage{}, InvalidError{Msg: fmt.Sprintf("payment_terms_days must be between 0 and %d", MaxPaymentTermsDays)}
+	}
 	quote, err := s.q.GetQuote(ctx, quoteID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return sqlc.QuoteMessage{}, ErrNotFound
@@ -350,7 +378,7 @@ func (s *Service) Counter(ctx context.Context, buyerCompanyID, quoteID string, p
 	if r.BuyerCompanyID != buyerCompanyID {
 		return sqlc.QuoteMessage{}, ErrNotFound // party-only, no leak
 	}
-	body := counterBody(message, priceCents, deliveryDays, quote.Currency)
+	body := counterBody(message, priceCents, deliveryDays, paymentTermsDays, quote.Currency)
 	msg, err := s.q.CreateQuoteMessage(ctx, sqlc.CreateQuoteMessageParams{
 		QuoteID: quoteID, Author: "buyer", Body: body, Attachments: nil,
 	})
@@ -374,7 +402,7 @@ func (s *Service) Counter(ctx context.Context, buyerCompanyID, quoteID string, p
 	if autonomous && s.pub != nil {
 		payload, err := json.Marshal(messageReceivedEvent{
 			Type: "message.received", QuoteID: quoteID, RFQID: quote.RfqID,
-			Counter: counterTerms{PriceCents: priceCents, DeliveryDays: deliveryDays},
+			Counter: counterTerms{PriceCents: priceCents, DeliveryDays: deliveryDays, PaymentTermsDays: paymentTermsDays},
 			Thread:  buildThread(ctx, s.q, quoteID),
 		})
 		if err != nil {

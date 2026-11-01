@@ -110,7 +110,7 @@ func (q *Queries) ExportInvoicesByCompany(ctx context.Context, buyerCompanyID st
 }
 
 const exportQuotesByCompany = `-- name: ExportQuotesByCompany :many
-SELECT id, rfq_id, seller_company_id, agent_command_id, price_cents, currency, delivery_days, notes, completeness, status, created_at, updated_at, version FROM quotes WHERE seller_company_id = $1 ORDER BY created_at
+SELECT id, rfq_id, seller_company_id, agent_command_id, price_cents, currency, delivery_days, notes, completeness, status, created_at, updated_at, version, payment_terms_days FROM quotes WHERE seller_company_id = $1 ORDER BY created_at
 `
 
 func (q *Queries) ExportQuotesByCompany(ctx context.Context, sellerCompanyID string) ([]Quote, error) {
@@ -136,6 +136,7 @@ func (q *Queries) ExportQuotesByCompany(ctx context.Context, sellerCompanyID str
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Version,
+			&i.PaymentTermsDays,
 		); err != nil {
 			return nil, err
 		}

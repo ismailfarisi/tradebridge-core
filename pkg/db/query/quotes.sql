@@ -1,6 +1,6 @@
 -- name: UpsertQuote :one
-INSERT INTO quotes (rfq_id, seller_company_id, agent_command_id, price_cents, currency, delivery_days, notes, completeness)
-VALUES ($1, $2, sqlc.narg(agent_command_id), $3, $4, sqlc.narg(delivery_days), $5, $6)
+INSERT INTO quotes (rfq_id, seller_company_id, agent_command_id, price_cents, currency, delivery_days, notes, completeness, payment_terms_days)
+VALUES ($1, $2, sqlc.narg(agent_command_id), $3, $4, sqlc.narg(delivery_days), $5, $6, sqlc.narg(payment_terms_days))
 ON CONFLICT (rfq_id, seller_company_id) DO UPDATE
 SET agent_command_id = EXCLUDED.agent_command_id,
     price_cents      = EXCLUDED.price_cents,
@@ -8,6 +8,7 @@ SET agent_command_id = EXCLUDED.agent_command_id,
     delivery_days    = EXCLUDED.delivery_days,
     notes            = EXCLUDED.notes,
     completeness     = EXCLUDED.completeness,
+    payment_terms_days = COALESCE(EXCLUDED.payment_terms_days, quotes.payment_terms_days),
     status           = 'submitted',
     updated_at       = NOW()
 RETURNING *;
@@ -66,20 +67,21 @@ SELECT COUNT(*) FROM quotes WHERE rfq_id = $1 AND status = 'submitted';
 
 -- name: UpsertQuoteVersion :one
 -- Idempotent per (quote_id, version): a seller resubmit keeps v1 current.
-INSERT INTO quote_versions (quote_id, version, price_cents, currency, delivery_days, notes, completeness, source, agent_command_id)
-VALUES (@quote_id, @version, @price_cents, @currency, @delivery_days, @notes, @completeness, @source, sqlc.narg(agent_command_id))
+INSERT INTO quote_versions (quote_id, version, price_cents, currency, delivery_days, notes, completeness, source, agent_command_id, payment_terms_days)
+VALUES (@quote_id, @version, @price_cents, @currency, @delivery_days, @notes, @completeness, @source, sqlc.narg(agent_command_id), sqlc.narg(payment_terms_days))
 ON CONFLICT (quote_id, version) DO UPDATE
 SET price_cents = EXCLUDED.price_cents, currency = EXCLUDED.currency,
     delivery_days = EXCLUDED.delivery_days, notes = EXCLUDED.notes,
     completeness = EXCLUDED.completeness, source = EXCLUDED.source,
-    agent_command_id = EXCLUDED.agent_command_id
+    agent_command_id = EXCLUDED.agent_command_id, payment_terms_days = EXCLUDED.payment_terms_days
 RETURNING *;
 
 -- name: BumpQuoteHead :one
 -- Applies a counter's terms to the head and increments the version atomically.
 UPDATE quotes
 SET price_cents = @price_cents, currency = @currency, delivery_days = @delivery_days,
-    notes = @notes, completeness = @completeness, version = version + 1,
+    notes = @notes, completeness = @completeness, payment_terms_days = COALESCE(sqlc.narg(payment_terms_days), payment_terms_days),
+    version = version + 1,
     status = 'submitted', updated_at = NOW()
 WHERE id = @id
 RETURNING *;
@@ -93,7 +95,8 @@ SELECT * FROM quote_versions WHERE quote_id = @quote_id ORDER BY version ASC;
 -- buyer accepted (or that lost) in the meantime returns no row.
 UPDATE quotes
 SET price_cents = @price_cents, currency = @currency, delivery_days = @delivery_days,
-    notes = @notes, completeness = @completeness, version = version + 1,
+    notes = @notes, completeness = @completeness, payment_terms_days = COALESCE(sqlc.narg(payment_terms_days), payment_terms_days),
+    version = version + 1,
     agent_command_id = NULL, updated_at = NOW()
 WHERE id = @id AND seller_company_id = @seller_company_id AND status = 'submitted'
 RETURNING *;
