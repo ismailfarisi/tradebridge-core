@@ -78,6 +78,30 @@ negotiations every `NEGOTIATION_TICK_SECONDS`; suppliers that don't answer a
 counter within `NEGOTIATION_SELLER_TIMEOUT_MINUTES` are evaluated on their
 last terms. Savings/spend analytics: `GET /v1/negotiations/savings`.
 
+**Safety under real money.**
+- *One instance per RFQ:* the worker runs on every API replica. Ticks, closes,
+  auto-accepts, approvals and declines hold a Postgres advisory lock keyed on
+  the RFQ (`pg_try_advisory_xact_lock` for ticks, which skip a busy RFQ;
+  blocking with a 10s `lock_timeout` for buyer actions, which answer 409 when it
+  runs out).
+- *Crash-safe counters:* a round row and its counter (thread message + durable
+  `message.received` agent event) commit in one transaction marked
+  `delivery_status=pending`; live side effects (Redis, notifications) run after
+  commit and mark it `sent`. A crash in between is replayed on the next tick.
+  You never get a round without its counter, or two counters for one seller
+  version.
+- *Mandate invariants* (never above walk-away or past the delivery limit,
+  counters never retreat, at most `max_rounds`) are property- and fuzz-tested:
+  `go test -run Property ./internal/negotiation`,
+  `go test -fuzz=FuzzDecide ./internal/negotiation`.
+- *Kill switches:* platform admins use `GET/PUT /admin/v1/negotiations/kill-switch`
+  (admin console → Negotiations; a reason is required). Company owners and
+  admins use `GET/PUT /v1/negotiations/controls`, with the control on the
+  Negotiations page. Either switch stops all countering, accepting and
+  auto-accepting. Negotiation views carry `pause` so the UI can say who paused
+  it. Every flip is recorded in `negotiation_kill_switch_log`; company flips
+  also go to `audit_logs`.
+
 **Local demo** (API + gateway running, `RATE_LIMIT_ENABLED=false`):
 `make demo-seed` creates `demo@northwind.test` / `Password123!`, three
 simulated sellers and seven RFQs negotiated end-to-end; `make simseller`
