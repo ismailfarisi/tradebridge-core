@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/AppShell";
 import { Icon } from "@/components/Icon";
 import { SpendChart } from "@/components/SpendChart";
 import { useToken } from "@/lib/auth";
-import { DEFAULT_CURRENCY, getSavings, money, pct, type Savings } from "@/lib/negotiation";
+import { BASIS_LABEL, DEFAULT_CURRENCY, getSavings, money, pct, verifiedHeadline, type Savings } from "@/lib/negotiation";
 
 export default function SavingsPage() {
   const token = useToken();
@@ -22,21 +22,30 @@ export default function SavingsPage() {
   if (!data) return <p className="muted">Loading savings…</p>;
 
   const t = data.totals;
+  const v = data.verified;
+  const head = verifiedHeadline(data);
+  const cur = head.currency;
+  const chart = data.monthly.map((m) => ({ ...m, savings_cents: m.verified_savings_cents ?? m.savings_cents }));
   const maxSupplier = Math.max(1, ...data.top_suppliers.map((s) => s.spend_cents));
 
   return (
     <>
       <PageHeader
         title="Savings"
-        subtitle="What your negotiation agent has saved against opening supplier quotes."
+        subtitle="What your negotiation agent has saved, measured against the lowest fair reference for each deal."
         action={<Link href="/negotiations" className="btn"><Icon name="handshake" size={16} /> All negotiations</Link>}
       />
 
       <div className="kpis">
         <div className="kpi kpi-accent">
-          <div className="kpi-label"><Icon name="trending" size={16} /> Total savings</div>
-          <div className="kpi-value">{money(t.savings_cents)}</div>
-          <div className="kpi-sub">{pct(data.savings_pct)} below opening quotes</div>
+          <div className="kpi-label"><Icon name="trending" size={16} /> {head.verified ? "Verified savings" : "Total savings"}</div>
+          <div className="kpi-value">{money(head.cents, cur)}</div>
+          <div className="kpi-sub">
+            {head.verified ? `${pct(head.pct)} below the lowest fair reference` : `${pct(head.pct)} below opening quotes`}
+          </div>
+          {v && (
+            <div className="kpi-sub faint">Vs opening quotes: {money(v.opening_quote_savings_cents, cur)}</div>
+          )}
         </div>
         <div className="kpi">
           <div className="kpi-label"><Icon name="dollar" size={16} /> Negotiated spend</div>
@@ -55,10 +64,22 @@ export default function SavingsPage() {
         </div>
       </div>
 
+      {v && (
+        <section className="card" style={{ marginBottom: "1rem" }} aria-labelledby="how-measured">
+          <div className="section-head"><h2 id="how-measured">How savings are measured</h2></div>
+          <p className="small muted" style={{ marginTop: 0 }}>{v.explanation}</p>
+          <p className="small faint" style={{ margin: 0 }}>
+            {v.by_basis.market} vs typical market price · {v.by_basis.historical} vs your last price · {v.by_basis.opening_quote} vs opening quote
+            {v.by_basis.none > 0 && ` · ${v.by_basis.none} with no reference`}
+            {v.anchored_deals > 0 && ` · ${v.anchored_deals} inflated opening${v.anchored_deals === 1 ? "" : "s"} set aside`}
+          </p>
+        </section>
+      )}
+
       <div className="split" style={{ marginBottom: "1rem" }}>
         <section className="card">
-          <div className="section-head"><h2>Spend &amp; savings — last 12 months</h2></div>
-          <SpendChart data={data.monthly} />
+          <div className="section-head"><h2>Spend &amp; {v ? "verified " : ""}savings — last 12 months</h2></div>
+          <SpendChart data={chart} currency={cur} savingsLabel={v ? "Verified savings" : "Savings vs opening quotes"} />
         </section>
         <section className="card">
           <div className="section-head"><h2>Top suppliers by spend</h2></div>
@@ -91,19 +112,25 @@ export default function SavingsPage() {
           <div style={{ overflowX: "auto" }}>
             <table className="tbl">
               <thead>
-                <tr><th>RFQ</th><th>Supplier</th><th style={{ textAlign: "right" }}>Opening</th><th style={{ textAlign: "right" }}>Final</th><th style={{ textAlign: "right" }}>Saved</th><th style={{ textAlign: "right" }}>Rounds</th><th>Date</th></tr>
+                <tr><th>RFQ</th><th>Supplier</th><th style={{ textAlign: "right" }}>Final</th><th style={{ textAlign: "right" }}>Verified saved</th><th style={{ textAlign: "right" }}>Vs opening</th><th style={{ textAlign: "right" }}>Rounds</th><th>Date</th></tr>
               </thead>
               <tbody>
                 {data.recent_deals.map((d) => {
                   const saved = Math.max(0, d.initial_cents - d.total_cents);
+                  const vs = d.verified_savings_cents ?? 0;
                   return (
                     <tr key={d.order_id}>
                       <td><Link className="rowlink" href={`/rfqs/${d.rfq_id}/negotiation`}>{d.rfq_title}</Link></td>
                       <td>{d.seller_name}</td>
-                      <td className="num muted" style={{ textAlign: "right" }}>{money(d.initial_cents, d.currency)}</td>
                       <td className="num" style={{ textAlign: "right", fontWeight: 600 }}>{money(d.total_cents, d.currency)}</td>
-                      <td className="num up" style={{ textAlign: "right", fontWeight: 600 }}>
+                      <td className="num" style={{ textAlign: "right" }} title={d.basis_reason || undefined}>
+                        <span className={vs > 0 ? "up" : "faint"} style={{ fontWeight: 600 }}>{vs > 0 ? money(vs, d.currency) : "—"}</span>
+                        {d.verified_basis && <div className="faint small">vs {BASIS_LABEL[d.verified_basis]}</div>}
+                        {d.anchored && <div><span className="badge badge-warning" title={d.basis_reason}>Inflated opening</span></div>}
+                      </td>
+                      <td className="num muted" style={{ textAlign: "right" }}>
                         {saved > 0 ? `${money(saved, d.currency)} (${pct((saved / d.initial_cents) * 100)})` : "—"}
+                        <div className="faint small">from {money(d.initial_cents, d.currency)}</div>
                       </td>
                       <td className="num" style={{ textAlign: "right" }}>{d.rounds}</td>
                       <td className="muted">{new Date(d.created_at).toLocaleDateString()}</td>

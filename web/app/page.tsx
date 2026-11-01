@@ -43,7 +43,7 @@ const PROOFS = [
   },
   {
     title: "You approve, and you see the saving",
-    body: "Every counter-offer is recorded with the reason it was made. Approve the deal in one tap and the purchase order goes to the supplier.",
+    body: "Every counter-offer is recorded with the reason it was made. Savings are measured against the typical market price or your own last price, not just the opening quote, so an inflated quote can't fake a discount. Approve in one tap and the purchase order goes to the supplier.",
   },
 ];
 
@@ -118,8 +118,9 @@ export default function Landing() {
                 <p>Al Noor came down from AED 10,400 to AED 8,650 with 6-day delivery, under your budget. Approve it?</p>
               </div>
               <figcaption className="lp-floor-foot">
-                <span className="faint small">Example negotiation</span>
-                <span className="num lp-floor-saved">Saved {aed(1750)} (16.8%)</span>
+                <span className="faint small">Example negotiation · illustrative figures</span>
+                {/* Example only: verified savings vs the typical (lower-median) opening of AED 9,900. */}
+                <span className="num lp-floor-saved">Example: saved {aed(1250)} (12.6%) vs typical market price</span>
               </figcaption>
             </figure>
           </section>

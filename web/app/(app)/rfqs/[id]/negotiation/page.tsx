@@ -8,7 +8,9 @@ import { Icon } from "@/components/Icon";
 import { NegotiationPauseBanner } from "@/components/NegotiationPauseControl";
 import { useToken } from "@/lib/auth";
 import {
+  BASIS_LABEL,
   DEFAULT_CURRENCY,
+  basisSentence,
   PRIORITIES,
   approveNegotiation,
   deadlineDays,
@@ -31,6 +33,7 @@ import {
   statusClass,
   suggestTarget,
   TERMS_IMPORTANCE,
+  type Baselines,
   type NegotiationView,
   type Round,
   type Supplier,
@@ -273,13 +276,24 @@ export default function NegotiationRoom() {
             <div className="kpi-label"><Icon name="handshake" size={16} /> {done ? "Agreed price" : "Best current offer"}</div>
             <div className="kpi-value">{money(view.summary.current_best_cents || null, cur)}</div>
           </div>
-          <div className="kpi kpi-accent">
-            <div className="kpi-label"><Icon name="trending" size={16} /> {done ? "Saved" : "Saved so far"}</div>
-            <div className="kpi-value">{money(view.summary.savings_cents, cur)}</div>
-            <div className="kpi-sub">{pct(view.summary.savings_pct)} vs opening</div>
-          </div>
+          {view.baselines ? (
+            <div className="kpi kpi-accent">
+              <div className="kpi-label"><Icon name="trending" size={16} /> {done ? "Verified savings" : "Verified so far"}</div>
+              <div className="kpi-value">{money(view.baselines.verified_savings_cents, view.baselines.currency)}</div>
+              <div className="kpi-sub">{pct(view.baselines.verified_savings_pct)} vs {BASIS_LABEL[view.baselines.verified_basis]}</div>
+              <div className="kpi-sub faint">Vs opening quote: {money(view.baselines.opening_savings_cents, view.baselines.currency)}</div>
+            </div>
+          ) : (
+            <div className="kpi kpi-accent">
+              <div className="kpi-label"><Icon name="trending" size={16} /> {done ? "Saved" : "Saved so far"}</div>
+              <div className="kpi-value">{money(view.summary.savings_cents, cur)}</div>
+              <div className="kpi-sub">{pct(view.summary.savings_pct)} vs opening</div>
+            </div>
+          )}
         </div>
       )}
+
+      {s && view.baselines && <BaselinePanel b={view.baselines} sellerName={view.suppliers.find((x) => x.quote_id === view.baselines?.quote_id)?.seller_name} />}
 
       {showForm && token && (
         <MandateForm
@@ -302,7 +316,15 @@ export default function NegotiationRoom() {
             </div>
           ) : (
             <div className="log-groups">
-              {groupRounds(view.rounds, ranked).map((g) => <LogGroup key={g.quoteId} name={g.name} rounds={g.rounds} currency={cur} />)}
+              {groupRounds(view.rounds, ranked).map((g) => (
+                <LogGroup
+                  key={g.quoteId}
+                  name={g.name}
+                  rounds={g.rounds}
+                  currency={cur}
+                  anchorNote={view.suppliers.find((x) => x.quote_id === g.quoteId && x.anchored)?.anchor_note}
+                />
+              ))}
             </div>
           )}
         </section>
@@ -326,7 +348,7 @@ function groupRounds(rounds: Round[], ranked: Supplier[]) {
     .sort((a, b) => (order.get(a.quoteId) ?? 99) - (order.get(b.quoteId) ?? 99));
 }
 
-function LogGroup({ name, rounds, currency }: { name: string; rounds: Round[]; currency: string }) {
+function LogGroup({ name, rounds, currency, anchorNote }: { name: string; rounds: Round[]; currency: string; anchorNote?: string }) {
   const [open, setOpen] = useState(false);
   const shown = open ? rounds : rounds.slice(0, 1);
   return (
@@ -337,6 +359,15 @@ function LogGroup({ name, rounds, currency }: { name: string; rounds: Round[]; c
       </div>
       <ol className="timeline">
         {shown.map((r) => <RoundItem key={r.id} r={r} currency={currency} />)}
+        {anchorNote && (
+          <li className="tl-item">
+            <span className="tl-dot bad"><Icon name="alert" size={14} strokeWidth={2.2} /></span>
+            <div className="tl-body">
+              <strong style={{ fontSize: "0.92rem" }}>Opening quote looks inflated</strong>
+              <div className="small muted" style={{ marginTop: "0.3rem" }}>{anchorNote}</div>
+            </div>
+          </li>
+        )}
       </ol>
       {rounds.length > 1 && (
         <button type="button" className="btn btn-ghost btn-sm" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
@@ -373,6 +404,9 @@ function LedgerRow({ q, rank, showTerms, selectable, selected, onSelect }: { q: 
         {q.verification_status === "verified" && (
           <span title="Verified supplier" aria-label="Verified supplier" className="ledger-verified"><Icon name="shield" size={14} /></span>
         )}
+        {q.anchored && (
+          <span className="badge badge-warning" title={q.anchor_note}>Inflated opening</span>
+        )}
       </span>
       <span className="ledger-price num">
         {drop > 0 && <s className="faint">{money(q.initial_price_cents, q.currency)}</s>}
@@ -383,13 +417,82 @@ function LedgerRow({ q, rank, showTerms, selectable, selected, onSelect }: { q: 
         {showTerms && <span className="faint" style={{ display: "block" }}>{q.payment_terms_days != null ? paymentTermsLabel(q.payment_terms_days) : "Terms not stated"}</span>}
       </span>
       <span className="ledger-saved small num">
-        {drop > 0 ? <span className="up">−{money(drop, q.currency)} ({pct((drop / q.initial_price_cents) * 100)})</span> : <span className="faint">—</span>}
+        {drop > 0 ? (
+          <span className={q.anchored ? "faint" : "up"} title={q.anchored ? "Drop from an inflated opening; not counted as savings" : undefined}>
+            −{money(drop, q.currency)} ({pct((drop / q.initial_price_cents) * 100)})
+          </span>
+        ) : (
+          <span className="faint">—</span>
+        )}
         <span className="faint">{q.counters} counter{q.counters === 1 ? "" : "s"}</span>
       </span>
       <span className="ledger-status">{supplierBadge(q)}</span>
     </>
   );
   return selectable ? <label className={className}>{cells}</label> : <div className={className}>{cells}</div>;
+}
+
+// BaselinePanel shows every reference the deal is measured against, which one
+// the headline uses, and why.
+function BaselinePanel({ b, sellerName }: { b: Baselines; sellerName?: string }) {
+  const refs: { key: Baselines["verified_basis"]; label: string; cents: number | null; note: string }[] = [
+    {
+      key: "market",
+      label: "Typical market price",
+      cents: b.market_cents,
+      note: b.market_cents != null ? `Middle opening quote across ${b.market_quote_count} suppliers` : "Needs at least 2 quotes in the same currency",
+    },
+    {
+      key: "historical",
+      label: "Your last price",
+      cents: b.historical_cents,
+      note: b.historical
+        ? `${b.historical.rfq_title} · ${b.historical.quantity}, ${new Date(b.historical.ordered_at).toLocaleDateString()} · scaled to this quantity`
+        : b.source === "backfill"
+          ? "Not checked for deals closed before baselines were tracked"
+          : "No comparable past purchase",
+    },
+    {
+      key: "opening_quote",
+      label: `Opening quote${sellerName ? ` (${sellerName})` : ""}`,
+      cents: b.opening_cents,
+      note: b.anchor.flagged ? "Looks inflated — not used" : "This supplier's first price",
+    },
+  ];
+  return (
+    <section className="card" style={{ marginBottom: "1rem" }} aria-labelledby="baseline-head">
+      <div className="section-head">
+        <h2 id="baseline-head">How savings are measured</h2>
+        <span className="faint small">
+          {b.snapshot
+            ? `Frozen when the deal closed${b.computed_at ? ` · ${new Date(b.computed_at).toLocaleDateString()}` : ""}`
+            : "Live preview · frozen when the deal closes"}
+        </span>
+      </div>
+      {b.anchor.flagged && (
+        <div className="banner banner-warn" style={{ marginBottom: "0.75rem" }}>
+          <Icon name="alert" />
+          <span>{b.anchor.note}</span>
+        </div>
+      )}
+      {/* The anchor note already leads in the banner above; don't repeat it. */}
+      <p className="small muted" style={{ marginTop: 0 }}>{(b.anchor.flagged ? b.reason.replace(b.anchor.note, "").trim() : b.reason) || basisSentence(b.verified_basis, b)}</p>
+      <div className="col" style={{ gap: "0.5rem" }}>
+        {refs.map((r) => (
+          <div key={r.key} className="row small" style={{ justifyContent: "space-between", gap: "0.75rem" }}>
+            <span>
+              <strong>{r.label}</strong>
+              {b.verified_basis === r.key && <span className="badge badge-success" style={{ marginLeft: "0.4rem" }}>Used for headline</span>}
+              <div className="faint">{r.note}</div>
+            </span>
+            <span className={`num${r.key === "opening_quote" && b.anchor.flagged ? " faint" : ""}`}>
+              {r.cents != null ? (r.key === "opening_quote" && b.anchor.flagged ? <s>{money(r.cents, b.currency)}</s> : money(r.cents, b.currency)) : "—"}
+            </span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 function RoundItem({ r, currency }: { r: Round; currency: string }) {

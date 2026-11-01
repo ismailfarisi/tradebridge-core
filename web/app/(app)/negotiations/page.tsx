@@ -9,12 +9,15 @@ import { useMe } from "@/lib/auth";
 import { NOT_PAUSED, type PauseInfo } from "@/lib/negotiationControls";
 import { listRfqs, type RFQ } from "@/lib/api";
 import {
+  BASIS_LABEL,
   getSavings,
   listNegotiations,
   money,
   pct,
   STATUS_LABEL,
   statusClass,
+  verifiedHeadline,
+  type BaselineBasis,
   type NegotiationListItem,
   type NegotiationStatus,
   type Savings,
@@ -83,9 +86,13 @@ export default function NegotiationsPage() {
       {savings && (
         <div className="kpis">
           <div className="kpi kpi-accent">
-            <div className="kpi-label"><Icon name="trending" size={16} /> Saved to date</div>
-            <div className="kpi-value">{money(savings.totals.savings_cents)}</div>
-            <div className="kpi-sub">{pct(savings.savings_pct)} off opening quotes</div>
+            <div className="kpi-label"><Icon name="trending" size={16} /> {savings.verified ? "Verified savings" : "Saved to date"}</div>
+            <div className="kpi-value">{money(verifiedHeadline(savings).cents, verifiedHeadline(savings).currency)}</div>
+            <div className="kpi-sub">
+              {savings.verified
+                ? `vs the lowest fair reference · ${money(savings.verified.opening_quote_savings_cents, savings.verified.currency)} vs opening quotes`
+                : `${pct(savings.savings_pct)} off opening quotes`}
+            </div>
           </div>
           <div className="kpi">
             <div className="kpi-label"><Icon name="zap" size={16} /> Live</div>
@@ -158,7 +165,21 @@ export default function NegotiationsPage() {
                     <td className="num muted" style={{ textAlign: "right" }}>{money(n.target_price_cents)}</td>
                     <td className="num" style={{ textAlign: "right", fontWeight: 600 }}>{money(n.current_best_cents || null)}</td>
                     <td className="num up" style={{ textAlign: "right", fontWeight: 600, paddingRight: "1.25rem" }}>
-                      {n.savings_cents > 0 ? money(n.savings_cents) : "—"}
+                      {n.verified_savings_cents != null ? (
+                        <>
+                          {n.verified_savings_cents > 0 ? money(n.verified_savings_cents) : "—"}
+                          <div className="faint small" style={{ fontWeight: 400 }}>
+                            verified{n.verified_basis ? ` · vs ${BASIS_LABEL[n.verified_basis as BaselineBasis] ?? n.verified_basis}` : ""}
+                          </div>
+                        </>
+                      ) : n.savings_cents > 0 ? (
+                        <>
+                          {money(n.savings_cents)}
+                          <div className="faint small" style={{ fontWeight: 400 }}>vs opening</div>
+                        </>
+                      ) : (
+                        "—"
+                      )}
                     </td>
                   </tr>
                 ))}

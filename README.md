@@ -154,6 +154,43 @@ credit up to a limit, and lower their floor for faster payment or longer
 lead time, so `make demo-seed` (four RFQs negotiate terms) shows real
 logrolled rounds.
 
+### How savings are measured
+
+An opening quote is easy to inflate, so savings against it alone mean little.
+Every deal is measured against up to three baselines
+(`internal/negotiation/baseline.go`), and the headline **verified savings** use
+the lowest one that applies:
+
+| Baseline | Definition | Used when |
+| --- | --- | --- |
+| Market | Lower median of all suppliers' opening (v1) quotes on the RFQ, same currency (with two quotes, the lower one) | at least 2 same-currency quotes |
+| Historical | The buyer's most recent confirmed/fulfilled/completed order in the same category and currency, per-unit price scaled to this RFQ's quantity | same quantity unit, quantity 0.5–2x, item-term similarity ≥ 0.5, ≤ 365 days old |
+| Opening quote | The winning supplier's own opening quote | it is not flagged as an anchor |
+
+An opening quote is flagged as a likely **anchor** when it is more than 25%
+above the lower median of the other suppliers' openings
+(`AnchorMarketThreshold`) or more than 35% above the historical baseline
+(`AnchorHistoricalThreshold`). Anchored openings never count as a baseline, and
+the flag shows in the negotiation room and agent log. Currencies are never
+compared with each other. If the final price is not below the chosen baseline,
+verified savings are zero.
+
+Baselines are snapshot into `negotiation_baselines` (migration 037) whenever a
+negotiation closes (agent close, approval, awarding another supplier, or an
+external close), so reported figures don't drift. Migration 037 backfills
+existing negotiations from immutable quote versions (opening + market only;
+`source = 'backfill'`). Orders without a snapshot are measured live against
+the RFQ's opening quotes.
+
+API: the negotiation view adds `baselines` (every baseline, `verified_basis`,
+`reason`, `anchor`, `snapshot`/`source`), `summary.verified_*` and per-supplier
+`anchored`/`anchor_note`; `GET /v1/negotiations/savings` adds `verified`
+(headline totals in the buyer's main currency, basis counts, explanation),
+`monthly[].verified_savings_cents` and per-deal verified fields in
+`recent_deals`; `GET /v1/negotiations` adds `verified_savings_cents` for
+closed deals. Existing opening-quote fields (`totals`, `savings_pct`,
+`summary.savings_cents`, ...) are unchanged.
+
 **Local demo** (API + gateway running, `RATE_LIMIT_ENABLED=false`):
 `make demo-seed` creates `demo@northwind.test` / `Password123!`, three
 simulated sellers and seven RFQs negotiated end-to-end; `make simseller`
