@@ -9,7 +9,7 @@ import { SellerAnalyticsPanel } from "@/components/SellerAnalytics";
 import { ActivationChecklist } from "@/components/ActivationChecklist";
 import { Icon } from "@/components/Icon";
 import { SpendChart } from "@/components/SpendChart";
-import { getSavings, money, pct, type Savings } from "@/lib/negotiation";
+import { getSavings, money, pct, verifiedHeadline, type Savings } from "@/lib/negotiation";
 
 export default function Dashboard() {
   const { token, me } = useMe();
@@ -41,13 +41,23 @@ export default function Dashboard() {
               <h2>Negotiated spend</h2>
               <Link href="/savings" className="small row" style={{ display: "inline-flex", gap: "0.3rem" }}>Savings report <Icon name="arrowRight" size={14} /></Link>
             </div>
-            <SpendChart data={savings.monthly} height={190} />
+            <SpendChart
+              data={savings.monthly.map((m) => ({ ...m, savings_cents: m.verified_savings_cents ?? m.savings_cents }))}
+              currency={verifiedHeadline(savings).currency}
+              savingsLabel={savings.verified ? "Verified savings" : "Savings vs opening quotes"}
+              height={190}
+            />
           </div>
           <div className="col" style={{ gap: "1rem" }}>
             <div className="kpi kpi-accent">
-              <div className="kpi-label"><Icon name="trending" size={16} /> Saved by your agent</div>
-              <div className="kpi-value">{money(savings.totals.savings_cents)}</div>
-              <div className="kpi-sub">{pct(savings.savings_pct)} below opening quotes · {savings.totals.deals} deals</div>
+              <div className="kpi-label"><Icon name="trending" size={16} /> {savings.verified ? "Verified savings" : "Saved by your agent"}</div>
+              <div className="kpi-value">{money(verifiedHeadline(savings).cents, verifiedHeadline(savings).currency)}</div>
+              <div className="kpi-sub">
+                {savings.verified
+                  ? `${pct(savings.verified.savings_pct)} below the lowest fair reference · vs opening quotes ${money(savings.verified.opening_quote_savings_cents, savings.verified.currency)}`
+                  : `${pct(savings.savings_pct)} below opening quotes`}{" "}
+                · {savings.totals.deals} deals
+              </div>
             </div>
             <Link href="/negotiations" className="kpi" style={{ color: "inherit" }}>
               <div className="kpi-label"><Icon name="handshake" size={16} /> Negotiations</div>

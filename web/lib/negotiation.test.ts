@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  BASIS_LABEL,
+  basisSentence,
   deadlineDays,
   describeLimits,
   dollarsToCents,
@@ -12,6 +14,7 @@ import {
   statusClass,
   suggestTarget,
   type Supplier,
+  verifiedHeadline,
   when,
 } from "./negotiation";
 
@@ -119,5 +122,49 @@ describe("mandate suggestions", () => {
   it("summarises the quote range", () => {
     expect(quoteRange([sup("A", 4_731_000, 18), sup("B", 5_315_500, 7)])).toEqual({ count: 2, minCents: 4_731_000, maxCents: 5_315_500, minDays: 7, maxDays: 18 });
     expect(quoteRange([])).toBeNull();
+  });
+});
+
+describe("verified savings helpers", () => {
+  const base = {
+    totals: { deals: 1, spend_cents: 80000, savings_cents: 120000, baseline_cents: 200000, negotiated_deals: 1 },
+    savings_pct: 60,
+    negotiations: { active: 0, awaiting_approval: 0, completed: 1, avg_rounds: 1 },
+    monthly: [],
+    top_suppliers: [],
+    recent_deals: [],
+  };
+
+  it("headline prefers verified savings over opening-quote savings", () => {
+    const h = verifiedHeadline({
+      ...base,
+      verified: {
+        currency: "USD",
+        deals: 1,
+        spend_cents: 80000,
+        baseline_cents: 105000,
+        savings_cents: 25000,
+        savings_pct: 23.81,
+        opening_quote_savings_cents: 120000,
+        by_basis: { market: 1, historical: 0, opening_quote: 0, none: 0 },
+        anchored_deals: 1,
+        snapshot_deals: 1,
+        other_currency_deals: 0,
+        explanation: "",
+      },
+    });
+    expect(h).toEqual({ cents: 25000, pct: 23.81, currency: "USD", verified: true });
+  });
+
+  it("falls back to opening-quote totals for an older API", () => {
+    expect(verifiedHeadline(base)).toEqual({ cents: 120000, pct: 60, currency: "AED", verified: false });
+  });
+
+  it("explains each basis in plain words", () => {
+    expect(basisSentence("market", { market_quote_count: 3 })).toBe("Measured against the typical opening price across 3 suppliers.");
+    expect(basisSentence("historical")).toContain("last paid");
+    expect(basisSentence("opening_quote")).toContain("opening quote");
+    expect(basisSentence("none")).toContain("no savings are claimed");
+    expect(BASIS_LABEL.market).toBe("typical market price");
   });
 });

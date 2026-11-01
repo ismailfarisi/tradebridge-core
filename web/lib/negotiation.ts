@@ -54,6 +54,36 @@ export type Supplier = {
   last_action: string;
   utility: number;
   recommended: boolean;
+  // An opening far above the other suppliers (or your past price); it never
+  // counts as a savings baseline.
+  anchored?: boolean;
+  anchor_pct?: number;
+  anchor_note?: string;
+};
+
+export type BaselineBasis = "market" | "historical" | "opening_quote" | "none";
+
+// Baselines measure one deal against every reference. Verified savings use
+// the lowest applicable one; opening-quote savings are shown as secondary.
+export type Baselines = {
+  currency: string;
+  final_cents: number;
+  opening_cents: number | null;
+  market_cents: number | null;
+  market_quote_count: number;
+  historical_cents: number | null;
+  historical: { order_id: string; rfq_id: string; rfq_title: string; total_cents: number; quantity: string; ordered_at: string } | null;
+  anchor: { flagged: boolean; pct: number; basis: string; note: string };
+  verified_baseline_cents: number;
+  verified_basis: BaselineBasis;
+  verified_savings_cents: number;
+  verified_savings_pct: number;
+  opening_savings_cents: number;
+  reason: string;
+  quote_id: string;
+  snapshot: boolean;
+  source: "close" | "backfill" | "live";
+  computed_at: string | null;
 };
 
 export type NegotiationView = {
@@ -69,8 +99,12 @@ export type NegotiationView = {
     savings_pct: number;
     quote_count: number;
     counter_count: number;
+    verified_savings_cents?: number;
+    verified_savings_pct?: number;
+    verified_basis?: BaselineBasis | "";
   };
   suggested: { target_price_cents: number; max_price_cents: number } | null;
+  baselines?: Baselines | null;
 };
 
 export type StrategyInput = {
@@ -91,13 +125,34 @@ export type NegotiationListItem = Strategy & {
   initial_best_cents: number;
   current_best_cents: number;
   savings_cents: number;
+  verified_savings_cents?: number | null;
+  verified_basis?: BaselineBasis | "";
+  anchored?: boolean;
+};
+
+export type VerifiedSavings = {
+  currency: string;
+  deals: number;
+  spend_cents: number;
+  baseline_cents: number;
+  savings_cents: number;
+  savings_pct: number;
+  opening_quote_savings_cents: number;
+  by_basis: Record<BaselineBasis, number>;
+  anchored_deals: number;
+  snapshot_deals: number;
+  other_currency_deals: number;
+  explanation: string;
 };
 
 export type Savings = {
+  // totals and savings_pct measure against each supplier's opening quote.
   totals: { deals: number; spend_cents: number; savings_cents: number; baseline_cents: number; negotiated_deals: number };
   savings_pct: number;
+  // verified is the headline: savings against the lowest fair reference.
+  verified?: VerifiedSavings;
   negotiations: { active: number; awaiting_approval: number; completed: number; avg_rounds: number };
-  monthly: { month: string; spend_cents: number; savings_cents: number }[];
+  monthly: { month: string; spend_cents: number; savings_cents: number; verified_savings_cents?: number }[];
   top_suppliers: { id: string; name: string; deals: number; spend_cents: number }[];
   recent_deals: {
     order_id: string;
@@ -109,8 +164,49 @@ export type Savings = {
     seller_name: string;
     initial_cents: number;
     rounds: number;
+    verified_baseline_cents?: number;
+    verified_basis?: BaselineBasis;
+    verified_savings_cents?: number;
+    market_cents?: number | null;
+    historical_cents?: number | null;
+    anchored?: boolean;
+    anchor_pct?: number;
+    basis_reason?: string;
+    baseline_source?: string;
   }[];
 };
+
+export const BASIS_LABEL: Record<BaselineBasis, string> = {
+  market: "typical market price",
+  historical: "your last price",
+  opening_quote: "opening quote",
+  none: "no reference",
+};
+
+// basisSentence says in plain words what a verified figure is measured against.
+export function basisSentence(basis: BaselineBasis | "" | undefined, b?: Pick<Baselines, "market_quote_count"> | null): string {
+  switch (basis) {
+    case "market":
+      return `Measured against the typical opening price${b?.market_quote_count ? ` across ${b.market_quote_count} suppliers` : " across suppliers"}.`;
+    case "historical":
+      return "Measured against what you last paid for the same item.";
+    case "opening_quote":
+      return "Measured against the supplier's opening quote — the only fair reference available.";
+    case "none":
+      return "No reference price available, so no savings are claimed.";
+    default:
+      return "";
+  }
+}
+
+// verifiedHeadline picks the headline figures, falling back to opening-quote
+// totals for an older API that has no verified block.
+export function verifiedHeadline(data: Savings): { cents: number; pct: number; currency: string; verified: boolean } {
+  if (data.verified) {
+    return { cents: data.verified.savings_cents, pct: data.verified.savings_pct, currency: data.verified.currency, verified: true };
+  }
+  return { cents: data.totals.savings_cents, pct: data.savings_pct, currency: DEFAULT_CURRENCY, verified: false };
+}
 
 async function call<T>(token: string, method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${CORE_URL}${path}`, {
