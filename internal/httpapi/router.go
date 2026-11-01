@@ -304,6 +304,9 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	settingsSvc := settings.NewService(q, box, envExtraction, llmHealth)
 
 	rfq.NewHandler(rfq.NewService(q, pub, settingsSvc, attLoader, cfg.Logger, cfg.RFQTTLDays, llmHealth, notifier, cfg.VerifyRequiredForMatch), q, entSvc).Register(f, middleware.RequireVerified(q), rlRFQ, guard...)
+	// Seller RFQ inbox: the RFQs matched to the caller's company. Read-only and
+	// open to unverified users, like the buyer list/get routes.
+	rfq.NewSellerHandler(q).Register(f, guard...)
 	// invSvc is shared: quotes.Accept creates the invoice inside its
 	// transaction, and the invoicing handler serves it back as a PDF.
 	invSvc := invoicing.NewService(cfg.Logger)

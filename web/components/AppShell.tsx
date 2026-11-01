@@ -37,6 +37,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
   {
     group: "Selling",
     items: [
+      { href: "/seller/rfqs", label: "RFQ inbox", icon: "list", show: isSeller },
       { href: "/seller/profile", label: "Supplier profile", icon: "store", show: isSeller },
       { href: "/seller/catalog", label: "Catalog", icon: "layers", show: isSeller },
       { href: "/seller/agent", label: "Sales agent", icon: "bot", show: isSeller },
@@ -71,9 +72,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     setImpersonating(localStorage.getItem(IMPERSONATING_FLAG_KEY));
   }, []);
 
+  // Signed-out visitors to seller pages go to the supplier sign-in.
   useEffect(() => {
-    if (hydrated && ready && !token) router.replace("/login");
-  }, [hydrated, ready, token, router]);
+    if (hydrated && ready && !token) router.replace(pathname.startsWith("/seller") ? "/seller/login" : "/login");
+  }, [hydrated, ready, token, router, pathname]);
 
   useEffect(() => {
     if (!token || !me || !isBuyer(me)) return;
@@ -148,7 +150,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               title="Sign out"
               onClick={() => {
                 logout();
-                router.replace("/login");
+                router.replace(me.company_type === "seller" ? "/seller/login" : "/login");
               }}
             >
               <Icon name="logout" />

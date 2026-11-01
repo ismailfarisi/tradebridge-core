@@ -44,6 +44,18 @@ cd web && npm install && npm run dev   # -> http://localhost:3000
 `up` · `down` · `dev` · `gateway` · `migrate` · `migrate-down` · `generate` ·
 `test` · `lint` · `build` · `docker` · `demo-seed` · `simseller`
 
+## Seller RFQ inbox
+
+Human sellers see the RFQs Core matched to their company in the web app at
+`/seller/rfqs` (list with Awaiting quote / Quoted / Closed tabs and search) and
+`/seller/rfqs/:id` (requirements, buyer attachments, their own quote and the
+quote thread). The API is `GET /v1/seller/rfqs?tab=open|quoted|closed&q=` and
+`GET /v1/seller/rfqs/:id`; visibility comes from `rfq_matches`, so unmatched
+companies get 404, and the buyer's intake chat is never returned. Suppliers sign
+up at `/seller/register` (creates a seller company and its supplier profile in
+one step so matching works immediately) and sign in at `/seller/login`.
+Quoting still happens through the seller's agent on the Agent Gateway.
+
 ## Autonomous negotiation
 
 Buyers can hand an RFQ to a negotiation agent (`internal/negotiation`). The

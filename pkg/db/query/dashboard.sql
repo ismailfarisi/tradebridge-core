@@ -1,5 +1,6 @@
 -- name: UpsertRFQView :exec
--- Records that the buyer has now seen this RFQ's quotes (clears its badge).
+-- Records that a company (the buyer, or a matched seller) has now seen this
+-- RFQ. For buyers it clears the new-quotes badge; for sellers the "new" flag.
 INSERT INTO rfq_views (company_id, rfq_id, last_viewed_at)
 VALUES (@company_id, @rfq_id, NOW())
 ON CONFLICT (company_id, rfq_id) DO UPDATE SET last_viewed_at = NOW();

@@ -402,7 +402,8 @@ func (s *Service) broadcast(ctx context.Context, rfq sqlc.Rfq, req Requirements,
 			Body:     "A buyer's request matches your catalog. Open it to quote.",
 			Data:     map[string]any{"rfq_id": rfq.ID},
 			CTALabel: "View RFQ",
-			CTAPath:  "/rfqs/" + rfq.ID,
+			// The seller inbox; /rfqs/:id is the buyer's view and 404s for sellers.
+			CTAPath: "/seller/rfqs/" + rfq.ID,
 		})
 	}
 	return nil

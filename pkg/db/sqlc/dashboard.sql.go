@@ -244,7 +244,8 @@ type UpsertRFQViewParams struct {
 	RfqID     string `json:"rfq_id"`
 }
 
-// Records that the buyer has now seen this RFQ's quotes (clears its badge).
+// Records that a company (the buyer, or a matched seller) has now seen this
+// RFQ. For buyers it clears the new-quotes badge; for sellers the "new" flag.
 func (q *Queries) UpsertRFQView(ctx context.Context, arg UpsertRFQViewParams) error {
 	_, err := q.db.Exec(ctx, upsertRFQView, arg.CompanyID, arg.RfqID)
 	return err
