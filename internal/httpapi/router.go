@@ -313,7 +313,7 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	threadPub := thread.NewPublisher(cfg.Redis, cfg.Logger)
 	quotesSvc := quotes.NewService(q, cfg.Pool, pub, attLoader, cfg.Logger, notifier, invSvc, entSvc, threadPub)
 	quotes.NewHandler(quotesSvc, q).Register(f, rlMessage, middleware.RequireVerified(q), guard...)
-	negEngine := negotiation.NewEngine(q, quotesSvc, notifier, cfg.Logger, cfg.NegotiationSellerTimeout)
+	negEngine := negotiation.NewEngine(q, cfg.Pool, quotesSvc, notifier, cfg.Logger, cfg.NegotiationSellerTimeout)
 	negotiation.NewHandler(q, negEngine, entSvc).Register(f, guard...)
 	if cfg.WorkerCtx != nil {
 		go negEngine.Run(cfg.WorkerCtx, cfg.NegotiationTick)
@@ -374,6 +374,7 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 		analytics.NewHandler(analytics.NewService(q)).Register(f, adminGuard)
 		waitlist.NewAdminHandler(q, sender, appBaseURLOr(cfg.AppBaseURL), cfg.Logger).Register(f, adminGuard)
 		feedbackHandler.RegisterAdmin(f, adminGuard)
+		negotiation.NewAdminHandler(q, negEngine).Register(f, adminGuard)
 	} else {
 		cfg.Logger.Warn().Msg("ADMIN_JWT_SECRET unset — platform admin routes disabled")
 	}

@@ -12,10 +12,12 @@ import (
 
 const acceptQuote = `-- name: AcceptQuote :one
 UPDATE quotes SET status = 'accepted', updated_at = NOW()
-WHERE id = $1
+WHERE id = $1 AND status = 'submitted'
 RETURNING id, rfq_id, seller_company_id, agent_command_id, price_cents, currency, delivery_days, notes, completeness, status, created_at, updated_at, version
 `
 
+// Only a still-submitted quote can be accepted: a concurrent accept that got
+// there first leaves zero rows (pgx.ErrNoRows), never a second winner.
 func (q *Queries) AcceptQuote(ctx context.Context, id string) (Quote, error) {
 	row := q.db.QueryRow(ctx, acceptQuote, id)
 	var i Quote
@@ -343,6 +345,33 @@ func (q *Queries) ListSubmittedQuoteSellersExcept(ctx context.Context, arg ListS
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockRFQForAccept = `-- name: LockRFQForAccept :one
+SELECT id, buyer_company_id, created_by, title, raw_text, requirements, category, status, match_count, created_at, updated_at, messages, expires_at FROM rfqs WHERE id = $1 FOR UPDATE
+`
+
+// Row-locks the RFQ for the rest of the accept transaction so two accepts on
+// the same RFQ (different quotes, different API instances) serialise.
+func (q *Queries) LockRFQForAccept(ctx context.Context, id string) (Rfq, error) {
+	row := q.db.QueryRow(ctx, lockRFQForAccept, id)
+	var i Rfq
+	err := row.Scan(
+		&i.ID,
+		&i.BuyerCompanyID,
+		&i.CreatedBy,
+		&i.Title,
+		&i.RawText,
+		&i.Requirements,
+		&i.Category,
+		&i.Status,
+		&i.MatchCount,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Messages,
+		&i.ExpiresAt,
+	)
+	return i, err
 }
 
 const rankQuotesByRFQ = `-- name: RankQuotesByRFQ :many

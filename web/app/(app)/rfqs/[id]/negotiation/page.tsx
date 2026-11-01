@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { PageHeader } from "@/components/AppShell";
 import { Icon } from "@/components/Icon";
+import { NegotiationPauseBanner } from "@/components/NegotiationPauseControl";
 import { useToken } from "@/lib/auth";
 import {
   DEFAULT_CURRENCY,
@@ -54,7 +55,7 @@ export default function NegotiationRoom() {
 
   useEffect(load, [load]);
 
-  const live = view?.strategy?.status === "active";
+  const live = view?.strategy?.status === "active" && !view?.pause?.paused;
   useEffect(() => {
     if (!live) return;
     const t = setInterval(load, LIVE_POLL_MS);
@@ -161,6 +162,8 @@ export default function NegotiationRoom() {
       />
 
       {err && <div className="banner" style={{ borderColor: "#fecdca", background: "var(--danger-soft)", color: "#b42318" }}><Icon name="x" /> {err}</div>}
+
+      {s && !closed && <NegotiationPauseBanner pause={view.pause} />}
 
       {orderId && (
         <div className="banner banner-ok" role="status">

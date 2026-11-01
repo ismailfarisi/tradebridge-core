@@ -1,4 +1,5 @@
 import { CORE_URL, errorMessage } from "./api";
+import type { PauseInfo } from "./negotiationControls";
 
 export type NegotiationStatus = "active" | "paused" | "awaiting_approval" | "completed" | "cancelled";
 export type Tone = "collaborative" | "firm";
@@ -71,6 +72,7 @@ export type NegotiationView = {
     counter_count: number;
   };
   suggested: { target_price_cents: number; max_price_cents: number } | null;
+  pause?: PauseInfo;
 };
 
 export type StrategyInput = {
@@ -146,7 +148,7 @@ export const approveNegotiation = (token: string, rfqId: string, quoteId?: strin
 export const declineNegotiation = (token: string, rfqId: string) =>
   call<NegotiationView>(token, "POST", `${base(rfqId)}/decline`, {});
 export const listNegotiations = (token: string) =>
-  call<{ negotiations: NegotiationListItem[] }>(token, "GET", "/v1/negotiations");
+  call<{ negotiations: NegotiationListItem[]; pause?: PauseInfo }>(token, "GET", "/v1/negotiations");
 export const getSavings = (token: string) => call<Savings>(token, "GET", "/v1/negotiations/savings");
 
 // UAE/GCC first: amounts without a recorded currency are shown in AED.

@@ -32,9 +32,16 @@ WHERE q.rfq_id = $1
 ORDER BY q.price_cents ASC, q.delivery_days ASC NULLS LAST, q.completeness DESC, q.created_at ASC;
 
 -- name: AcceptQuote :one
+-- Only a still-submitted quote can be accepted: a concurrent accept that got
+-- there first leaves zero rows (pgx.ErrNoRows), never a second winner.
 UPDATE quotes SET status = 'accepted', updated_at = NOW()
-WHERE id = $1
+WHERE id = $1 AND status = 'submitted'
 RETURNING *;
+
+-- name: LockRFQForAccept :one
+-- Row-locks the RFQ for the rest of the accept transaction so two accepts on
+-- the same RFQ (different quotes, different API instances) serialise.
+SELECT * FROM rfqs WHERE id = $1 FOR UPDATE;
 
 -- name: RejectOtherQuotes :exec
 UPDATE quotes SET status = 'rejected', updated_at = NOW()

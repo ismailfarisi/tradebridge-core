@@ -260,7 +260,7 @@ INSERT INTO negotiation_rounds (
     $10, $11, $12
 )
 ON CONFLICT (quote_id, responded_to_version) DO NOTHING
-RETURNING id, strategy_id, quote_id, round, responded_to_version, action, seller_price_cents, seller_delivery_days, offer_price_cents, offer_delivery_days, utility, rationale, message, created_at
+RETURNING id, strategy_id, quote_id, round, responded_to_version, action, seller_price_cents, seller_delivery_days, offer_price_cents, offer_delivery_days, utility, rationale, message, created_at, delivery_status, quote_message_id, agent_event_id, delivered_at
 `
 
 type InsertNegotiationRoundParams struct {
@@ -311,6 +311,10 @@ func (q *Queries) InsertNegotiationRound(ctx context.Context, arg InsertNegotiat
 		&i.Rationale,
 		&i.Message,
 		&i.CreatedAt,
+		&i.DeliveryStatus,
+		&i.QuoteMessageID,
+		&i.AgentEventID,
+		&i.DeliveredAt,
 	)
 	return i, err
 }
@@ -343,7 +347,7 @@ func (q *Queries) ListActiveNegotiationRFQIDs(ctx context.Context, lim int32) ([
 }
 
 const listNegotiationRounds = `-- name: ListNegotiationRounds :many
-SELECT id, strategy_id, quote_id, round, responded_to_version, action, seller_price_cents, seller_delivery_days, offer_price_cents, offer_delivery_days, utility, rationale, message, created_at FROM negotiation_rounds WHERE strategy_id = $1 ORDER BY created_at ASC, round ASC
+SELECT id, strategy_id, quote_id, round, responded_to_version, action, seller_price_cents, seller_delivery_days, offer_price_cents, offer_delivery_days, utility, rationale, message, created_at, delivery_status, quote_message_id, agent_event_id, delivered_at FROM negotiation_rounds WHERE strategy_id = $1 ORDER BY created_at ASC, round ASC
 `
 
 func (q *Queries) ListNegotiationRounds(ctx context.Context, strategyID string) ([]NegotiationRound, error) {
@@ -370,6 +374,10 @@ func (q *Queries) ListNegotiationRounds(ctx context.Context, strategyID string) 
 			&i.Rationale,
 			&i.Message,
 			&i.CreatedAt,
+			&i.DeliveryStatus,
+			&i.QuoteMessageID,
+			&i.AgentEventID,
+			&i.DeliveredAt,
 		); err != nil {
 			return nil, err
 		}

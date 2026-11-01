@@ -105,6 +105,14 @@ type Company struct {
 	DeletedAt          pgtype.Timestamptz `json:"deleted_at"`
 }
 
+type CompanyNegotiationControl struct {
+	CompanyID string    `json:"company_id"`
+	Paused    bool      `json:"paused"`
+	Reason    string    `json:"reason"`
+	UpdatedBy *string   `json:"updated_by"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 type CompanySetting struct {
 	CompanyID             string    `json:"company_id"`
 	ExtractionProvider    string    `json:"extraction_provider"`
@@ -180,21 +188,43 @@ type InvoiceLineItem struct {
 	AmountCents    int64  `json:"amount_cents"`
 }
 
+type NegotiationKillSwitchLog struct {
+	ID        string    `json:"id"`
+	Scope     string    `json:"scope"`
+	CompanyID *string   `json:"company_id"`
+	Paused    bool      `json:"paused"`
+	Reason    string    `json:"reason"`
+	Actor     string    `json:"actor"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type NegotiationPlatformControl struct {
+	ID        int16     `json:"id"`
+	Paused    bool      `json:"paused"`
+	Reason    string    `json:"reason"`
+	UpdatedBy string    `json:"updated_by"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 type NegotiationRound struct {
-	ID                 string    `json:"id"`
-	StrategyID         string    `json:"strategy_id"`
-	QuoteID            string    `json:"quote_id"`
-	Round              int32     `json:"round"`
-	RespondedToVersion int32     `json:"responded_to_version"`
-	Action             string    `json:"action"`
-	SellerPriceCents   int64     `json:"seller_price_cents"`
-	SellerDeliveryDays *int32    `json:"seller_delivery_days"`
-	OfferPriceCents    *int64    `json:"offer_price_cents"`
-	OfferDeliveryDays  *int32    `json:"offer_delivery_days"`
-	Utility            float64   `json:"utility"`
-	Rationale          string    `json:"rationale"`
-	Message            string    `json:"message"`
-	CreatedAt          time.Time `json:"created_at"`
+	ID                 string             `json:"id"`
+	StrategyID         string             `json:"strategy_id"`
+	QuoteID            string             `json:"quote_id"`
+	Round              int32              `json:"round"`
+	RespondedToVersion int32              `json:"responded_to_version"`
+	Action             string             `json:"action"`
+	SellerPriceCents   int64              `json:"seller_price_cents"`
+	SellerDeliveryDays *int32             `json:"seller_delivery_days"`
+	OfferPriceCents    *int64             `json:"offer_price_cents"`
+	OfferDeliveryDays  *int32             `json:"offer_delivery_days"`
+	Utility            float64            `json:"utility"`
+	Rationale          string             `json:"rationale"`
+	Message            string             `json:"message"`
+	CreatedAt          time.Time          `json:"created_at"`
+	DeliveryStatus     string             `json:"delivery_status"`
+	QuoteMessageID     *string            `json:"quote_message_id"`
+	AgentEventID       *string            `json:"agent_event_id"`
+	DeliveredAt        pgtype.Timestamptz `json:"delivered_at"`
 }
 
 type NegotiationStrategy struct {

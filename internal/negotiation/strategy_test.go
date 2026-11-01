@@ -1,6 +1,8 @@
 package negotiation
 
 import (
+	"math"
+	"math/rand"
 	"strings"
 	"testing"
 )
@@ -171,4 +173,237 @@ func TestDecide_LaterCountersDropTheIntro(t *testing.T) {
 	if strings.Contains(d.Rationale, "concession") {
 		t.Fatalf("rationale should be plain language: %q", d.Rationale)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Mandate invariants (property tests). The engine spends real money, so the
+// safety properties below are checked over thousands of random mandates and
+// seller behaviours, plus a Go fuzz target over the raw inputs:
+//
+//   P1 a counter never offers above the walk-away price (MaxCents), nor above
+//      the seller's own ask;
+//   P2 counters never retreat: each counter is ≥ the previous one, except
+//      that it may match a seller ask that has dropped below our last offer;
+//   P3 at most MaxRounds counters per quote;
+//   P4 accept_ready (the engine's "this is a deal" signal) only for offers
+//      within the walk-away price and the delivery limit;
+//   P5 PickBest — the auto-accept / approval choice — never selects an offer
+//      above the walk-away price or past MaxDeliveryDays, and picks the
+//      highest-utility eligible offer when one exists.
+// ---------------------------------------------------------------------------
+
+func randMandate(r *rand.Rand) Mandate {
+	target := int64(1_000 + r.Intn(10_000_000))
+	gap := int64(0)
+	if r.Intn(5) > 0 {
+		gap = int64(r.Intn(int(target)))
+	}
+	m := Mandate{
+		TargetCents: target, MaxCents: target + gap,
+		PriceWeight: r.Float64(), MaxRounds: 1 + r.Intn(10), Tone: []string{"collaborative", "firm"}[r.Intn(2)],
+	}
+	if r.Intn(3) > 0 {
+		m.MaxDeliveryDays = i32(int32(1 + r.Intn(60)))
+	}
+	return m
+}
+
+func randDelivery(r *rand.Rand) *int32 {
+	if r.Intn(6) == 0 {
+		return nil
+	}
+	return i32(int32(r.Intn(90)))
+}
+
+func withinDelivery(m Mandate, d *int32) bool {
+	return m.MaxDeliveryDays == nil || (d != nil && *d <= *m.MaxDeliveryDays)
+}
+
+// checkDecision asserts the per-move invariants P1, P2 and P4.
+func checkDecision(t *testing.T, m Mandate, o Offer, h History, d Decision) {
+	t.Helper()
+	fail := func(format string, args ...any) {
+		t.Helper()
+		t.Fatalf("mandate=%+v offer=%+v history=%+v decision=%s/%d: "+format,
+			append([]any{m, o, h, d.Action, d.OfferCents}, args...)...)
+	}
+	if d.Utility < 0 || d.Utility > 1 {
+		fail("utility %v outside [0,1]", d.Utility)
+	}
+	switch d.Action {
+	case ActionCounter:
+		if h.Counters >= m.MaxRounds {
+			fail("countered with the round budget exhausted (P3)")
+		}
+		if d.OfferCents > m.MaxCents {
+			fail("offer above walk-away %d (P1)", m.MaxCents)
+		}
+		if d.OfferCents > o.PriceCents {
+			fail("offer above the seller's ask (P1)")
+		}
+		if d.OfferCents <= 0 {
+			fail("non-positive offer")
+		}
+		if h.LastOfferCents > 0 && d.OfferCents < h.LastOfferCents && d.OfferCents != o.PriceCents {
+			fail("counter retreated below our last offer %d (P2)", h.LastOfferCents)
+		}
+		if d.OfferDeliveryDays != nil && !withinDelivery(m, d.OfferDeliveryDays) {
+			fail("counter proposes delivery past the limit")
+		}
+	case ActionAcceptReady:
+		if o.PriceCents > m.MaxCents {
+			fail("accept_ready above walk-away (P4)")
+		}
+		if !withinDelivery(m, o.DeliveryDays) {
+			fail("accept_ready past the delivery limit (P4)")
+		}
+	case ActionWalkAway:
+	default:
+		fail("unknown action")
+	}
+}
+
+// simulate plays one quote's negotiation the way Engine.tick does: it feeds
+// each seller version to Decide, updating History exactly like the engine's
+// round replay, until the engine stops countering or the seller gives up.
+func simulate(t *testing.T, r *rand.Rand, m Mandate) {
+	t.Helper()
+	o := Offer{PriceCents: m.TargetCents/2 + int64(r.Intn(int(m.MaxCents*2))), DeliveryDays: randDelivery(r), Currency: "AED"}
+	var h History
+	if r.Intn(2) == 0 {
+		h.Competitors = 1 + r.Intn(4)
+		h.BestRivalCents = m.TargetCents/2 + int64(r.Intn(int(m.MaxCents*2)))
+	}
+	counters := 0
+	for step := 0; step < 40; step++ {
+		d := Decide(m, o, h)
+		checkDecision(t, m, o, h, d)
+		if d.Action != ActionCounter {
+			return
+		}
+		counters++
+		if counters > m.MaxRounds {
+			t.Fatalf("mandate=%+v: %d counters exceed MaxRounds (P3)", m, counters)
+		}
+		h.Counters, h.LastOfferCents, h.LastSellerCents = counters, d.OfferCents, o.PriceCents
+		// Seller reply: concede toward our offer, hold, or (rarely) raise,
+		// and sometimes change its delivery.
+		switch k := r.Intn(10); {
+		case k < 6:
+			gap := o.PriceCents - d.OfferCents
+			if gap > 0 {
+				o.PriceCents -= 1 + int64(r.Intn(int(gap)+1))
+			} else {
+				o.PriceCents -= int64(r.Intn(1000))
+			}
+		case k < 8:
+			// hold
+		default:
+			o.PriceCents += int64(r.Intn(int(m.MaxCents/10) + 1))
+		}
+		if o.PriceCents < 1 {
+			o.PriceCents = 1
+		}
+		if r.Intn(3) == 0 {
+			o.DeliveryDays = randDelivery(r)
+		}
+		if h.Competitors > 0 && r.Intn(3) == 0 {
+			h.BestRivalCents = m.TargetCents/2 + int64(r.Intn(int(m.MaxCents*2)))
+		}
+	}
+}
+
+func TestProperty_MandateInvariants(t *testing.T) {
+	r := rand.New(rand.NewSource(20261101))
+	for i := 0; i < 20_000; i++ {
+		simulate(t, r, randMandate(r))
+	}
+}
+
+func TestProperty_PickBestRespectsMandate(t *testing.T) {
+	r := rand.New(rand.NewSource(7))
+	for i := 0; i < 20_000; i++ {
+		m := randMandate(r)
+		n := r.Intn(6)
+		cs := make([]Candidate, n)
+		for j := range cs {
+			cs[j] = Candidate{QuoteID: string(rune('a' + j)), Offer: Offer{
+				PriceCents: m.TargetCents/2 + int64(r.Intn(int(m.MaxCents*2))), DeliveryDays: randDelivery(r),
+			}}
+		}
+		checkPickBest(t, m, cs)
+	}
+}
+
+func checkPickBest(t *testing.T, m Mandate, cs []Candidate) {
+	t.Helper()
+	best, u, ok := PickBest(m, cs)
+	eligible := 0
+	bestU := -1.0
+	for _, c := range cs {
+		if c.Offer.PriceCents <= m.MaxCents && withinDelivery(m, c.Offer.DeliveryDays) {
+			eligible++
+			bestU = math.Max(bestU, Utility(m, c.Offer))
+		}
+	}
+	if !ok {
+		if eligible > 0 {
+			t.Fatalf("mandate=%+v: PickBest found nothing among %d eligible offers %+v", m, eligible, cs)
+		}
+		return
+	}
+	if best.Offer.PriceCents > m.MaxCents {
+		t.Fatalf("mandate=%+v: PickBest chose %+v above walk-away (P5)", m, best)
+	}
+	if !withinDelivery(m, best.Offer.DeliveryDays) {
+		t.Fatalf("mandate=%+v: PickBest chose %+v past the delivery limit (P5)", m, best)
+	}
+	if u != bestU {
+		t.Fatalf("mandate=%+v: PickBest utility %v, best eligible %v", m, u, bestU)
+	}
+}
+
+// FuzzDecide drives Decide and PickBest with arbitrary mandates, offers and
+// histories (go test -fuzz=FuzzDecide ./internal/negotiation). The seed
+// corpus runs on every plain `go test`.
+func FuzzDecide(f *testing.F) {
+	f.Add(int64(90_000), int64(10_000), int32(14), 0.7, 4, false, int64(120_000), int32(10), 0, int64(0), int64(0), int64(0))
+	f.Add(int64(90_000), int64(10_000), int32(14), 0.7, 4, true, int64(95_000), int32(30), 2, int64(96_000), int64(97_000), int64(0))
+	f.Add(int64(50_000), int64(0), int32(-1), 1.0, 1, true, int64(50_001), int32(-1), 0, int64(0), int64(0), int64(40_000))
+	f.Add(int64(1_000), int64(999), int32(5), 0.0, 10, false, int64(1_500), int32(6), 9, int64(1_998), int64(1_600), int64(1_200))
+	f.Fuzz(func(t *testing.T, target, gap int64, maxDelivery int32, weight float64, rounds int, firm bool,
+		price int64, delivery int32, counters int, lastOffer, lastSeller, rival int64) {
+		// Constrain to what the API accepts (see strategyInput.validate).
+		if target <= 0 || target > 1e12 || gap < 0 || gap > 1e12 || price <= 0 || price > 1e13 {
+			t.Skip()
+		}
+		if math.IsNaN(weight) || weight < 0 || weight > 1 || rounds < 1 || rounds > 10 {
+			t.Skip()
+		}
+		m := Mandate{TargetCents: target, MaxCents: target + gap, PriceWeight: weight, MaxRounds: rounds, Tone: "collaborative"}
+		if firm {
+			m.Tone = "firm"
+		}
+		if maxDelivery > 0 {
+			m.MaxDeliveryDays = &maxDelivery
+		}
+		o := Offer{PriceCents: price}
+		if delivery >= 0 {
+			o.DeliveryDays = &delivery
+		}
+		// A reachable history: counters within budget, our last offer a past
+		// counter (so itself within the walk-away price).
+		if counters < 0 || counters > rounds || lastOffer < 0 || lastOffer > m.MaxCents || lastSeller < 0 || rival < 0 {
+			t.Skip()
+		}
+		if (counters == 0) != (lastOffer == 0) {
+			t.Skip()
+		}
+		h := History{Counters: counters, LastOfferCents: lastOffer, LastSellerCents: lastSeller, BestRivalCents: rival}
+		if rival > 0 {
+			h.Competitors = 1
+		}
+		checkDecision(t, m, o, h, Decide(m, o, h))
+		checkPickBest(t, m, []Candidate{{QuoteID: "a", Offer: o}, {QuoteID: "b", Offer: Offer{PriceCents: rival + 1, DeliveryDays: m.MaxDeliveryDays}}})
+	})
 }
