@@ -228,11 +228,8 @@ func (e *Engine) close(ctx context.Context, s sqlc.NegotiationStrategy, m Mandat
 		return nil
 	}
 	q := byID[best.QuoteID]
-	opening := e.openingPrice(ctx, s.RfqID, q.ID, q.PriceCents)
-	saved := ""
-	if opening > q.PriceCents {
-		saved = fmt.Sprintf(", saving %s vs the opening quote", money(opening-q.PriceCents, q.Currency))
-	}
+	// Snapshot honest baselines at close; the summary quotes verified savings.
+	saved := SavingsPhrase(e.snapshotBaselines(ctx, s, q.ID, q.PriceCents, q.Currency))
 	if s.AutoAccept {
 		if _, err := e.quotes.Accept(ctx, s.BuyerCompanyID, q.ID); err != nil {
 			return err
@@ -258,25 +255,13 @@ func (e *Engine) finishExternally(ctx context.Context, s sqlc.NegotiationStrateg
 	for _, q := range quotes {
 		if q.Status == "accepted" {
 			id := q.ID
+			e.snapshotBaselines(ctx, s, q.ID, q.PriceCents, q.Currency)
 			_, err := e.setStatus(ctx, s.ID, StatusCompleted, &id, fmt.Sprintf("Accepted %s at %s.", q.SellerName, money(q.PriceCents, q.Currency)))
 			return err
 		}
 	}
 	_, err := e.setStatus(ctx, s.ID, StatusCancelled, nil, "RFQ "+r.Status+" before a deal was reached.")
 	return err
-}
-
-func (e *Engine) openingPrice(ctx context.Context, rfqID, quoteID string, fallback int64) int64 {
-	fv, err := e.q.ListQuoteFirstVersions(ctx, rfqID)
-	if err != nil {
-		return fallback
-	}
-	for _, v := range fv {
-		if v.QuoteID == quoteID {
-			return v.PriceCents
-		}
-	}
-	return fallback
 }
 
 func (e *Engine) setStatus(ctx context.Context, id, status string, outcome *string, summary string) (sqlc.NegotiationStrategy, error) {
@@ -311,6 +296,7 @@ func (e *Engine) Approve(ctx context.Context, buyerCompanyID, rfqID, quoteID str
 		if err != nil {
 			return sqlc.Order{}, err
 		}
+		e.snapshotBaselines(ctx, s, order.QuoteID, order.TotalCents, order.Currency)
 		summary := strings.Replace(s.OutcomeSummary, "Awaiting your approval.", "Approved by buyer; order placed.", 1)
 		_, err = e.q.SetNegotiationStatus(ctx, sqlc.SetNegotiationStatusParams{ID: s.ID, Status: StatusCompleted, OutcomeQuoteID: s.OutcomeQuoteID, OutcomeSummary: &summary})
 		return order, err
@@ -332,6 +318,7 @@ func (e *Engine) Approve(ctx context.Context, buyerCompanyID, rfqID, quoteID str
 	if err != nil {
 		return sqlc.Order{}, err
 	}
+	e.snapshotBaselines(ctx, s, order.QuoteID, order.TotalCents, order.Currency)
 	summary := fmt.Sprintf("Buyer chose %s at %s over the agent's pick; order placed.", chosen.SellerName, money(chosen.PriceCents, chosen.Currency))
 	_, err = e.q.SetNegotiationStatus(ctx, sqlc.SetNegotiationStatusParams{ID: s.ID, Status: StatusCompleted, OutcomeQuoteID: &chosen.ID, OutcomeSummary: &summary})
 	return order, err
