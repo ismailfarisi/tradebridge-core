@@ -1,4 +1,5 @@
 import { CORE_URL, errorMessage } from "./api";
+import { paymentTermsLabel, shortTermsLabel } from "./terms";
 
 export type NegotiationStatus = "active" | "paused" | "awaiting_approval" | "completed" | "cancelled";
 export type Tone = "collaborative" | "firm";
@@ -13,6 +14,9 @@ export type Strategy = {
   max_rounds: number;
   auto_accept: boolean;
   tone: Tone;
+  preferred_payment_terms_days: number | null;
+  min_payment_terms_days: number | null;
+  terms_weight: number;
   status: NegotiationStatus;
   outcome_quote_id: string | null;
   outcome_summary: string;
@@ -31,9 +35,12 @@ export type Round = {
   seller_delivery_days: number | null;
   offer_price_cents: number | null;
   offer_delivery_days: number | null;
+  seller_payment_terms_days: number | null;
+  offer_payment_terms_days: number | null;
   utility: number;
   rationale: string;
   message: string;
+  message_source: "template" | "llm";
   created_at: string;
 };
 
@@ -48,6 +55,7 @@ export type Supplier = {
   initial_delivery_days: number | null;
   price_cents: number;
   delivery_days: number | null;
+  payment_terms_days: number | null;
   version: number;
   status: string;
   counters: number;
@@ -59,6 +67,7 @@ export type Supplier = {
 export type NegotiationView = {
   rfq: { id: string; title: string; status: string; category: string; created_at: string; deadline?: string };
   strategy: Strategy | null;
+  weights: Weights | null;
   rounds: Round[];
   suppliers: Supplier[];
   summary: {
@@ -73,6 +82,9 @@ export type NegotiationView = {
   suggested: { target_price_cents: number; max_price_cents: number } | null;
 };
 
+// Weights are the mandate's utility split; they always sum to 1.
+export type Weights = { price: number; delivery: number; terms: number };
+
 export type StrategyInput = {
   target_price_cents: number;
   max_price_cents: number;
@@ -81,6 +93,9 @@ export type StrategyInput = {
   max_rounds?: number;
   auto_accept?: boolean;
   tone?: Tone;
+  preferred_payment_terms_days?: number | null;
+  min_payment_terms_days?: number | null;
+  terms_weight?: number;
 };
 
 export type NegotiationListItem = Strategy & {
@@ -204,8 +219,9 @@ export function dollarsToCents(v: string): number | null {
 const days = (n: number) => `${n} day${n === 1 ? "" : "s"}`;
 
 // explainPick says in plain words why `pick` beats `other`, naming the
-// mandate weight only when the two trade price against delivery.
-export function explainPick(pick: Supplier, other: Supplier, priceWeight: number): string {
+// mandate weight only when the two trade price against delivery. When the
+// mandate negotiates payment terms and the two differ, it says so.
+export function explainPick(pick: Supplier, other: Supplier, priceWeight: number, terms?: { weight: number }): string {
   const cur = pick.currency || DEFAULT_CURRENCY;
   const priceGap = other.price_cents - pick.price_cents;
   const dayGap =
@@ -218,10 +234,15 @@ export function explainPick(pick: Supplier, other: Supplier, priceWeight: number
         : `Same price as ${other.seller_name}`;
   const delivery = dayGap > 0 ? `${days(dayGap)} slower` : dayGap < 0 ? `${days(-dayGap)} sooner` : "";
   const tradeOff = (priceGap > 0 && dayGap > 0) || (priceGap < 0 && dayGap < 0);
-  const sentence = delivery ? `${price}, ${tradeOff ? "but " : "and "}${delivery}.` : `${price}.`;
+  let sentence = delivery ? `${price}, ${tradeOff ? "but " : "and "}${delivery}.` : `${price}.`;
+  if (terms && pick.payment_terms_days != null && other.payment_terms_days != null && pick.payment_terms_days !== other.payment_terms_days) {
+    const longer = pick.payment_terms_days > other.payment_terms_days;
+    sentence += ` Pays on ${paymentTermsLabel(pick.payment_terms_days).toLowerCase()} (${longer ? "more" : "less"} time to pay than ${shortTermsLabel(other.payment_terms_days).toLowerCase()}).`;
+  }
   if (!tradeOff) return sentence;
   const pw = Math.round(priceWeight * 100);
-  const favours = priceGap > 0 ? `price at ${pw}%` : `delivery at ${100 - pw}%`;
+  const dw = terms ? Math.round((1 - priceWeight - terms.weight) * 100) : 100 - pw;
+  const favours = priceGap > 0 ? `price at ${pw}%` : `delivery at ${dw}%`;
   return `${sentence} Your mandate weighs ${favours}.`;
 }
 
@@ -234,13 +255,34 @@ export const when = (iso: string, timeZone?: string) =>
     timeZone,
   });
 
+// How much payment terms matter, as a share of the agent's scoring. The rest
+// is split between price and delivery by the priority above.
+export const TERMS_IMPORTANCE = [
+  { key: "low", label: "A little", weight: 0.1 },
+  { key: "medium", label: "Somewhat", weight: 0.2 },
+  { key: "high", label: "A lot", weight: 0.3 },
+] as const;
+
+// splitWeights turns the form's price-vs-delivery share and terms importance
+// into API weights: terms first, the rest split by the priority.
+export function splitWeights(priceShare: number, termsWeight: number): { price_weight: number; terms_weight: number } {
+  const tw = Math.min(Math.max(termsWeight, 0), 1);
+  return { price_weight: Math.round(priceShare * (1 - tw) * 1000) / 1000, terms_weight: tw };
+}
+
+// priceShareOf reverses splitWeights for a saved mandate.
+export function priceShareOf(s: Pick<Strategy, "price_weight" | "terms_weight" | "preferred_payment_terms_days">): number {
+  if (s.preferred_payment_terms_days == null || !s.terms_weight || s.terms_weight >= 1) return s.price_weight;
+  return Math.round((s.price_weight / (1 - s.terms_weight)) * 100) / 100;
+}
+
 export const PRIORITIES = [
   { key: "price", label: "Lowest price", weight: 0.7 },
   { key: "balanced", label: "Balanced", weight: 0.5 },
   { key: "delivery", label: "Fastest delivery", weight: 0.3 },
 ] as const;
 
-export type Limits = { maxCents?: number; days?: number; weight?: number };
+export type Limits = { maxCents?: number; days?: number; weight?: number; termsDays?: number };
 
 const WORD_NUM: Record<string, number> = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, ten: 10 };
 const UNIT_DAYS: Record<string, number> = { day: 1, week: 7, wk: 7, month: 30 };
@@ -249,6 +291,8 @@ const AMOUNT = /(aed\s*|dhs?\s*|dirhams?\s*)?(\d[\d,]*(?:\.\d+)?)\s*(k|thousand|
 const FAST = /\b(fast|faster|fastest|urgent|urgently|asap|quick|quickly|soon|speed|delivery (matters|first|is (more )?important))\b/i;
 const CHEAP = /\b(cheap|cheaper|cheapest|lowest|best price|save|saving|price (matters|first|is (more )?important))\b/i;
 const BOTH = /\b(balanced?|both)\b/i;
+// Payment terms: "net 60", "60 days credit", "pay in 45 days", "cash on delivery".
+const TERMS = /\bnet\s*-?\s*(\d{1,3})\b|\b(\d{1,3})\s*days?\s*(?:credit|payment terms|to pay)\b|\bpay(?:ment)?\s*(?:in|within|after)\s*(\d{1,3})\s*days?\b|\b(cash on delivery|cod)\b/i;
 
 function parseDuration(text: string): number | undefined {
   const m = text.match(DURATION);
@@ -265,6 +309,11 @@ function parseDuration(text: string): number | undefined {
 // "Up to AED 50k, need it within 2 weeks, price matters most".
 export function parseLimits(text: string): Limits {
   const out: Limits = {};
+  const t = text.match(TERMS);
+  if (t) {
+    out.termsDays = t[4] ? 0 : Number(t[1] ?? t[2] ?? t[3]);
+    text = text.replace(TERMS, " ");
+  }
   const days = parseDuration(text);
   if (days) out.days = days;
   const rest = text.replace(new RegExp(DURATION.source, "gi"), " ");
@@ -295,6 +344,7 @@ export function describeLimits(l: Limits, currency = DEFAULT_CURRENCY): string {
   if (l.days) parts.push(`within ${days(l.days)}`);
   const p = PRIORITIES.find((x) => x.weight === l.weight);
   if (p) parts.push(p.label.toLowerCase() + " first");
+  if (l.termsDays != null) parts.push(`pay on ${paymentTermsLabel(l.termsDays).toLowerCase()}`);
   return parts.length ? `Understood: ${parts.join(" · ")}` : "";
 }
 

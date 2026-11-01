@@ -145,7 +145,7 @@ func main() {
 		if r.TermsDays > 0 {
 			mandate["price_weight"] = 0.7
 			mandate["preferred_payment_terms_days"] = r.TermsDays
-			mandate["min_payment_terms_days"] = 0
+			mandate["min_payment_terms_days"] = 15
 			mandate["terms_weight"] = 0.1
 		}
 		_, err = call(ctx, "PUT", "/v1/rfqs/"+id+"/negotiation", buyer.Token, mandate)

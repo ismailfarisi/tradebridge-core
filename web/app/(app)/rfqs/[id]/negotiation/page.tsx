@@ -20,19 +20,23 @@ import {
   parseLimits,
   pauseNegotiation,
   pct,
+  priceShareOf,
   quoteRange,
   resumeNegotiation,
   runNegotiation,
   saveStrategy,
+  splitWeights,
   STATUS_LABEL,
   statusClass,
   suggestTarget,
+  TERMS_IMPORTANCE,
   type NegotiationView,
   type Round,
   type Supplier,
   type Tone,
   when,
 } from "@/lib/negotiation";
+import { PAYMENT_TERMS_OPTIONS, paymentTermsLabel, shortTermsLabel } from "@/lib/terms";
 
 const LIVE_POLL_MS = 5000;
 
@@ -107,14 +111,16 @@ export default function NegotiationRoom() {
   const chosen = view.suppliers.find((x) => x.quote_id === (chosenId ?? winner?.quote_id));
   const overriding = !!chosen && !!winner && chosen.quote_id !== winner.quote_id;
   const rival = ranked.find((x) => x.quote_id !== winner?.quote_id && x.status === "submitted");
+  const termsOpt = s && s.preferred_payment_terms_days != null ? { weight: s.terms_weight } : undefined;
   const why =
     !s || !chosen || !winner
       ? ""
       : overriding
-        ? explainPick(chosen, winner, s.price_weight)
+        ? explainPick(chosen, winner, s.price_weight, termsOpt)
         : rival
-          ? explainPick(winner, rival, s.price_weight)
+          ? explainPick(winner, rival, s.price_weight, termsOpt)
           : "It's the only supplier still in the running.";
+  const showTerms = !!termsOpt || view.suppliers.some((x) => x.payment_terms_days != null);
   const awarded = view.suppliers.find((x) => x.status === "accepted");
 
   return (
@@ -195,7 +201,7 @@ export default function NegotiationRoom() {
               <span />
               <span>Supplier</span>
               <span className="num">Price</span>
-              <span>Delivery</span>
+              <span>{showTerms ? "Delivery · payment" : "Delivery"}</span>
               <span className="num">Saved</span>
               <span>Status</span>
             </div>
@@ -203,6 +209,7 @@ export default function NegotiationRoom() {
               <LedgerRow
                 key={q.quote_id}
                 q={q}
+                showTerms={showTerms}
                 rank={i + 1}
                 selectable={deciding && q.status === "submitted"}
                 selected={deciding && chosen?.quote_id === q.quote_id}
@@ -222,6 +229,7 @@ export default function NegotiationRoom() {
                 <Icon name="check" size={16} />
                 <span>
                   {overriding ? "Award" : "Approve"} {chosen.seller_name} · <span className="num">{money(chosen.price_cents, chosen.currency)}</span>
+                  {chosen.payment_terms_days != null && <> · {shortTermsLabel(chosen.payment_terms_days)}</>}
                 </span>
               </button>
               {confirmDecline ? (
@@ -234,6 +242,11 @@ export default function NegotiationRoom() {
                 <button className="btn btn-ghost" disabled={busy} onClick={() => setConfirmDecline(true)}>Decline</button>
               )}
             </div>
+            <p className="small muted" style={{ margin: 0 }}>
+              Terms: {chosen.delivery_days != null ? `delivery within ${chosen.delivery_days} days` : "delivery time not stated"}
+              {" · "}
+              {chosen.payment_terms_days != null ? `payment ${paymentTermsLabel(chosen.payment_terms_days).toLowerCase()}` : "payment terms not stated"}
+            </p>
             <p className="small faint" style={{ margin: 0 }}>Approving creates a purchase order with the chosen supplier.</p>
           </div>
         )}
@@ -340,7 +353,7 @@ function supplierBadge(q: Supplier) {
   return <span className="badge">In talks</span>;
 }
 
-function LedgerRow({ q, rank, selectable, selected, onSelect }: { q: Supplier; rank: number; selectable: boolean; selected: boolean; onSelect: () => void }) {
+function LedgerRow({ q, rank, showTerms, selectable, selected, onSelect }: { q: Supplier; rank: number; showTerms: boolean; selectable: boolean; selected: boolean; onSelect: () => void }) {
   const drop = q.initial_price_cents - q.price_cents;
   const className = `ledger-row${q.recommended || q.status === "accepted" ? " is-pick" : ""}${selected ? " is-selected" : ""}`;
   const cells = (
@@ -362,7 +375,10 @@ function LedgerRow({ q, rank, selectable, selected, onSelect }: { q: Supplier; r
         {drop > 0 && <s className="faint">{money(q.initial_price_cents, q.currency)}</s>}
         <strong>{money(q.price_cents, q.currency)}</strong>
       </span>
-      <span className="ledger-delivery small">{q.delivery_days != null ? `${q.delivery_days} days` : "—"}</span>
+      <span className="ledger-delivery small">
+        {q.delivery_days != null ? `${q.delivery_days} days` : "—"}
+        {showTerms && <span className="faint" style={{ display: "block" }}>{q.payment_terms_days != null ? paymentTermsLabel(q.payment_terms_days) : "Terms not stated"}</span>}
+      </span>
       <span className="ledger-saved small num">
         {drop > 0 ? <span className="up">−{money(drop, q.currency)} ({pct((drop / q.initial_price_cents) * 100)})</span> : <span className="faint">—</span>}
         <span className="faint">{q.counters} counter{q.counters === 1 ? "" : "s"}</span>
@@ -394,14 +410,39 @@ function RoundItem({ r, currency }: { r: Round; currency: string }) {
             )}
           </span>
         </div>
+        {(r.seller_payment_terms_days != null || r.offer_payment_terms_days != null || deliveryMoved(r)) && (
+          <div className="small" style={{ marginTop: "0.2rem" }}>
+            {deliveryMoved(r) && (
+              <span>Delivery {r.seller_delivery_days ?? "—"} → {r.offer_delivery_days} days</span>
+            )}
+            {deliveryMoved(r) && (r.seller_payment_terms_days != null || r.offer_payment_terms_days != null) && " · "}
+            {(r.seller_payment_terms_days != null || r.offer_payment_terms_days != null) && (
+              <span>
+                Payment {shortTermsLabel(r.seller_payment_terms_days)}
+                {r.offer_payment_terms_days != null && r.offer_payment_terms_days !== r.seller_payment_terms_days && <> → {shortTermsLabel(r.offer_payment_terms_days)}</>}
+              </span>
+            )}
+          </div>
+        )}
         <div className="tl-meta">
           <span>Round {r.round}</span>·<time dateTime={r.created_at}>{when(r.created_at)}</time>
+          {r.action === "counter" && r.message && (
+            <>
+              ·<span title={r.message_source === "llm" ? "Worded by AI; every figure was checked against the agent's decision" : "Standard wording"}>
+                {r.message_source === "llm" ? "AI-worded message" : "Template message"}
+              </span>
+            </>
+          )}
         </div>
         <div className="small muted" style={{ marginTop: "0.3rem" }}>{r.rationale}</div>
         {r.message && <div className="tl-quote">“{r.message}”</div>}
       </div>
     </li>
   );
+}
+
+function deliveryMoved(r: Round) {
+  return r.offer_delivery_days != null && r.offer_delivery_days !== r.seller_delivery_days;
 }
 
 function MandateForm({ view, busy, onSubmit }: { view: NegotiationView; busy: boolean; onSubmit: (i: Parameters<typeof saveStrategy>[2]) => void }) {
@@ -414,7 +455,10 @@ function MandateForm({ view, busy, onSubmit }: { view: NegotiationView; busy: bo
   const [text, setText] = useState("");
   const [max, setMax] = useState(seed ? String(seed.max_price_cents / 100) : "");
   const [delivery, setDelivery] = useState(s?.max_delivery_days ? String(s.max_delivery_days) : fromRfq ? String(fromRfq) : "");
-  const [weight, setWeight] = useState(s?.price_weight ?? 0.7);
+  const [weight, setWeight] = useState(s ? priceShareOf(s) : 0.7);
+  const [terms, setTerms] = useState(s?.preferred_payment_terms_days != null ? String(s.preferred_payment_terms_days) : "");
+  const [minTerms, setMinTerms] = useState(s?.min_payment_terms_days != null ? String(s.min_payment_terms_days) : "");
+  const [termsWeight, setTermsWeight] = useState<number>(s?.preferred_payment_terms_days != null && s.terms_weight ? s.terms_weight : 0.1);
   const [targetText, setTargetText] = useState(s ? String(s.target_price_cents / 100) : "");
   const [rounds, setRounds] = useState(s?.max_rounds ?? 4);
   const [tone, setTone] = useState<Tone>(s?.tone ?? "collaborative");
@@ -426,6 +470,10 @@ function MandateForm({ view, busy, onSubmit }: { view: NegotiationView; busy: bo
   const autoTarget = cap ? suggestTarget(cap) : null;
   const targetCents = targetText.trim() ? dollarsToCents(targetText) : autoTarget;
   const days = delivery.trim() ? Number(delivery) : null;
+  const termsDays = terms === "" ? null : Number(terms);
+  const minTermsDays = termsDays == null || minTerms === "" ? null : Math.min(Number(minTerms), termsDays);
+  const split = termsDays != null ? splitWeights(weight, termsWeight) : { price_weight: weight, terms_weight: 0 };
+  const deliveryShare = Math.max(0, 1 - split.price_weight - split.terms_weight);
   const understood = text.trim() ? parseLimits(text) : null;
   const priority = PRIORITIES.find((p) => p.weight === weight);
   const belowAll = !!maxCents && !!range && maxCents < range.minCents;
@@ -436,6 +484,7 @@ function MandateForm({ view, busy, onSubmit }: { view: NegotiationView; busy: bo
     if (l.maxCents) setMax(String(l.maxCents / 100));
     if (l.days) setDelivery(String(l.days));
     if (l.weight != null) setWeight(l.weight);
+    if (l.termsDays != null) setTerms(String(l.termsDays));
   };
 
   const submit = (e: React.FormEvent) => {
@@ -445,12 +494,27 @@ function MandateForm({ view, busy, onSubmit }: { view: NegotiationView; busy: bo
     if (maxCents < targetCents) return setFormErr("The opening target must be at or below the most you'll pay.");
     if (days !== null && (!Number.isInteger(days) || days <= 0)) return setFormErr("Delivery limit must be a whole number of days.");
     setFormErr(null);
-    onSubmit({ target_price_cents: targetCents, max_price_cents: maxCents, max_delivery_days: days, price_weight: weight, max_rounds: rounds, tone, auto_accept: auto });
+    onSubmit({
+      target_price_cents: targetCents,
+      max_price_cents: maxCents,
+      max_delivery_days: days,
+      price_weight: split.price_weight,
+      terms_weight: split.terms_weight,
+      preferred_payment_terms_days: termsDays,
+      min_payment_terms_days: minTermsDays,
+      max_rounds: rounds,
+      tone,
+      auto_accept: auto,
+    });
   };
 
   const plan =
     maxCents && targetCents
-      ? `The agent opens near ${money(targetCents, cur)} and won't agree to more than ${money(maxCents, cur)}${days ? `, with delivery within ${days} days` : ""}. ${
+      ? `The agent opens near ${money(targetCents, cur)} and won't agree to more than ${money(maxCents, cur)}${days ? `, with delivery within ${days} days` : ""}${
+          termsDays != null
+            ? `. It asks to pay on ${paymentTermsLabel(termsDays).toLowerCase()}${minTermsDays != null ? ` and never accepts less than ${paymentTermsLabel(minTermsDays).toLowerCase()}` : ""}, and may offer faster payment to win a lower price`
+            : ""
+        }. ${
           auto ? "If it closes a deal, the order is placed automatically." : "You approve the final deal before any order is placed."
         }`
       : "Enter the most you'll pay to see the agent's plan.";
@@ -475,7 +539,7 @@ function MandateForm({ view, busy, onSubmit }: { view: NegotiationView; busy: bo
       )}
       <div className="field">
         <label htmlFor="m-text">Describe your limits <span className="faint">(optional)</span></label>
-        <textarea id="m-text" className="input" rows={2} value={text} onChange={(e) => describe(e.target.value)} placeholder="e.g. Up to AED 50k, need it within 2 weeks, price matters most" />
+        <textarea id="m-text" className="input" rows={2} value={text} onChange={(e) => describe(e.target.value)} placeholder="e.g. Up to AED 50k, need it within 2 weeks, net 60, price matters most" />
         {understood && (
           <span className="field-hint" aria-live="polite">
             {describeLimits(understood, cur) || "No amount, timeframe or priority found. Fill in the fields below."}
@@ -505,6 +569,41 @@ function MandateForm({ view, busy, onSubmit }: { view: NegotiationView; busy: bo
         </div>
         {!priority && <span className="field-hint">Custom: {Math.round(weight * 100)}% price, {100 - Math.round(weight * 100)}% delivery</span>}
       </div>
+      <div className="seg">
+        <div className="field">
+          <label htmlFor="m-terms">Payment terms you want</label>
+          <select id="m-terms" className="input" value={terms} onChange={(e) => setTerms(e.target.value)}>
+            <option value="">Don&apos;t negotiate terms</option>
+            {PAYMENT_TERMS_OPTIONS.map((d) => <option key={d} value={String(d)}>{paymentTermsLabel(d)}</option>)}
+          </select>
+          <span className="field-hint">Days after delivery you have to pay. Longer helps your cash flow.</span>
+        </div>
+        {termsDays != null && (
+          <div className="field">
+            <label htmlFor="m-min-terms">Shortest you&apos;ll accept</label>
+            <select id="m-min-terms" className="input" value={minTerms} onChange={(e) => setMinTerms(e.target.value)}>
+              <option value="">Any terms</option>
+              {PAYMENT_TERMS_OPTIONS.filter((d) => d <= termsDays).map((d) => <option key={d} value={String(d)}>{paymentTermsLabel(d)}</option>)}
+            </select>
+            <span className="field-hint">The agent never agrees to pay sooner than this.</span>
+          </div>
+        )}
+      </div>
+      {termsDays != null && (
+        <div className="field">
+          <label id="m-terms-w">How much do payment terms matter?</label>
+          <div className="tabs" role="radiogroup" aria-labelledby="m-terms-w">
+            {TERMS_IMPORTANCE.map((t) => (
+              <button type="button" key={t.key} role="radio" aria-checked={termsWeight === t.weight} className={`tab${termsWeight === t.weight ? " on" : ""}`} onClick={() => setTermsWeight(t.weight)}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <span className="field-hint">
+            The agent scores offers {Math.round(split.price_weight * 100)}% on price, {Math.round(deliveryShare * 100)}% on delivery and {Math.round(split.terms_weight * 100)}% on payment terms.
+          </span>
+        </div>
+      )}
       <p className="mandate-plan" aria-live="polite">{plan}</p>
       <details className="mandate-more" open={!!s}>
         <summary>Fine-tune</summary>

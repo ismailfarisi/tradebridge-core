@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { acceptQuote } from "@/lib/api";
 import { getThread, postCounter, streamThread, type Thread } from "@/lib/thread";
+import { shortTermsLabel } from "@/lib/terms";
 
 // The post-quote negotiation thread: message history + version history
 // (seller revisions and buyer counters) + a counter-offer form + accept the
@@ -109,7 +110,10 @@ export function NegotiationThread({
               <tr key={v.id} style={v.version === latest.version ? { fontWeight: 650 } : undefined}>
                 <td>v{v.version}{v.version === latest.version ? " (latest)" : ""}</td>
                 <td>{v.currency} {(v.price_cents / 100).toFixed(2)}</td>
-                <td className="muted">{v.delivery_days != null ? `${v.delivery_days} days` : "—"}</td>
+                <td className="muted">
+                  {v.delivery_days != null ? `${v.delivery_days} days` : "—"}
+                  {v.payment_terms_days != null && <> · {shortTermsLabel(v.payment_terms_days)}</>}
+                </td>
                 <td><span className="badge">{v.source}</span></td>
                 <td className="muted small">{new Date(v.created_at).toLocaleString()}</td>
               </tr>

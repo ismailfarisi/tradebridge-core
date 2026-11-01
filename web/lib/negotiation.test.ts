@@ -7,13 +7,16 @@ import {
   money,
   monthLabel,
   parseLimits,
+  priceShareOf,
   quoteRange,
   roundDownCents,
+  splitWeights,
   statusClass,
   suggestTarget,
   type Supplier,
   when,
 } from "./negotiation";
+import { paymentTermsLabel, shortTermsLabel } from "./terms";
 
 describe("negotiation helpers", () => {
   it("formats money from cents", () => {
@@ -41,6 +44,7 @@ const sup = (
   name: string,
   price: number,
   delivery: number | null,
+  terms: number | null = null,
 ): Supplier => ({
   quote_id: name,
   seller_company_id: name,
@@ -52,6 +56,7 @@ const sup = (
   initial_delivery_days: delivery,
   price_cents: price,
   delivery_days: delivery,
+  payment_terms_days: terms,
   version: 1,
   status: "submitted",
   counters: 0,
@@ -80,6 +85,41 @@ describe("explainPick", () => {
     expect(
       explainPick(sup("A", 1000000, null), sup("B", 1000000, 6), 0.7),
     ).toBe("Same price as B.");
+  });
+});
+
+describe("payment terms", () => {
+  it("mentions terms only when the mandate negotiates them and they differ", () => {
+    expect(explainPick(sup("A", 1000000, 5, 60), sup("B", 1100000, 6, 0), 0.7)).toBe(
+      "AED\u00a01,000 cheaper than B, and 1 day sooner.",
+    );
+    expect(explainPick(sup("A", 1000000, 5, 60), sup("B", 1100000, 6, 0), 0.6, { weight: 0.1 })).toBe(
+      "AED\u00a01,000 cheaper than B, and 1 day sooner. Pays on net 60 days (more time to pay than cash).",
+    );
+    expect(explainPick(sup("Fast", 1070000, 7, 30), sup("Cheap", 1052500, 14, 30), 0.6, { weight: 0.1 })).toBe(
+      "AED\u00a0175 more than Cheap, but 7 days sooner. Your mandate weighs delivery at 30%.",
+    );
+  });
+
+  it("splits weights so terms come first and the rest follows the priority", () => {
+    expect(splitWeights(0.7, 0.1)).toEqual({ price_weight: 0.63, terms_weight: 0.1 });
+    expect(splitWeights(0.5, 0)).toEqual({ price_weight: 0.5, terms_weight: 0 });
+    expect(priceShareOf({ price_weight: 0.63, terms_weight: 0.1, preferred_payment_terms_days: 60 })).toBe(0.7);
+    expect(priceShareOf({ price_weight: 0.7, terms_weight: 0, preferred_payment_terms_days: null })).toBe(0.7);
+  });
+
+  it("reads payment terms from plain words without mistaking them for delivery", () => {
+    expect(parseLimits("Up to AED 50k within 2 weeks, net 60")).toEqual({ maxCents: 5_000_000, days: 14, termsDays: 60 });
+    expect(parseLimits("we need 45 days credit, deliver in 10 days")).toEqual({ days: 10, termsDays: 45 });
+    expect(parseLimits("cash on delivery is fine")).toEqual({ termsDays: 0 });
+    expect(describeLimits({ termsDays: 60 })).toBe("Understood: pay on net 60 days");
+  });
+
+  it("labels terms for people", () => {
+    expect(paymentTermsLabel(0)).toBe("Cash on delivery");
+    expect(paymentTermsLabel(30)).toBe("Net 30 days");
+    expect(paymentTermsLabel(null)).toBe("—");
+    expect(shortTermsLabel(45)).toBe("Net 45");
   });
 });
 
