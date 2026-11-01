@@ -198,9 +198,9 @@ func (c *countingActor) DeliverCounter(ctx context.Context, d quotes.CounterDeli
 
 type failingRecord struct{ *quotes.Service }
 
-func (f failingRecord) RecordCounterTx(ctx context.Context, qtx *sqlc.Queries, plan quotes.CounterPlan, p *int64, d *int32, msg string) (quotes.CounterDelivery, error) {
+func (f failingRecord) RecordCounterTx(ctx context.Context, qtx *sqlc.Queries, plan quotes.CounterPlan, p *int64, d, t *int32, msg string) (quotes.CounterDelivery, error) {
 	// Write the message, then fail: the round and the message must roll back together.
-	if _, err := f.Service.RecordCounterTx(ctx, qtx, plan, p, d, msg); err != nil {
+	if _, err := f.Service.RecordCounterTx(ctx, qtx, plan, p, d, t, msg); err != nil {
 		return quotes.CounterDelivery{}, err
 	}
 	return quotes.CounterDelivery{}, errors.New("injected failure")

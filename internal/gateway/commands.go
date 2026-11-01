@@ -184,6 +184,9 @@ func (h *Handler) command(c *fiber.Ctx) error {
 		sellerBody := normalized.Notes
 		if sellerBody == "" {
 			sellerBody = fmt.Sprintf("New offer: %.2f %s", float64(normalized.PriceCents)/100, normalized.Currency)
+			if normalized.PaymentTermsDays != nil {
+				sellerBody += ", payment " + quotes.PaymentTermsLabel(*normalized.PaymentTermsDays)
+			}
 		}
 		if sellerMsg, err := h.q.CreateQuoteMessage(c.Context(), sqlc.CreateQuoteMessageParams{
 			QuoteID: head.ID, Author: "seller", Body: sellerBody, Attachments: nil,

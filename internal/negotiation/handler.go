@@ -3,6 +3,8 @@ package negotiation
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -50,7 +52,20 @@ type strategyInput struct {
 	MaxRounds        *int32   `json:"max_rounds"`
 	AutoAccept       bool     `json:"auto_accept"`
 	Tone             string   `json:"tone"`
+
+	// Payment terms (days after delivery the buyer pays; 0 = cash). All
+	// optional: without preferred_payment_terms_days terms are not negotiated.
+	PreferredPaymentTermsDays *int32   `json:"preferred_payment_terms_days"`
+	MinPaymentTermsDays       *int32   `json:"min_payment_terms_days"`
+	TermsWeight               *float64 `json:"terms_weight"`
 }
+
+// maxMandateTermsDays bounds the payment terms a buyer can ask for.
+const maxMandateTermsDays = 180
+
+// defaultTermsWeight is the share terms get when the buyer sets preferred
+// terms without saying how much they matter.
+const defaultTermsWeight = 0.15
 
 func (in *strategyInput) validate() error {
 	if in.TargetPriceCents <= 0 {
@@ -68,6 +83,9 @@ func (in *strategyInput) validate() error {
 	} else if *in.PriceWeight < 0 || *in.PriceWeight > 1 {
 		return fiber.NewError(fiber.StatusBadRequest, "price_weight must be between 0 and 1")
 	}
+	if err := in.validateTerms(); err != nil {
+		return err
+	}
 	if in.MaxRounds == nil {
 		r := int32(4)
 		in.MaxRounds = &r
@@ -80,6 +98,43 @@ func (in *strategyInput) validate() error {
 	case "collaborative", "firm":
 	default:
 		return fiber.NewError(fiber.StatusBadRequest, "tone must be collaborative or firm")
+	}
+	return nil
+}
+
+func (in *strategyInput) validateTerms() error {
+	for name, v := range map[string]*int32{"preferred_payment_terms_days": in.PreferredPaymentTermsDays, "min_payment_terms_days": in.MinPaymentTermsDays} {
+		if v != nil && (*v < 0 || *v > maxMandateTermsDays) {
+			return fiber.NewError(fiber.StatusBadRequest, fmt.Sprintf("%s must be between 0 and %d", name, maxMandateTermsDays))
+		}
+	}
+	if in.PreferredPaymentTermsDays == nil {
+		if in.MinPaymentTermsDays != nil {
+			return fiber.NewError(fiber.StatusBadRequest, "min_payment_terms_days requires preferred_payment_terms_days")
+		}
+		if in.TermsWeight != nil && *in.TermsWeight != 0 {
+			return fiber.NewError(fiber.StatusBadRequest, "terms_weight requires preferred_payment_terms_days")
+		}
+		zero := 0.0
+		in.TermsWeight = &zero
+		return nil
+	}
+	if in.MinPaymentTermsDays != nil && *in.MinPaymentTermsDays > *in.PreferredPaymentTermsDays {
+		return fiber.NewError(fiber.StatusBadRequest, "min_payment_terms_days must not exceed preferred_payment_terms_days")
+	}
+	if in.TermsWeight == nil {
+		w := math.Min(defaultTermsWeight, 1-*in.PriceWeight)
+		in.TermsWeight = &w
+	} else if *in.TermsWeight < 0 || *in.TermsWeight > 1 {
+		return fiber.NewError(fiber.StatusBadRequest, "terms_weight must be between 0 and 1")
+	}
+	if *in.PriceWeight+*in.TermsWeight > 1+1e-9 {
+		return fiber.NewError(fiber.StatusBadRequest, "price_weight + terms_weight must not exceed 1 (delivery gets the rest)")
+	}
+	// Absorb float noise (e.g. 0.7 + 0.3) so the DB check always holds.
+	if *in.PriceWeight+*in.TermsWeight > 1 {
+		w := 1 - *in.PriceWeight
+		in.TermsWeight = &w
 	}
 	return nil
 }
@@ -118,6 +173,8 @@ func (h *Handler) upsert(c *fiber.Ctx) error {
 		RfqID: r.ID, BuyerCompanyID: r.BuyerCompanyID, CreatedBy: createdBy,
 		TargetPriceCents: in.TargetPriceCents, MaxPriceCents: in.MaxPriceCents, MaxDeliveryDays: in.MaxDeliveryDays,
 		PriceWeight: *in.PriceWeight, MaxRounds: *in.MaxRounds, AutoAccept: in.AutoAccept, Tone: in.Tone,
+		PreferredPaymentTermsDays: in.PreferredPaymentTermsDays, MinPaymentTermsDays: in.MinPaymentTermsDays,
+		TermsWeight: *in.TermsWeight,
 	}); err != nil {
 		return err
 	}
@@ -223,6 +280,7 @@ type supplierView struct {
 	InitialDeliveryDays *int32  `json:"initial_delivery_days"`
 	PriceCents          int64   `json:"price_cents"`
 	DeliveryDays        *int32  `json:"delivery_days"`
+	PaymentTermsDays    *int32  `json:"payment_terms_days"`
 	Version             int32   `json:"version"`
 	Status              string  `json:"status"`
 	Counters            int     `json:"counters"`
@@ -246,9 +304,18 @@ type suggestionView struct {
 	MaxPriceCents    int64 `json:"max_price_cents"`
 }
 
+// weightsView is the mandate's utility split, delivery included, so clients
+// never derive it themselves.
+type weightsView struct {
+	Price    float64 `json:"price"`
+	Delivery float64 `json:"delivery"`
+	Terms    float64 `json:"terms"`
+}
+
 type negotiationView struct {
 	RFQ       fiber.Map                 `json:"rfq"`
 	Strategy  *sqlc.NegotiationStrategy `json:"strategy"`
+	Weights   *weightsView              `json:"weights"`
 	Rounds    []roundView               `json:"rounds"`
 	Suppliers []supplierView            `json:"suppliers"`
 	Summary   summaryView               `json:"summary"`
@@ -318,6 +385,8 @@ func (h *Handler) respond(c *fiber.Ctx, r sqlc.Rfq) error {
 	var m Mandate
 	if v.Strategy != nil {
 		m = mandateOf(s)
+		wp, wd, wt := weights(m)
+		v.Weights = &weightsView{Price: round3(wp), Delivery: round3(wd), Terms: round3(wt)}
 	}
 	var recommendedCents int64
 	for _, q := range qs {
@@ -325,14 +394,14 @@ func (h *Handler) respond(c *fiber.Ctx, r sqlc.Rfq) error {
 			QuoteID: q.ID, SellerCompanyID: q.SellerCompanyID, SellerName: q.SellerName,
 			VerificationStatus: q.VerificationStatus, SellerAvgRating: q.SellerAvgRating, Currency: q.Currency,
 			InitialPriceCents: q.PriceCents, InitialDeliveryDays: q.DeliveryDays,
-			PriceCents: q.PriceCents, DeliveryDays: q.DeliveryDays, Version: q.Version, Status: q.Status,
+			PriceCents: q.PriceCents, DeliveryDays: q.DeliveryDays, PaymentTermsDays: q.PaymentTermsDays, Version: q.Version, Status: q.Status,
 			Counters: counters[q.ID], LastAction: lastAction[q.ID],
 		}
 		if f, ok := firstBy[q.ID]; ok {
 			sv.InitialPriceCents, sv.InitialDeliveryDays = f.PriceCents, f.DeliveryDays
 		}
 		if v.Strategy != nil {
-			sv.Utility = Utility(m, Offer{PriceCents: q.PriceCents, DeliveryDays: q.DeliveryDays})
+			sv.Utility = Utility(m, offerOf(q))
 			sv.Recommended = s.OutcomeQuoteID != nil && *s.OutcomeQuoteID == q.ID
 			if sv.Recommended {
 				recommendedCents = q.PriceCents

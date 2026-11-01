@@ -32,7 +32,7 @@ import (
 // its rows for replay. See recordRound for the full protocol.
 type QuoteActor interface {
 	PrepareCounter(ctx context.Context, buyerCompanyID, quoteID string) (quotes.CounterPlan, error)
-	RecordCounterTx(ctx context.Context, qtx *sqlc.Queries, plan quotes.CounterPlan, priceCents *int64, deliveryDays *int32, message string) (quotes.CounterDelivery, error)
+	RecordCounterTx(ctx context.Context, qtx *sqlc.Queries, plan quotes.CounterPlan, priceCents *int64, deliveryDays, paymentTermsDays *int32, message string) (quotes.CounterDelivery, error)
 	DeliverCounter(ctx context.Context, d quotes.CounterDelivery)
 	LoadCounterDelivery(ctx context.Context, quoteMessageID string, agentEventID *string) (quotes.CounterDelivery, error)
 	Accept(ctx context.Context, buyerCompanyID, quoteID string) (sqlc.Order, error)
@@ -70,6 +70,8 @@ type Engine struct {
 	logger        zerolog.Logger
 	sellerTimeout time.Duration
 	locks         sync.Map // rfqID -> *sync.Mutex
+	phraser       MessagePhraser
+	phraseTimeout time.Duration
 }
 
 // NewEngine builds an engine. sellerTimeout is how long the engine waits for
@@ -193,6 +195,8 @@ type quoteState struct {
 	counters        int
 	lastOfferCents  int64
 	lastSellerCents int64
+	lastOfferDays   *int32
+	lastOfferTerms  *int32
 	last            *sqlc.NegotiationRound
 }
 
@@ -262,6 +266,7 @@ func (e *Engine) tick(ctx context.Context, rfqID string) error {
 			if rd.OfferPriceCents != nil {
 				st.lastOfferCents = *rd.OfferPriceCents
 			}
+			st.lastOfferDays, st.lastOfferTerms = rd.OfferDeliveryDays, rd.OfferPaymentTermsDays
 		}
 		st.lastSellerCents = rd.SellerPriceCents
 		st.last = &rd
@@ -285,22 +290,31 @@ func (e *Engine) tick(ctx context.Context, rfqID string) error {
 		if st.last != nil && st.last.RespondedToVersion == q.Version {
 			continue // already answered this version
 		}
-		h := History{Counters: st.counters, LastOfferCents: st.lastOfferCents, LastSellerCents: st.lastSellerCents, Competitors: len(live) - 1}
+		h := History{Counters: st.counters, LastOfferCents: st.lastOfferCents, LastSellerCents: st.lastSellerCents, Competitors: len(live) - 1,
+			LastOfferDeliveryDays: st.lastOfferDays, LastOfferTermsDays: st.lastOfferTerms}
 		for _, o := range live {
-			if o.ID != q.ID && (h.BestRivalCents == 0 || o.PriceCents < h.BestRivalCents) {
+			// Only a rival the buyer could actually accept is leverage.
+			if o.ID != q.ID && withinLimits(m, offerOf(o)) && (h.BestRivalCents == 0 || o.PriceCents < h.BestRivalCents) {
 				h.BestRivalCents = o.PriceCents
 			}
 		}
-		d := Decide(m, Offer{PriceCents: q.PriceCents, DeliveryDays: q.DeliveryDays, Currency: q.Currency}, h)
+		o := offerOf(q)
+		d := Decide(m, o, h)
+		source := MessageTemplate
+		if d.Action == ActionCounter {
+			d.Message, source = e.phrase(ctx, phraseInput(m, o, h, d))
+		}
 		params := sqlc.InsertNegotiationRoundParams{
 			StrategyID: s.ID, QuoteID: q.ID, Round: int32(st.counters + 1), RespondedToVersion: q.Version,
 			Action: d.Action, SellerPriceCents: q.PriceCents, SellerDeliveryDays: q.DeliveryDays,
 			Utility: d.Utility, Rationale: d.Rationale, Message: d.Message,
+			SellerPaymentTermsDays: q.PaymentTermsDays, MessageSource: source,
 		}
 		if d.Action == ActionCounter {
 			offer := d.OfferCents
 			params.OfferPriceCents = &offer
 			params.OfferDeliveryDays = d.OfferDeliveryDays
+			params.OfferPaymentTermsDays = d.OfferTermsDays
 		}
 		rd, outcome, err := e.recordRound(ctx, s, params, d)
 		if err != nil {
@@ -320,6 +334,7 @@ func (e *Engine) tick(ctx context.Context, rfqID string) error {
 		if d.Action == ActionCounter {
 			st.counters++
 			st.lastOfferCents = d.OfferCents
+			st.lastOfferDays, st.lastOfferTerms = d.OfferDeliveryDays, d.OfferTermsDays
 		}
 		st.lastSellerCents = q.PriceCents
 		st.last = &rd
@@ -347,12 +362,15 @@ func (e *Engine) close(ctx context.Context, s sqlc.NegotiationStrategy, m Mandat
 	cands := make([]Candidate, 0, len(live))
 	byID := map[string]sqlc.RankQuotesByRFQRow{}
 	for _, q := range live {
-		cands = append(cands, Candidate{QuoteID: q.ID, Offer: Offer{PriceCents: q.PriceCents, DeliveryDays: q.DeliveryDays, Currency: q.Currency}})
+		cands = append(cands, Candidate{QuoteID: q.ID, Offer: offerOf(q)})
 		byID[q.ID] = q
 	}
 	best, _, ok := PickBest(m, cands)
 	if !ok {
 		summary := fmt.Sprintf("No supplier met the %s walk-away price.", money(m.MaxCents, live[0].Currency))
+		if anyWithinPrice(m, cands) {
+			summary = fmt.Sprintf("No supplier met the %s walk-away price within your delivery and payment-terms limits.", money(m.MaxCents, live[0].Currency))
+		}
 		if _, err := e.setStatus(ctx, s.ID, StatusCompleted, nil, summary); err != nil {
 			return err
 		}
@@ -379,14 +397,14 @@ func (e *Engine) close(ctx context.Context, s sqlc.NegotiationStrategy, m Mandat
 		if _, err := e.quotes.Accept(ctx, s.BuyerCompanyID, q.ID); err != nil {
 			return err
 		}
-		summary := fmt.Sprintf("Agreed with %s at %s%s.", q.SellerName, money(q.PriceCents, q.Currency), saved)
+		summary := fmt.Sprintf("Agreed with %s at %s%s%s.", q.SellerName, money(q.PriceCents, q.Currency), termsNote(m, best.Offer), saved)
 		if _, err := e.setStatus(ctx, s.ID, StatusCompleted, &q.ID, summary); err != nil {
 			return err
 		}
 		e.notify(ctx, s, "Deal closed by your negotiation agent", summary)
 		return nil
 	}
-	summary := fmt.Sprintf("Best deal: %s at %s%s. Awaiting your approval.", q.SellerName, money(q.PriceCents, q.Currency), saved)
+	summary := fmt.Sprintf("Best deal: %s at %s%s%s. Awaiting your approval.", q.SellerName, money(q.PriceCents, q.Currency), termsNote(m, best.Offer), saved)
 	if _, err := e.setStatus(ctx, s.ID, StatusAwaitingApproval, &q.ID, summary); err != nil {
 		return err
 	}
@@ -547,5 +565,19 @@ func mandateOf(s sqlc.NegotiationStrategy) Mandate {
 	return Mandate{
 		TargetCents: s.TargetPriceCents, MaxCents: s.MaxPriceCents, MaxDeliveryDays: s.MaxDeliveryDays,
 		PriceWeight: s.PriceWeight, MaxRounds: int(s.MaxRounds), Tone: s.Tone,
+		PreferredTermsDays: s.PreferredPaymentTermsDays, MinTermsDays: s.MinPaymentTermsDays, TermsWeight: s.TermsWeight,
 	}
+}
+
+func anyWithinPrice(m Mandate, cs []Candidate) bool {
+	for _, c := range cs {
+		if c.Offer.PriceCents <= m.MaxCents {
+			return true
+		}
+	}
+	return false
+}
+
+func offerOf(q sqlc.RankQuotesByRFQRow) Offer {
+	return Offer{PriceCents: q.PriceCents, DeliveryDays: q.DeliveryDays, PaymentTermsDays: q.PaymentTermsDays, Currency: q.Currency}
 }

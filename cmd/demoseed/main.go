@@ -44,16 +44,19 @@ type demoRFQ struct {
 	Negotiate   bool
 	Tone        string
 	MonthsAgo   int
+	// TermsDays > 0 also negotiates payment terms (the buyer's preferred
+	// credit in days), so the agent can logroll faster payment for price.
+	TermsDays int
 }
 
 var rfqs = []demoRFQ{
-	{"5,000 corrugated shipping cartons", "Need 5000 double-wall corrugated shipping cartons, 40x30x30cm, printed logo, for packaging. Deliver to Dubai.", true, true, "collaborative", 5},
-	{"1,200 heat-treated wooden pallets", "Looking for 1200 ISPM-15 heat-treated wooden pallets 1200x1000 for packaging and export, Jebel Ali.", true, true, "firm", 4},
-	{"20,000 custom printed mailer boxes", "20000 custom printed kraft mailer boxes for e-commerce packaging, 2-colour print, Dubai warehouse.", true, true, "collaborative", 3},
-	{"800 rolls stretch wrap film", "800 rolls of 23 micron machine stretch wrap film for pallet packaging, delivery Abu Dhabi.", true, true, "firm", 2},
-	{"3,000 food-grade packaging tubs", "3000 food-grade PP packaging tubs 1L with lids, delivered to Sharjah.", true, true, "collaborative", 1},
-	{"10,000 bubble wrap mailers", "10000 padded bubble wrap mailers A4 size for packaging, Dubai.", false, true, "collaborative", 0},
-	{"2,500 moving boxes with handles", "2500 heavy-duty moving boxes with hand holes, packaging for relocation business, Dubai.", false, false, "", 0},
+	{"5,000 corrugated shipping cartons", "Need 5000 double-wall corrugated shipping cartons, 40x30x30cm, printed logo, for packaging. Deliver to Dubai.", true, true, "collaborative", 5, 60},
+	{"1,200 heat-treated wooden pallets", "Looking for 1200 ISPM-15 heat-treated wooden pallets 1200x1000 for packaging and export, Jebel Ali.", true, true, "firm", 4, 0},
+	{"20,000 custom printed mailer boxes", "20000 custom printed kraft mailer boxes for e-commerce packaging, 2-colour print, Dubai warehouse.", true, true, "collaborative", 3, 45},
+	{"800 rolls stretch wrap film", "800 rolls of 23 micron machine stretch wrap film for pallet packaging, delivery Abu Dhabi.", true, true, "firm", 2, 60},
+	{"3,000 food-grade packaging tubs", "3000 food-grade PP packaging tubs 1L with lids, delivered to Sharjah.", true, true, "collaborative", 1, 0},
+	{"10,000 bubble wrap mailers", "10000 padded bubble wrap mailers A4 size for packaging, Dubai.", false, true, "collaborative", 0, 60},
+	{"2,500 moving boxes with handles", "2500 heavy-duty moving boxes with hand holes, packaging for relocation business, Dubai.", false, false, "", 0, 0},
 }
 
 func main() {
@@ -135,10 +138,17 @@ func main() {
 		}
 		target := int64(sug["target_price_cents"].(float64))
 		maxP := int64(sug["max_price_cents"].(float64))
-		_, err = call(ctx, "PUT", "/v1/rfqs/"+id+"/negotiation", buyer.Token, map[string]any{
+		mandate := map[string]any{
 			"target_price_cents": target, "max_price_cents": maxP, "max_delivery_days": 14,
 			"price_weight": 0.75, "max_rounds": 4, "auto_accept": r.AutoAccept, "tone": r.Tone,
-		})
+		}
+		if r.TermsDays > 0 {
+			mandate["price_weight"] = 0.7
+			mandate["preferred_payment_terms_days"] = r.TermsDays
+			mandate["min_payment_terms_days"] = 15
+			mandate["terms_weight"] = 0.1
+		}
+		_, err = call(ctx, "PUT", "/v1/rfqs/"+id+"/negotiation", buyer.Token, mandate)
 		must(log, err, "set strategy")
 		var status string
 		_ = waitFor(ctx, 60*time.Second, func() (bool, error) {

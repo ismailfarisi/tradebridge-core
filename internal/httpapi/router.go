@@ -58,15 +58,19 @@ type Config struct {
 	WorkerCtx                context.Context
 	NegotiationTick          time.Duration
 	NegotiationSellerTimeout time.Duration
-	JWTSecret                string
-	TokenTTL                 time.Duration
-	Logger                   zerolog.Logger
-	Redis                    *redis.Client
-	Pool                     *pgxpool.Pool
-	AnthropicAPIKey          string
-	AnthropicModel           string
-	SettingsEncKey           string
-	CORSOrigins              string
+	// NegotiationLLMMessages enables LLM phrasing of counter messages when
+	// a provider key is configured. Tests leave it off for determinism.
+	NegotiationLLMMessages bool
+	NegotiationLLMTimeout  time.Duration
+	JWTSecret              string
+	TokenTTL               time.Duration
+	Logger                 zerolog.Logger
+	Redis                  *redis.Client
+	Pool                   *pgxpool.Pool
+	AnthropicAPIKey        string
+	AnthropicModel         string
+	SettingsEncKey         string
+	CORSOrigins            string
 
 	// ResendAPIKey, EmailFrom, AppBaseURL configure the notify package's
 	// transactional email sender and link-building base URL.
@@ -314,6 +318,9 @@ func New(q *sqlc.Queries, cfg Config) *fiber.App {
 	quotesSvc := quotes.NewService(q, cfg.Pool, pub, attLoader, cfg.Logger, notifier, invSvc, entSvc, threadPub)
 	quotes.NewHandler(quotesSvc, q).Register(f, rlMessage, middleware.RequireVerified(q), guard...)
 	negEngine := negotiation.NewEngine(q, cfg.Pool, quotesSvc, notifier, cfg.Logger, cfg.NegotiationSellerTimeout)
+	if cfg.NegotiationLLMMessages {
+		negEngine.SetPhraser(negotiation.NewLLMPhraser(settingsSvc, cfg.Logger), cfg.NegotiationLLMTimeout)
+	}
 	negotiation.NewHandler(q, negEngine, entSvc).Register(f, guard...)
 	if cfg.WorkerCtx != nil {
 		go negEngine.Run(cfg.WorkerCtx, cfg.NegotiationTick)

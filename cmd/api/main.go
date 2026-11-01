@@ -60,6 +60,8 @@ func main() {
 		WorkerCtx:                sweepCtx,
 		NegotiationTick:          time.Duration(app.Config.NegotiationTickSeconds) * time.Second,
 		NegotiationSellerTimeout: time.Duration(app.Config.NegotiationSellerTimeoutMinutes) * time.Minute,
+		NegotiationLLMMessages:   app.Config.NegotiationLLMMessages,
+		NegotiationLLMTimeout:    time.Duration(app.Config.NegotiationLLMTimeoutMs) * time.Millisecond,
 
 		VerifyDNSTimeout:       app.Config.VerifyDNSTimeout,
 		VerifyRequiredForMatch: app.Config.VerifyRequiredForMatch,

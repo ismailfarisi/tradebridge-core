@@ -25,7 +25,7 @@ func TestFormatAmount(t *testing.T) {
 func TestCounterBody_UsesQuoteCurrency(t *testing.T) {
 	price := int64(1100000)
 	days := int32(5)
-	got := counterBody("Can you do better?", &price, &days, "AED")
+	got := counterBody("Can you do better?", &price, &days, nil, "AED")
 	want := "Can you do better?\n\nProposed terms — price: 11,000.00 AED, delivery: 5 days"
 	if got != want {
 		t.Errorf("counterBody = %q, want %q", got, want)

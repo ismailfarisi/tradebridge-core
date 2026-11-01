@@ -47,6 +47,13 @@ type Config struct {
 	// waits for a supplier to answer a counter before treating its last
 	// terms as final.
 	NegotiationSellerTimeoutMinutes int `mapstructure:"NEGOTIATION_SELLER_TIMEOUT_MINUTES"`
+	// NegotiationLLMMessages lets the configured LLM word the engine's
+	// counter messages (figures stay deterministic and are verified). It
+	// only takes effect when an LLM API key is configured.
+	NegotiationLLMMessages bool `mapstructure:"NEGOTIATION_LLM_MESSAGES"`
+	// NegotiationLLMTimeoutMs bounds one phrasing call before the engine
+	// falls back to the template message.
+	NegotiationLLMTimeoutMs int `mapstructure:"NEGOTIATION_LLM_TIMEOUT_MS"`
 
 	// AgentCredTTLDays is how long an issued agent credential stays valid
 	// before it expires (<= 0 means never expires).
@@ -127,6 +134,8 @@ func Load() (*Config, error) {
 	v.SetDefault("RFQ_SWEEP_SECONDS", 300)
 	v.SetDefault("NEGOTIATION_TICK_SECONDS", 10)
 	v.SetDefault("NEGOTIATION_SELLER_TIMEOUT_MINUTES", 1440)
+	v.SetDefault("NEGOTIATION_LLM_MESSAGES", true)
+	v.SetDefault("NEGOTIATION_LLM_TIMEOUT_MS", 4000)
 	v.SetDefault("ATTACHMENTS_DIR", "")
 	v.SetDefault("AGENT_CRED_TTL_DAYS", 90)
 	v.SetDefault("AGENT_CRED_ROTATE_GRACE_DAYS", 7)

@@ -203,7 +203,7 @@ func (q *Queries) ListNegotiationKillSwitchLog(ctx context.Context, arg ListNego
 }
 
 const listPendingNegotiationDeliveries = `-- name: ListPendingNegotiationDeliveries :many
-SELECT id, strategy_id, quote_id, round, responded_to_version, action, seller_price_cents, seller_delivery_days, offer_price_cents, offer_delivery_days, utility, rationale, message, created_at, delivery_status, quote_message_id, agent_event_id, delivered_at FROM negotiation_rounds
+SELECT id, strategy_id, quote_id, round, responded_to_version, action, seller_price_cents, seller_delivery_days, offer_price_cents, offer_delivery_days, utility, rationale, message, created_at, delivery_status, quote_message_id, agent_event_id, delivered_at, seller_payment_terms_days, offer_payment_terms_days, message_source FROM negotiation_rounds
 WHERE strategy_id = $1 AND delivery_status = 'pending'
 ORDER BY created_at ASC
 `
@@ -236,6 +236,9 @@ func (q *Queries) ListPendingNegotiationDeliveries(ctx context.Context, strategy
 			&i.QuoteMessageID,
 			&i.AgentEventID,
 			&i.DeliveredAt,
+			&i.SellerPaymentTermsDays,
+			&i.OfferPaymentTermsDays,
+			&i.MessageSource,
 		); err != nil {
 			return nil, err
 		}
@@ -273,7 +276,7 @@ const setNegotiationRoundPending = `-- name: SetNegotiationRoundPending :one
 UPDATE negotiation_rounds
 SET delivery_status = 'pending', quote_message_id = $1, agent_event_id = $2
 WHERE id = $3
-RETURNING id, strategy_id, quote_id, round, responded_to_version, action, seller_price_cents, seller_delivery_days, offer_price_cents, offer_delivery_days, utility, rationale, message, created_at, delivery_status, quote_message_id, agent_event_id, delivered_at
+RETURNING id, strategy_id, quote_id, round, responded_to_version, action, seller_price_cents, seller_delivery_days, offer_price_cents, offer_delivery_days, utility, rationale, message, created_at, delivery_status, quote_message_id, agent_event_id, delivered_at, seller_payment_terms_days, offer_payment_terms_days, message_source
 `
 
 type SetNegotiationRoundPendingParams struct {
@@ -304,6 +307,9 @@ func (q *Queries) SetNegotiationRoundPending(ctx context.Context, arg SetNegotia
 		&i.QuoteMessageID,
 		&i.AgentEventID,
 		&i.DeliveredAt,
+		&i.SellerPaymentTermsDays,
+		&i.OfferPaymentTermsDays,
+		&i.MessageSource,
 	)
 	return i, err
 }

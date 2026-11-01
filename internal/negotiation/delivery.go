@@ -90,7 +90,7 @@ func (e *Engine) recordRound(ctx context.Context, s sqlc.NegotiationStrategy, pa
 		return rd, roundRecorded, nil
 	}
 
-	delivery, err := e.quotes.RecordCounterTx(ctx, qtx, plan, params.OfferPriceCents, params.OfferDeliveryDays, d.Message)
+	delivery, err := e.quotes.RecordCounterTx(ctx, qtx, plan, params.OfferPriceCents, params.OfferDeliveryDays, params.OfferPaymentTermsDays, d.Message)
 	if err != nil {
 		e.logger.Error().Err(err).Str("quote_id", params.QuoteID).Msg("negotiation: record counter")
 		return rd, roundFailed, nil

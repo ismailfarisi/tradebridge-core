@@ -67,7 +67,7 @@ the buyer counters, since a person has to answer.
 
 Buyers can hand an RFQ to a negotiation agent (`internal/negotiation`). The
 mandate (`PUT /v1/rfqs/:id/negotiation`) sets a target price, walk-away price,
-max delivery days, price-vs-delivery weight, round budget, tone
+max delivery days, optional payment terms, issue weights, round budget, tone
 (`collaborative` linear / `firm` Boulware concession curve) and whether to
 auto-accept (Pro+). The engine answers every supplier quote version once
 (idempotent on `quote_id, version`), counters through the normal buyer
@@ -101,6 +101,58 @@ last terms. Savings/spend analytics: `GET /v1/negotiations/savings`.
   auto-accepting. Negotiation views carry `pause` so the UI can say who paused
   it. Every flip is recorded in `negotiation_kill_switch_log`; company flips
   also go to `audit_logs`.
+
+### Payment terms and logrolling
+
+Payment terms (`payment_terms_days`: days after delivery the buyer pays;
+`0` = cash on delivery, `30`, `60`, `90` …) are a third negotiable issue.
+The mandate optionally takes `preferred_payment_terms_days` (0–180, longer is
+better for the buyer), `min_payment_terms_days` (shortest acceptable, ≤
+preferred) and `terms_weight`. Weights are shares of one: price
+`price_weight`, terms `terms_weight` (default 0.15 when preferred terms are
+set), delivery gets the rest; `price_weight + terms_weight ≤ 1`. The view
+returns the split as `weights: {price, delivery, terms}`. A mandate without
+preferred terms is scored and negotiated exactly as before (two issues).
+
+With terms in the mandate, when a supplier resists on price (holds, or
+concedes under a third of the gap since our last offer), the agent logrolls:
+it concedes on the issue the buyer weighs less — faster payment (snapped to
+standard terms, never below the minimum) or a longer delivery (never past
+the limit) — and asks for a lower price than a straight concession, sized so
+the buyer's utility is unchanged. The round rationale explains the trade.
+Walk-away guarantees hold on every issue: no offer above the walk-away price,
+no acceptance of terms below the minimum or a stated delivery past the
+limit, and only acceptable rivals are used as leverage. Rounds record
+`seller_payment_terms_days`, `offer_payment_terms_days` and `message_source`.
+
+**LLM-phrased counters.** The engine decides every figure. If an LLM key is
+configured in the platform settings (the same Claude client and settings RFQ
+intake uses) and `NEGOTIATION_LLM_MESSAGES=true` (default), the decided move
+is passed to the model to word a supplier-facing message that discloses the
+buyer is represented by an AI agent. The text is used only if it states
+exactly the engine's price, delivery and terms, contains no other figure or
+money amount and does not claim a final offer the engine didn't make;
+otherwise — or on error or after `NEGOTIATION_LLM_TIMEOUT_MS` (default
+4000) — the deterministic template is sent. `message_source` is `llm` or
+`template`.
+
+### Agent protocol: payment terms (backward compatible)
+
+- `quote.submit` and `quote.counter` payloads accept an optional
+  `payment_terms_days` (integer 0–365). Omitted means "not stated" on a
+  first quote and "unchanged" on a revision, so agents built before terms
+  existed keep working unchanged.
+- The buyer-counter event `message.received` carries
+  `counter.payment_terms_days` only when the buyer proposed terms
+  (`omitempty`), alongside `counter.price_cents` / `counter.delivery_days`.
+- The seller manual quote (`POST /v1/seller/rfqs/:id/quote`), buyer counter
+  (`POST /v1/quotes/:id/counter`), quote lists and the seller RFQ view accept
+  or return `payment_terms_days` the same way.
+
+The simulated sellers (`internal/simseller`) open with their own terms, give
+credit up to a limit, and lower their floor for faster payment or longer
+lead time, so `make demo-seed` (four RFQs negotiate terms) shows real
+logrolled rounds.
 
 **Local demo** (API + gateway running, `RATE_LIMIT_ENABLED=false`):
 `make demo-seed` creates `demo@northwind.test` / `Password123!`, three
