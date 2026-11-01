@@ -137,6 +137,11 @@ func Decide(m Mandate, o Offer, h History) Decision {
 		if h.Counters < m.MaxRounds {
 			why = "Supplier held its price"
 		}
+		// Property P4: a deal must satisfy the whole mandate, delivery included.
+		if o.PriceCents <= m.MaxCents && !deliveryOK {
+			return Decision{Action: ActionWalkAway, Utility: u,
+				Rationale: fmt.Sprintf("%s; %s is within your walk-away price but delivery misses your %d-day limit.", why, money(o.PriceCents, o.Currency), *m.MaxDeliveryDays)}
+		}
 		if o.PriceCents <= m.MaxCents {
 			return Decision{Action: ActionAcceptReady, Utility: u,
 				Rationale: fmt.Sprintf("%s; %s is within your %s walk-away price.", why, money(o.PriceCents, o.Currency), money(m.MaxCents, o.Currency))}
@@ -160,7 +165,10 @@ func Decide(m Mandate, o Offer, h History) Decision {
 			return Decision{Action: ActionAcceptReady, Utility: u,
 				Rationale: fmt.Sprintf("%s is at or below what we would offer next, so it is acceptable.", money(o.PriceCents, o.Currency))}
 		}
-		offer = o.PriceCents - 1
+		// Price is fine but delivery is not: undercut the ask by a cent and
+		// press on delivery — but never retreat below our own last offer
+		// (property P2); if the ask is already at or under it, match the ask.
+		offer = max64(o.PriceCents-1, min64(h.LastOfferCents, o.PriceCents))
 	}
 	var offerDelivery *int32
 	if m.MaxDeliveryDays != nil && (o.DeliveryDays == nil || *o.DeliveryDays > *m.MaxDeliveryDays) {
@@ -219,12 +227,16 @@ type Candidate struct {
 }
 
 // PickBest returns the highest-utility candidate within the walk-away price
-// (ties broken by lower price), or ok=false when none qualifies.
+// and the delivery limit (ties broken by lower price), or ok=false when none
+// qualifies. An unknown lead time does not meet a stated delivery limit.
 func PickBest(m Mandate, cs []Candidate) (Candidate, float64, bool) {
 	var best Candidate
 	bestU := -1.0
 	for _, c := range cs {
 		if c.Offer.PriceCents > m.MaxCents {
+			continue
+		}
+		if m.MaxDeliveryDays != nil && (c.Offer.DeliveryDays == nil || *c.Offer.DeliveryDays > *m.MaxDeliveryDays) {
 			continue
 		}
 		u := Utility(m, c.Offer)
@@ -278,6 +290,12 @@ func plural(n int) string {
 
 func clamp(v, lo, hi float64) float64 { return math.Max(lo, math.Min(hi, v)) }
 func round3(v float64) float64        { return math.Round(v*1000) / 1000 }
+func min64(a, b int64) int64 {
+	if a < b {
+		return a
+	}
+	return b
+}
 func max64(a, b int64) int64 {
 	if a > b {
 		return a
