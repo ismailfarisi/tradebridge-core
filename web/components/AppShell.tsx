@@ -4,54 +4,17 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { logout, useMe } from "@/lib/auth";
-import type { Me } from "@/lib/api";
 import NotificationBell from "@/components/NotificationBell";
 import VerifyEmailBanner from "@/components/VerifyEmailBanner";
 import FeedbackWidget from "@/components/FeedbackWidget";
 import { IMPERSONATING_FLAG_KEY, leaveImpersonation } from "@/lib/impersonation";
 import { listNegotiations } from "@/lib/negotiation";
-import { Icon, type IconName } from "@/components/Icon";
-
-type NavItem = { href: string; label: string; icon: IconName; show: (me: Me) => boolean; badge?: "approvals" };
-
-const isSeller = (m: Me) => m.company_type === "seller" || m.company_type === "both";
-const isBuyer = (m: Me) => m.company_type === "buyer" || m.company_type === "both" || !m.company_type;
-
-const NAV: { group: string; items: NavItem[] }[] = [
-  {
-    group: "",
-    items: [
-      { href: "/dashboard", label: "Overview", icon: "home", show: () => true },
-      { href: "/orders", label: "Orders", icon: "box", show: () => true },
-    ],
-  },
-  {
-    group: "Procurement",
-    items: [
-      { href: "/chat", label: "New RFQ", icon: "chat", show: isBuyer },
-      { href: "/rfqs", label: "RFQs", icon: "list", show: isBuyer },
-      { href: "/negotiations", label: "Negotiations", icon: "handshake", show: isBuyer, badge: "approvals" },
-      { href: "/savings", label: "Savings", icon: "trending", show: isBuyer },
-    ],
-  },
-  {
-    group: "Selling",
-    items: [
-      { href: "/seller/profile", label: "Supplier profile", icon: "store", show: isSeller },
-      { href: "/seller/catalog", label: "Catalog", icon: "layers", show: isSeller },
-      { href: "/seller/agent", label: "Sales agent", icon: "bot", show: isSeller },
-    ],
-  },
-  {
-    group: "Settings",
-    items: [
-      { href: "/settings/billing", label: "Billing & usage", icon: "card", show: () => true },
-      { href: "/settings/team", label: "Team", icon: "users", show: () => true },
-      { href: "/settings/verification", label: "Verification", icon: "shield", show: () => true },
-      { href: "/account", label: "Account", icon: "user", show: () => true },
-    ],
-  },
-];
+import { listRfqs } from "@/lib/api";
+import { Icon } from "@/components/Icon";
+import { needsYou } from "@/components/NeedsYou";
+import AccountMenu from "@/components/AccountMenu";
+import MobileNav from "@/components/MobileNav";
+import { isActive, isBuyer, pageCrumb, visibleNav } from "@/lib/nav";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const { token, me, ready } = useMe();
@@ -59,14 +22,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [hydrated, setHydrated] = useState(false);
   const [impersonating, setImpersonating] = useState<string | null>(null);
-  const [approvals, setApprovals] = useState(0);
+  const [decisions, setDecisions] = useState(0);
 
   // On a hard page load the token store first returns its *server* snapshot
   // (null) before the client snapshot (localStorage) is read one tick later.
   // Redirecting on that first render bounces a logged-in user to /login, so we
   // wait until the client has mounted — by then the real token has been read.
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setHydrated(true);
     setImpersonating(localStorage.getItem(IMPERSONATING_FLAG_KEY));
   }, []);
@@ -77,8 +40,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!token || !me || !isBuyer(me)) return;
-    listNegotiations(token)
-      .then((r) => setApprovals(r.negotiations.filter((n) => n.status === "awaiting_approval").length))
+    Promise.all([listNegotiations(token), listRfqs(token)])
+      .then(([n, r]) => {
+        const todo = needsYou(n.negotiations, r.rfqs);
+        setDecisions(todo.approvals.length + todo.unmanaged.length);
+      })
       .catch(() => {});
   }, [token, me, pathname]);
 
@@ -96,6 +62,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     .slice(0, 2)
     .toUpperCase();
 
+  const nav = visibleNav(me);
+  const crumb = pageCrumb(pathname);
+  const signOut = () => {
+    logout();
+    router.replace("/login");
+  };
+
   return (
     <div className="shell">
       <aside className="side" aria-label="Main navigation">
@@ -103,27 +76,29 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <span className="brand-mark"><Icon name="zap" size={16} strokeWidth={2.2} /></span>
           TradeBridge
         </Link>
-        {NAV.map((section) => {
-          const items = section.items.filter((it) => it.show(me));
-          if (items.length === 0) return null;
-          return (
-            <div key={section.group || "main"}>
-              {section.group && <div className="side-group">{section.group}</div>}
-              {items.map((it) => {
-                const active = pathname === it.href || pathname.startsWith(it.href + "/");
-                return (
-                  <Link key={it.href} href={it.href} className={`side-link${active ? " active" : ""}`} aria-current={active ? "page" : undefined}>
-                    <Icon name={it.icon} />
-                    {it.label}
-                    {it.badge === "approvals" && approvals > 0 && <span className="count" aria-label={`${approvals} awaiting approval`}>{approvals}</span>}
-                  </Link>
-                );
-              })}
-            </div>
-          );
-        })}
+        {nav.map((section) => (
+          <div key={section.group || "main"}>
+            {section.group && <div className="side-group">{section.group}</div>}
+            {section.items.map((it) => {
+              const active = isActive(pathname, it.href);
+              const count = it.badge === "needsYou" ? decisions : 0;
+              return (
+                <Link key={it.href} href={it.href} className={`side-link${active ? " active" : ""}`} aria-current={active ? "page" : undefined}>
+                  <Icon name={it.icon} />
+                  {it.label}
+                  {count > 0 && (
+                    <>
+                      <span className="count" aria-hidden>{count}</span>
+                      <span className="sr-only">, {count} need you</span>
+                    </>
+                  )}
+                </Link>
+              );
+            })}
+          </div>
+        ))}
         <div className="side-foot">
-          <div style={{ color: "#fff", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{me.company_name ?? "—"}</div>
+          <div className="truncate" style={{ color: "#fff", fontWeight: 600 }}>{me.company_name ?? "—"}</div>
           <div style={{ color: "#94a3b8", textTransform: "capitalize" }}>{me.company_type ?? "company"} · {me.role}</div>
         </div>
       </aside>
@@ -131,28 +106,29 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         <header className="topbar">
           <div className="row" style={{ gap: "0.6rem", minWidth: 0 }}>
-            <span className="avatar" aria-hidden>{initials}</span>
-            <strong style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{me.company_name ?? "—"}</strong>
-            <span className="badge badge-info topbar-role">{me.company_type ?? "company"}</span>
+            <Link href="/dashboard" className="brand-mark topbar-brand" aria-label="TradeBridge overview">
+              <Icon name="zap" size={16} strokeWidth={2.2} />
+            </Link>
+            <nav aria-label="Breadcrumb" className={`crumb${crumb.back ? " crumb-has-back" : ""}`}>
+              {crumb.back && (
+                <>
+                  <Link href={crumb.back.href} className="crumb-back">
+                    <Icon name="arrowLeft" size={16} /> {crumb.back.label}
+                  </Link>
+                  <span className="crumb-sep" aria-hidden>/</span>
+                </>
+              )}
+              {crumb.title && <span className="crumb-cur" aria-current="page">{crumb.title}</span>}
+            </nav>
           </div>
-          <div className="row" style={{ gap: "0.5rem" }}>
+          <div className="row" style={{ gap: "0.5rem", flexShrink: 0 }}>
             {isBuyer(me) && (
               <Link href="/chat" className="btn btn-sm btn-primary" aria-label="New RFQ">
                 <Icon name="plus" size={16} /> <span className="topbar-label">New RFQ</span>
               </Link>
             )}
             {token && <NotificationBell token={token} />}
-            <button
-              className="icon-btn"
-              aria-label="Sign out"
-              title="Sign out"
-              onClick={() => {
-                logout();
-                router.replace("/login");
-              }}
-            >
-              <Icon name="logout" />
-            </button>
+            <AccountMenu me={me} initials={initials} onSignOut={signOut} />
           </div>
         </header>
         {impersonating && (
@@ -173,6 +149,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <main className="content">{children}</main>
         <FeedbackWidget />
       </div>
+      <MobileNav me={me} items={nav.flatMap((s) => s.items)} pathname={pathname} decisions={decisions} onSignOut={signOut} />
     </div>
   );
 }
