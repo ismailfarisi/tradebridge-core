@@ -188,8 +188,10 @@ API: the negotiation view adds `baselines` (every baseline, `verified_basis`,
 (headline totals in the buyer's main currency, basis counts, explanation),
 `monthly[].verified_savings_cents` and per-deal verified fields in
 `recent_deals`; `GET /v1/negotiations` adds `verified_savings_cents` for
-closed deals. Existing opening-quote fields (`totals`, `savings_pct`,
-`summary.savings_cents`, ...) are unchanged.
+closed deals. The existing fields (`totals`, `savings_pct`,
+`recent_deals[].initial_cents`, ...) keep their shape and measure savings
+from the cheapest opening quote any supplier gave on the RFQ; the UI shows
+them as the secondary "vs cheapest/best opening" figure.
 
 **Local demo** (API + gateway running, `RATE_LIMIT_ENABLED=false`):
 `make demo-seed` creates `demo@northwind.test` / `Password123!`, three

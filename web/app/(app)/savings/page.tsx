@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/AppShell";
 import { Icon } from "@/components/Icon";
 import { SpendChart } from "@/components/SpendChart";
 import { useToken } from "@/lib/auth";
-import { BASIS_LABEL, DEFAULT_CURRENCY, getSavings, money, pct, verifiedHeadline, type Savings } from "@/lib/negotiation";
+import { BASIS_LABEL, DEFAULT_CURRENCY, getSavings, money, pct, shortDate, verifiedHeadline, type Savings } from "@/lib/negotiation";
 
 export default function SavingsPage() {
   const token = useToken();
@@ -41,10 +41,10 @@ export default function SavingsPage() {
           <div className="kpi-label"><Icon name="trending" size={16} /> {head.verified ? "Verified savings" : "Total savings"}</div>
           <div className="kpi-value">{money(head.cents, cur)}</div>
           <div className="kpi-sub">
-            {head.verified ? `${pct(head.pct)} below the lowest fair reference` : `${pct(head.pct)} below opening quotes`}
+            {head.verified ? `${pct(head.pct)} below the lowest fair reference` : `${pct(head.pct)} below the cheapest opening quotes`}
           </div>
           {v && (
-            <div className="kpi-sub faint">Vs opening quotes: {money(v.opening_quote_savings_cents, cur)}</div>
+            <div className="kpi-sub faint">Vs cheapest opening quotes: {money(t.savings_cents, cur)}</div>
           )}
         </div>
         <div className="kpi">
@@ -52,17 +52,7 @@ export default function SavingsPage() {
           <div className="kpi-value">{money(t.spend_cents)}</div>
           <div className="kpi-sub">across {t.deals} deal{t.deals === 1 ? "" : "s"}</div>
         </div>
-        <div className="kpi">
-          <div className="kpi-label"><Icon name="handshake" size={16} /> Agent-negotiated</div>
-          <div className="kpi-value">{t.deals ? Math.round((t.negotiated_deals / t.deals) * 100) : 0}%</div>
-          <div className="kpi-sub">{t.negotiated_deals} of {t.deals} deals</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-label"><Icon name="refresh" size={16} /> Avg. rounds</div>
-          <div className="kpi-value">{data.negotiations.avg_rounds.toFixed(1)}</div>
-          <div className="kpi-sub">{data.negotiations.active} live · {data.negotiations.awaiting_approval} awaiting approval</div>
-        </div>
-      </div>
+</div>
 
       {v && (
         <section className="card" style={{ marginBottom: "1rem" }} aria-labelledby="how-measured">
@@ -78,8 +68,8 @@ export default function SavingsPage() {
 
       <div className="split" style={{ marginBottom: "1rem" }}>
         <section className="card">
-          <div className="section-head"><h2>Spend &amp; {v ? "verified " : ""}savings — last 12 months</h2></div>
-          <SpendChart data={chart} currency={cur} savingsLabel={v ? "Verified savings" : "Savings vs opening quotes"} />
+          <div className="section-head"><h2>Spend and {v ? "verified " : ""}savings, last 12 months</h2></div>
+          <SpendChart data={chart} currency={cur} savingsLabel={v ? "Verified savings" : "Savings vs cheapest opening quotes"} />
         </section>
         <section className="card">
           <div className="section-head"><h2>Top suppliers by spend</h2></div>
@@ -110,9 +100,9 @@ export default function SavingsPage() {
           </div>
         ) : (
           <div style={{ overflowX: "auto" }}>
-            <table className="tbl">
+            <table className="tbl tbl-cards">
               <thead>
-                <tr><th>RFQ</th><th>Supplier</th><th style={{ textAlign: "right" }}>Final</th><th style={{ textAlign: "right" }}>Verified saved</th><th style={{ textAlign: "right" }}>Vs opening</th><th style={{ textAlign: "right" }}>Rounds</th><th>Date</th></tr>
+                <tr><th>RFQ</th><th>Supplier</th><th style={{ textAlign: "right" }} title="Cheapest opening quote from any supplier">Best opening</th><th style={{ textAlign: "right" }}>Final</th><th style={{ textAlign: "right" }}>Verified saved</th><th style={{ textAlign: "right" }} title="Saved against the cheapest opening quote from any supplier">Vs best opening</th><th style={{ textAlign: "right" }} title="Counter-offers the agent sent across all suppliers">Counters</th><th>Date</th></tr>
               </thead>
               <tbody>
                 {data.recent_deals.map((d) => {
@@ -120,20 +110,21 @@ export default function SavingsPage() {
                   const vs = d.verified_savings_cents ?? 0;
                   return (
                     <tr key={d.order_id}>
-                      <td><Link className="rowlink" href={`/rfqs/${d.rfq_id}/negotiation`}>{d.rfq_title}</Link></td>
-                      <td>{d.seller_name}</td>
-                      <td className="num" style={{ textAlign: "right", fontWeight: 600 }}>{money(d.total_cents, d.currency)}</td>
-                      <td className="num" style={{ textAlign: "right" }} title={d.basis_reason || undefined}>
+                      <td className="tc-main"><Link className="rowlink" href={`/rfqs/${d.rfq_id}/negotiation`}>{d.rfq_title}</Link></td>
+                      <td className="tc-main tc-sub">{d.seller_name}</td>
+                      <td className="num muted tc-hide-m" style={{ textAlign: "right" }}>{money(d.initial_cents, d.currency)}</td>
+                      <td className="num" data-label="Final price" style={{ textAlign: "right", fontWeight: 600 }}>{money(d.total_cents, d.currency)}</td>
+                      <td className="num" data-label="Verified saved" style={{ textAlign: "right" }} title={d.basis_reason || undefined}>
                         <span className={vs > 0 ? "up" : "faint"} style={{ fontWeight: 600 }}>{vs > 0 ? money(vs, d.currency) : "—"}</span>
                         {d.verified_basis && <div className="faint small">vs {BASIS_LABEL[d.verified_basis]}</div>}
                         {d.anchored && <div><span className="badge badge-warning" title={d.basis_reason}>Inflated opening</span></div>}
                       </td>
-                      <td className="num muted" style={{ textAlign: "right" }}>
+                      <td className="num muted tc-hide-m" style={{ textAlign: "right" }}>
                         {saved > 0 ? `${money(saved, d.currency)} (${pct((saved / d.initial_cents) * 100)})` : "—"}
                         <div className="faint small">from {money(d.initial_cents, d.currency)}</div>
                       </td>
-                      <td className="num" style={{ textAlign: "right" }}>{d.rounds}</td>
-                      <td className="muted">{new Date(d.created_at).toLocaleDateString()}</td>
+                      <td className="num tc-hide-m" style={{ textAlign: "right" }}>{d.rounds}</td>
+                      <td className="muted tc-hide-m" style={{ whiteSpace: "nowrap" }}>{shortDate(d.created_at)}</td>
                     </tr>
                   );
                 })}

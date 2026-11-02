@@ -72,9 +72,10 @@ func TestE2E11_InflatedOpeningDoesNotInflateVerifiedSavings(t *testing.T) {
 
 	st, savings := doJSON(t, api, "GET", "/v1/negotiations/savings", buyerToken, nil)
 	require.Equal(t, http.StatusOK, st)
-	// Backward compatible: totals stay opening-quote based.
+	// Legacy totals are measured from the cheapest opening quote on the RFQ
+	// (B's 1000), not the winner's own inflated opening.
 	totals := savings["totals"].(map[string]any)
-	require.EqualValues(t, 120000, totals["savings_cents"])
+	require.EqualValues(t, 20000, totals["savings_cents"])
 	verified := savings["verified"].(map[string]any)
 	require.Equal(t, "USD", verified["currency"])
 	require.EqualValues(t, 1, verified["deals"])
@@ -86,7 +87,7 @@ func TestE2E11_InflatedOpeningDoesNotInflateVerifiedSavings(t *testing.T) {
 	recent := savings["recent_deals"].([]any)[0].(map[string]any)
 	require.EqualValues(t, 25000, recent["verified_savings_cents"])
 	require.Equal(t, true, recent["anchored"])
-	require.EqualValues(t, 200000, recent["initial_cents"])
+	require.EqualValues(t, 100000, recent["initial_cents"], "cheapest opening quote on the RFQ")
 
 	// The snapshot does not drift: a later, much cheaper quote version on a
 	// rival changes nothing that was reported.

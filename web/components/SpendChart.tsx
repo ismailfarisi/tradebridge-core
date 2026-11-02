@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
 import { DEFAULT_CURRENCY, money, monthLabel, type Savings } from "@/lib/negotiation";
 
 // SpendChart is a dependency-free SVG stacked bar chart: negotiated spend with
@@ -6,15 +9,24 @@ export function SpendChart({
   data,
   currency = DEFAULT_CURRENCY,
   height = 220,
-  savingsLabel = "Savings vs opening quotes",
+  savingsLabel = "Savings vs cheapest opening quotes",
 }: {
   data: Savings["monthly"];
   currency?: string;
   height?: number;
   savingsLabel?: string;
 }) {
-  const W = 720;
-  const padL = 56;
+  const ref = useRef<HTMLElement>(null);
+  const [W, setW] = useState(720);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    // Draw at the real pixel width so axis text stays readable on phones.
+    const ro = new ResizeObserver(([e]) => setW(Math.max(280, Math.round(e.contentRect.width))));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const padL = 66;
   const padB = 26;
   const padT = 10;
   const max = Math.max(1, ...data.map((d) => d.spend_cents + d.savings_cents));
@@ -27,8 +39,8 @@ export function SpendChart({
   const ticks = Array.from({ length: Math.round(top / step) + 1 }, (_, i) => i * step);
 
   return (
-    <figure style={{ margin: 0 }}>
-      <svg viewBox={`0 0 ${W} ${height}`} width="100%" role="img" aria-label="Monthly negotiated spend and savings">
+    <figure ref={ref} style={{ margin: 0 }}>
+      <svg viewBox={`0 0 ${W} ${height}`} width={W} height={height} style={{ display: "block", maxWidth: "100%" }} role="img" aria-label="Monthly negotiated spend and savings">
         {ticks.map((t) => (
           <g key={t}>
             <line x1={padL} x2={W} y1={y(t)} y2={y(t)} stroke="var(--border)" strokeDasharray={t ? "3 4" : undefined} />
@@ -46,9 +58,11 @@ export function SpendChart({
               <title>{`${monthLabel(d.month)}: ${money(d.spend_cents, currency)} spend · ${money(d.savings_cents, currency)} saved`}</title>
               {d.spend_cents > 0 && <rect x={x} y={spendTop} width={bw} height={y(0) - spendTop} rx={4} fill="var(--primary)" />}
               {d.savings_cents > 0 && <rect x={x} y={saveTop} width={bw} height={Math.max(2, spendTop - saveTop)} rx={4} fill="#22c55e" />}
-              <text x={x + bw / 2} y={height - 8} textAnchor="middle" fontSize="11" fill="var(--faint)">
-                {monthLabel(d.month)}
-              </text>
+              {(W >= 480 || i % 2 === data.length % 2) && (
+                <text x={x + bw / 2} y={height - 8} textAnchor="middle" fontSize="11" fill="var(--faint)">
+                  {monthLabel(d.month)}
+                </text>
+              )}
             </g>
           );
         })}
