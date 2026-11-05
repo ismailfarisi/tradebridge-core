@@ -5,7 +5,25 @@ export type Order = {
   id: string; rfq_id: string; quote_id: string;
   buyer_company_id: string; seller_company_id: string;
   total_cents: number; currency: string; status: OrderStatus; created_at: string;
+  rfq_title?: string; buyer_name?: string; seller_name?: string;
 };
+export type OrderParties = { rfq_title: string; buyer_name: string; seller_name: string };
+
+const ORDER_STATUS: Record<string, { label: string; cls: string }> = {
+  created: { label: "Awaiting supplier", cls: "badge sc badge-warning" },
+  confirmed: { label: "Confirmed", cls: "badge sc badge-info" },
+  fulfilled: { label: "Delivered", cls: "badge sc badge-info" },
+  completed: { label: "Completed", cls: "badge sc badge-success" },
+  cancelled: { label: "Cancelled", cls: "badge sc badge-danger" },
+  disputed: { label: "Disputed", cls: "badge sc badge-danger" },
+};
+
+export function orderStatus(s: string): { label: string; cls: string } {
+  return ORDER_STATUS[s] ?? { label: s.replace(/_/g, " "), cls: "badge sc" };
+}
+
+// orderRef is the short reference shown for an order, e.g. "#01JB7K2X".
+export const orderRef = (id: string) => `#${id.slice(-8).toUpperCase()}`;
 export type OrderEvent = {
   id: string; order_id: string; from_status: string; to_status: string;
   actor: string; actor_company_id: string | null; note: string; created_at: string;
@@ -43,7 +61,7 @@ async function req<T>(
 
 export const listOrders = (token: string) => req<{ orders: Order[] }>("GET", "/v1/orders", { token });
 export const getOrder = (token: string, id: string) =>
-  req<{ order: Order; events: OrderEvent[] }>("GET", `/v1/orders/${id}`, { token });
+  req<{ order: Order; events: OrderEvent[]; parties?: OrderParties }>("GET", `/v1/orders/${id}`, { token });
 export const transitionOrder = (token: string, id: string, to: OrderStatus, note = "") =>
   req<{ order: Order }>("POST", `/v1/orders/${id}/transitions`, { token, body: { to, note } });
 export const listOrderReviews = (token: string, id: string) =>

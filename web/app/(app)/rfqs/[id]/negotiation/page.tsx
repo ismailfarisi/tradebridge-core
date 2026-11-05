@@ -38,6 +38,7 @@ import {
   type Round,
   type Supplier,
   type Tone,
+  shortDate,
   when,
 } from "@/lib/negotiation";
 import { PAYMENT_TERMS_OPTIONS, paymentTermsLabel, shortTermsLabel } from "@/lib/terms";
@@ -442,7 +443,7 @@ function BaselinePanel({ b, sellerName }: { b: Baselines; sellerName?: string })
       label: "Your last price",
       cents: b.historical_cents,
       note: b.historical
-        ? `${b.historical.rfq_title} · ${b.historical.quantity}, ${new Date(b.historical.ordered_at).toLocaleDateString()} · scaled to this quantity`
+        ? `${b.historical.rfq_title} · ${b.historical.quantity}, ${shortDate(b.historical.ordered_at)} · scaled to this quantity`
         : b.source === "backfill"
           ? "Not checked for deals closed before baselines were tracked"
           : "No comparable past purchase",
@@ -460,7 +461,7 @@ function BaselinePanel({ b, sellerName }: { b: Baselines; sellerName?: string })
         <h2 id="baseline-head">How savings are measured</h2>
         <span className="faint small">
           {b.snapshot
-            ? `Frozen when the deal closed${b.computed_at ? ` · ${new Date(b.computed_at).toLocaleDateString()}` : ""}`
+            ? `Frozen when the deal closed${b.computed_at ? ` · ${shortDate(b.computed_at)}` : ""}`
             : "Live preview · frozen when the deal closes"}
         </span>
       </div>

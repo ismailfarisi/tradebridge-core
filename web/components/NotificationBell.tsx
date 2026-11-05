@@ -67,6 +67,7 @@ export default function NotificationBell({ token }: { token: string }) {
       <button
         className="icon-btn"
         aria-label={`Notifications${unread ? ` (${unread} unread)` : ""}`}
+        title={unread ? `${unread} unread notification${unread === 1 ? "" : "s"}` : "Notifications"}
         onClick={() => { setOpen((o) => !o); if (!open) refresh(); }}
         style={{ position: "relative" }}
       >

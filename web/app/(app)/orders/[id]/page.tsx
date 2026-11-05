@@ -10,8 +10,10 @@ import { useMe } from "@/lib/auth";
 import {
   createOrderDispute, createOrderReview, downloadInvoice, getOrder, listOrderDisputes,
   listOrderReviews, transitionOrder,
-  type Dispute, type Order, type OrderEvent, type OrderStatus, type Review,
+  orderRef, orderStatus,
+  type Dispute, type Order, type OrderEvent, type OrderParties, type OrderStatus, type Review,
 } from "@/lib/orders";
+import { money, shortDate, when } from "@/lib/negotiation";
 
 export default function OrderDetailPage() {
   const { token, me } = useMe();
@@ -20,6 +22,7 @@ export default function OrderDetailPage() {
 
   const [order, setOrder] = useState<Order | null>(null);
   const [events, setEvents] = useState<OrderEvent[]>([]);
+  const [parties, setParties] = useState<OrderParties | null>(null);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [disputes, setDisputes] = useState<Dispute[]>([]);
   const [notFound, setNotFound] = useState(false);
@@ -33,6 +36,7 @@ export default function OrderDetailPage() {
       .then((r) => {
         setOrder(r.order);
         setEvents(r.events ?? []);
+        setParties(r.parties ?? null);
       })
       .catch(() => setNotFound(true));
     listOrderReviews(token, id).then((r) => setReviews(r.reviews ?? [])).catch(() => {});
@@ -45,6 +49,7 @@ export default function OrderDetailPage() {
       .then((r) => {
         setOrder(r.order);
         setEvents(r.events ?? []);
+        setParties(r.parties ?? null);
       })
       .catch(() => setNotFound(true));
     listOrderReviews(token, id).then((r) => setReviews(r.reviews ?? [])).catch(() => {});
@@ -74,7 +79,7 @@ export default function OrderDetailPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `invoice-${id.slice(0, 8)}.pdf`;
+      a.download = `invoice-${orderRef(id).slice(1)}.pdf`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -105,8 +110,8 @@ export default function OrderDetailPage() {
   return (
     <>
       <PageHeader
-        title={`Order ${order.id.slice(0, 8)}`}
-        subtitle={`Created ${new Date(order.created_at).toLocaleString()}`}
+        title={parties?.rfq_title || `Order ${orderRef(order.id)}`}
+        subtitle={`Order ${orderRef(order.id)} · placed ${when(order.created_at)}`}
         action={<StatusBadge status={order.status} />}
       />
 
@@ -117,10 +122,10 @@ export default function OrderDetailPage() {
       <div className="card">
         <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
           <div>
-            <div><strong>{order.currency} {(order.total_cents / 100).toFixed(2)}</strong></div>
+            <div className="num" style={{ fontSize: "1.25rem", fontWeight: 650 }}>{money(order.total_cents, order.currency)}</div>
             <div className="muted small">
-              {role === "seller" ? "Buyer" : "Seller"}:{" "}
-              {(role === "seller" ? order.buyer_company_id : order.seller_company_id).slice(0, 8)}
+              {role === "seller" ? "Buyer" : "Supplier"}:{" "}
+              {(role === "seller" ? parties?.buyer_name : parties?.seller_name) || "—"}
             </div>
           </div>
           <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
@@ -169,7 +174,7 @@ export default function OrderDetailPage() {
           <div key={r.id} style={{ borderTop: "1px solid var(--border)", paddingTop: "0.5rem", marginTop: "0.5rem" }}>
             <div className="row small" style={{ gap: "0.4rem" }}>
               <strong>{"★".repeat(r.rating)}{"☆".repeat(5 - r.rating)}</strong>
-              <span className="muted">{new Date(r.created_at).toLocaleDateString()}</span>
+              <span className="muted">{shortDate(r.created_at)}</span>
             </div>
             <p className="small" style={{ margin: "0.2rem 0 0" }}>{r.body}</p>
           </div>
@@ -188,7 +193,7 @@ export default function OrderDetailPage() {
           <div key={d.id} style={{ borderTop: "1px solid var(--border)", paddingTop: "0.5rem", marginTop: "0.5rem" }}>
             <div className="row small" style={{ gap: "0.4rem", alignItems: "center" }}>
               <span className={`badge ${d.status === "open" ? "badge-warning" : "badge-success"}`}>{d.status}</span>
-              <span className="muted">{d.reason.replace(/_/g, " ")} · {new Date(d.created_at).toLocaleString()}</span>
+              <span className="muted">{d.reason.replace(/_/g, " ")} · {when(d.created_at)}</span>
             </div>
             <p className="small" style={{ margin: "0.2rem 0 0" }}>{d.detail}</p>
             {d.resolution && <p className="muted small" style={{ margin: "0.2rem 0 0" }}>Resolution: {d.resolution}</p>}
@@ -207,9 +212,6 @@ export default function OrderDetailPage() {
 }
 
 function StatusBadge({ status }: { status: OrderStatus }) {
-  const cls =
-    status === "completed" ? "badge badge-success" :
-    status === "disputed" || status === "cancelled" ? "badge badge-danger" :
-    status === "created" ? "badge" : "badge badge-info";
-  return <span className={cls}>{status}</span>;
+  const st = orderStatus(status);
+  return <span className={st.cls}>{st.label}</span>;
 }

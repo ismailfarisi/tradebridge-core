@@ -87,7 +87,7 @@ export default function Dashboard() {
                     const st = rfqStatus(r.status);
                     return (
                       <tr key={r.id}>
-                        <td className="tc-main"><Link className="rowlink" href={`/rfqs/${r.id}`}>{r.title}</Link></td>
+                        <td className="tc-main"><Link className="rowlink" href={r.status === "quoted" ? `/rfqs/${r.id}/negotiation` : `/rfqs/${r.id}`}>{r.title}</Link></td>
                         <td><span className={st.cls}>{st.label}</span></td>
                         <td className="num" style={{ textAlign: "right" }}>
                           {r.quote_count} quote{r.quote_count === 1 ? "" : "s"}{r.new_quotes > 0 ? ` · ${r.new_quotes} new` : ""}
