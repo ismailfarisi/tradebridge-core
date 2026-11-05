@@ -5,15 +5,19 @@ import Link from "next/link";
 import { PageHeader } from "@/components/AppShell";
 import { Icon } from "@/components/Icon";
 import { NeedsYou, needsYou } from "@/components/NeedsYou";
-import { useToken } from "@/lib/auth";
+import { NegotiationPauseControl } from "@/components/NegotiationPauseControl";
+import { useMe } from "@/lib/auth";
+import { NOT_PAUSED, type PauseInfo } from "@/lib/negotiationControls";
 import { listRfqs, type RFQ } from "@/lib/api";
 import {
+  BASIS_LABEL,
   listNegotiations,
   listSaving,
   money,
   STATUS_LABEL,
   statusClass,
   wholeAmount,
+  type BaselineBasis,
   type NegotiationListItem,
   type NegotiationStatus,
 } from "@/lib/negotiation";
@@ -27,15 +31,21 @@ const FILTERS: { key: "" | NegotiationStatus; label: string }[] = [
 ];
 
 export default function NegotiationsPage() {
-  const token = useToken();
+  const { token, me } = useMe();
   const [items, setItems] = useState<NegotiationListItem[] | null>(null);
+  const [pause, setPause] = useState<PauseInfo>(NOT_PAUSED);
   const [rfqs, setRfqs] = useState<RFQ[]>([]);
   const [filter, setFilter] = useState<"" | NegotiationStatus>("");
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token) return;
-    listNegotiations(token).then((r) => setItems(r.negotiations)).catch((e) => setErr(e.message));
+    listNegotiations(token)
+      .then((r) => {
+        setItems(r.negotiations);
+        setPause(r.pause ?? NOT_PAUSED);
+      })
+      .catch((e) => setErr(e.message));
     listRfqs(token).then((r) => setRfqs(r.rfqs)).catch(() => {});
   }, [token]);
 
@@ -51,6 +61,18 @@ export default function NegotiationsPage() {
         title="Negotiations"
         subtitle="Your agent negotiates every supplier quote within the limits you set."
       />
+
+      {token && (
+        <NegotiationPauseControl
+          token={token}
+          role={me?.role}
+          pause={pause}
+          onChange={(p) => {
+            setPause(p);
+            if (!p.paused) listNegotiations(token).then((r) => setItems(r.negotiations)).catch(() => {});
+          }}
+        />
+      )}
 
       <NeedsYou {...todo} showEmpty={false} />
 
@@ -96,7 +118,21 @@ export default function NegotiationsPage() {
                     <td className="num muted tc-hide-m" style={{ textAlign: "right" }}>{money(wholeAmount(n.target_price_cents))}</td>
                     <td className="num" data-label={n.status === "completed" ? "Agreed price" : "Best offer"} style={{ textAlign: "right", fontWeight: 600 }}>{money(n.current_best_cents || null)}</td>
                     <td className="num up" data-label="Saved" style={{ textAlign: "right", fontWeight: 600, paddingRight: "1.25rem" }}>
-                      {listSaving(n) > 0 ? money(listSaving(n)) : "—"}
+                      {n.verified_savings_cents != null && n.status !== "cancelled" ? (
+                        <>
+                          {n.verified_savings_cents > 0 ? money(n.verified_savings_cents) : "—"}
+                          <div className="faint small" style={{ fontWeight: 400 }}>
+                            verified{n.verified_basis ? ` · vs ${BASIS_LABEL[n.verified_basis as BaselineBasis] ?? n.verified_basis}` : ""}
+                          </div>
+                        </>
+                      ) : listSaving(n) > 0 ? (
+                        <>
+                          {money(listSaving(n))}
+                          <div className="faint small" style={{ fontWeight: 400 }}>vs best opening</div>
+                        </>
+                      ) : (
+                        "—"
+                      )}
                     </td>
                   </tr>
                 ))}

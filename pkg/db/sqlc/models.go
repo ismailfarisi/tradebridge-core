@@ -105,6 +105,14 @@ type Company struct {
 	DeletedAt          pgtype.Timestamptz `json:"deleted_at"`
 }
 
+type CompanyNegotiationControl struct {
+	CompanyID string    `json:"company_id"`
+	Paused    bool      `json:"paused"`
+	Reason    string    `json:"reason"`
+	UpdatedBy *string   `json:"updated_by"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 type CompanySetting struct {
 	CompanyID             string    `json:"company_id"`
 	ExtractionProvider    string    `json:"extraction_provider"`
@@ -180,40 +188,90 @@ type InvoiceLineItem struct {
 	AmountCents    int64  `json:"amount_cents"`
 }
 
+type NegotiationBaseline struct {
+	StrategyID            string    `json:"strategy_id"`
+	RfqID                 string    `json:"rfq_id"`
+	QuoteID               string    `json:"quote_id"`
+	Currency              string    `json:"currency"`
+	FinalCents            int64     `json:"final_cents"`
+	OpeningCents          *int64    `json:"opening_cents"`
+	MarketCents           *int64    `json:"market_cents"`
+	MarketQuoteCount      int32     `json:"market_quote_count"`
+	HistoricalCents       *int64    `json:"historical_cents"`
+	HistoricalOrderID     *string   `json:"historical_order_id"`
+	HistoricalNote        string    `json:"historical_note"`
+	Anchored              bool      `json:"anchored"`
+	AnchorPct             *float64  `json:"anchor_pct"`
+	AnchorBasis           *string   `json:"anchor_basis"`
+	VerifiedBaselineCents int64     `json:"verified_baseline_cents"`
+	VerifiedBasis         string    `json:"verified_basis"`
+	Reason                string    `json:"reason"`
+	Source                string    `json:"source"`
+	ComputedAt            time.Time `json:"computed_at"`
+}
+
+type NegotiationKillSwitchLog struct {
+	ID        string    `json:"id"`
+	Scope     string    `json:"scope"`
+	CompanyID *string   `json:"company_id"`
+	Paused    bool      `json:"paused"`
+	Reason    string    `json:"reason"`
+	Actor     string    `json:"actor"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type NegotiationPlatformControl struct {
+	ID        int16     `json:"id"`
+	Paused    bool      `json:"paused"`
+	Reason    string    `json:"reason"`
+	UpdatedBy string    `json:"updated_by"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 type NegotiationRound struct {
-	ID                 string    `json:"id"`
-	StrategyID         string    `json:"strategy_id"`
-	QuoteID            string    `json:"quote_id"`
-	Round              int32     `json:"round"`
-	RespondedToVersion int32     `json:"responded_to_version"`
-	Action             string    `json:"action"`
-	SellerPriceCents   int64     `json:"seller_price_cents"`
-	SellerDeliveryDays *int32    `json:"seller_delivery_days"`
-	OfferPriceCents    *int64    `json:"offer_price_cents"`
-	OfferDeliveryDays  *int32    `json:"offer_delivery_days"`
-	Utility            float64   `json:"utility"`
-	Rationale          string    `json:"rationale"`
-	Message            string    `json:"message"`
-	CreatedAt          time.Time `json:"created_at"`
+	ID                     string             `json:"id"`
+	StrategyID             string             `json:"strategy_id"`
+	QuoteID                string             `json:"quote_id"`
+	Round                  int32              `json:"round"`
+	RespondedToVersion     int32              `json:"responded_to_version"`
+	Action                 string             `json:"action"`
+	SellerPriceCents       int64              `json:"seller_price_cents"`
+	SellerDeliveryDays     *int32             `json:"seller_delivery_days"`
+	OfferPriceCents        *int64             `json:"offer_price_cents"`
+	OfferDeliveryDays      *int32             `json:"offer_delivery_days"`
+	Utility                float64            `json:"utility"`
+	Rationale              string             `json:"rationale"`
+	Message                string             `json:"message"`
+	CreatedAt              time.Time          `json:"created_at"`
+	DeliveryStatus         string             `json:"delivery_status"`
+	QuoteMessageID         *string            `json:"quote_message_id"`
+	AgentEventID           *string            `json:"agent_event_id"`
+	DeliveredAt            pgtype.Timestamptz `json:"delivered_at"`
+	SellerPaymentTermsDays *int32             `json:"seller_payment_terms_days"`
+	OfferPaymentTermsDays  *int32             `json:"offer_payment_terms_days"`
+	MessageSource          string             `json:"message_source"`
 }
 
 type NegotiationStrategy struct {
-	ID               string    `json:"id"`
-	RfqID            string    `json:"rfq_id"`
-	BuyerCompanyID   string    `json:"buyer_company_id"`
-	CreatedBy        *string   `json:"created_by"`
-	TargetPriceCents int64     `json:"target_price_cents"`
-	MaxPriceCents    int64     `json:"max_price_cents"`
-	MaxDeliveryDays  *int32    `json:"max_delivery_days"`
-	PriceWeight      float64   `json:"price_weight"`
-	MaxRounds        int32     `json:"max_rounds"`
-	AutoAccept       bool      `json:"auto_accept"`
-	Tone             string    `json:"tone"`
-	Status           string    `json:"status"`
-	OutcomeQuoteID   *string   `json:"outcome_quote_id"`
-	OutcomeSummary   string    `json:"outcome_summary"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	ID                        string    `json:"id"`
+	RfqID                     string    `json:"rfq_id"`
+	BuyerCompanyID            string    `json:"buyer_company_id"`
+	CreatedBy                 *string   `json:"created_by"`
+	TargetPriceCents          int64     `json:"target_price_cents"`
+	MaxPriceCents             int64     `json:"max_price_cents"`
+	MaxDeliveryDays           *int32    `json:"max_delivery_days"`
+	PriceWeight               float64   `json:"price_weight"`
+	MaxRounds                 int32     `json:"max_rounds"`
+	AutoAccept                bool      `json:"auto_accept"`
+	Tone                      string    `json:"tone"`
+	Status                    string    `json:"status"`
+	OutcomeQuoteID            *string   `json:"outcome_quote_id"`
+	OutcomeSummary            string    `json:"outcome_summary"`
+	CreatedAt                 time.Time `json:"created_at"`
+	UpdatedAt                 time.Time `json:"updated_at"`
+	PreferredPaymentTermsDays *int32    `json:"preferred_payment_terms_days"`
+	MinPaymentTermsDays       *int32    `json:"min_payment_terms_days"`
+	TermsWeight               float64   `json:"terms_weight"`
 }
 
 type Notification struct {
@@ -298,19 +356,20 @@ type ProcessedStripeEvent struct {
 }
 
 type Quote struct {
-	ID              string    `json:"id"`
-	RfqID           string    `json:"rfq_id"`
-	SellerCompanyID string    `json:"seller_company_id"`
-	AgentCommandID  *string   `json:"agent_command_id"`
-	PriceCents      int64     `json:"price_cents"`
-	Currency        string    `json:"currency"`
-	DeliveryDays    *int32    `json:"delivery_days"`
-	Notes           string    `json:"notes"`
-	Completeness    float64   `json:"completeness"`
-	Status          string    `json:"status"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
-	Version         int32     `json:"version"`
+	ID               string    `json:"id"`
+	RfqID            string    `json:"rfq_id"`
+	SellerCompanyID  string    `json:"seller_company_id"`
+	AgentCommandID   *string   `json:"agent_command_id"`
+	PriceCents       int64     `json:"price_cents"`
+	Currency         string    `json:"currency"`
+	DeliveryDays     *int32    `json:"delivery_days"`
+	Notes            string    `json:"notes"`
+	Completeness     float64   `json:"completeness"`
+	Status           string    `json:"status"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+	Version          int32     `json:"version"`
+	PaymentTermsDays *int32    `json:"payment_terms_days"`
 }
 
 type QuoteMessage struct {
@@ -323,17 +382,18 @@ type QuoteMessage struct {
 }
 
 type QuoteVersion struct {
-	ID             string    `json:"id"`
-	QuoteID        string    `json:"quote_id"`
-	Version        int32     `json:"version"`
-	PriceCents     int64     `json:"price_cents"`
-	Currency       string    `json:"currency"`
-	DeliveryDays   *int32    `json:"delivery_days"`
-	Notes          string    `json:"notes"`
-	Completeness   float64   `json:"completeness"`
-	Source         string    `json:"source"`
-	AgentCommandID *string   `json:"agent_command_id"`
-	CreatedAt      time.Time `json:"created_at"`
+	ID               string    `json:"id"`
+	QuoteID          string    `json:"quote_id"`
+	Version          int32     `json:"version"`
+	PriceCents       int64     `json:"price_cents"`
+	Currency         string    `json:"currency"`
+	DeliveryDays     *int32    `json:"delivery_days"`
+	Notes            string    `json:"notes"`
+	Completeness     float64   `json:"completeness"`
+	Source           string    `json:"source"`
+	AgentCommandID   *string   `json:"agent_command_id"`
+	CreatedAt        time.Time `json:"created_at"`
+	PaymentTermsDays *int32    `json:"payment_terms_days"`
 }
 
 type Report struct {

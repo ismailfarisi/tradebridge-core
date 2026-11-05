@@ -54,15 +54,25 @@ type Normalized struct {
 	PriceCents   int64
 	Currency     string
 	DeliveryDays *int32
-	Notes        string
-	Completeness float64
+	// PaymentTermsDays is the seller's payment terms in days after delivery
+	// (0 = cash / on delivery). Optional: nil means not stated, and on a
+	// revision it leaves the previous terms unchanged.
+	PaymentTermsDays *int32
+	Notes            string
+	Completeness     float64
 }
+
+// MaxPaymentTermsDays bounds payment terms on quotes and counters.
+const MaxPaymentTermsDays = 365
 
 type submitPayload struct {
 	Price        *float64 `json:"price"`
 	Currency     string   `json:"currency"`
 	DeliveryDays *int32   `json:"delivery_days"`
 	Notes        string   `json:"notes"`
+	// PaymentTermsDays is optional, so agents built before payment terms
+	// existed keep working unchanged.
+	PaymentTermsDays *int32 `json:"payment_terms_days"`
 }
 
 // Normalize validates and canonicalizes a quote.submit payload. Price is
@@ -76,6 +86,9 @@ func Normalize(payload []byte) (Normalized, error) {
 	if p.Price == nil || *p.Price <= 0 {
 		return Normalized{}, errors.New("quote payload requires a positive price")
 	}
+	if p.PaymentTermsDays != nil && (*p.PaymentTermsDays < 0 || *p.PaymentTermsDays > MaxPaymentTermsDays) {
+		return Normalized{}, fmt.Errorf("payment_terms_days must be between 0 and %d", MaxPaymentTermsDays)
+	}
 	currency := strings.ToUpper(strings.TrimSpace(p.Currency))
 	if currency == "" {
 		currency = "AED"
@@ -85,6 +98,8 @@ func Normalize(payload []byte) (Normalized, error) {
 		Currency:     currency,
 		DeliveryDays: p.DeliveryDays,
 		Notes:        strings.TrimSpace(p.Notes),
+
+		PaymentTermsDays: p.PaymentTermsDays,
 	}
 	filled := 1.0 // price is always present
 	if p.DeliveryDays != nil {
@@ -121,6 +136,8 @@ func Record(ctx context.Context, q *sqlc.Queries, pool *pgxpool.Pool, rfqID, sel
 		DeliveryDays:    n.DeliveryDays,
 		Notes:           n.Notes,
 		Completeness:    n.Completeness,
+
+		PaymentTermsDays: n.PaymentTermsDays,
 	})
 	if err != nil {
 		return sqlc.Quote{}, err
@@ -132,6 +149,7 @@ func Record(ctx context.Context, q *sqlc.Queries, pool *pgxpool.Pool, rfqID, sel
 		quote, err = qtx.BumpQuoteHead(ctx, sqlc.BumpQuoteHeadParams{
 			ID: quote.ID, PriceCents: n.PriceCents, Currency: n.Currency,
 			DeliveryDays: n.DeliveryDays, Notes: n.Notes, Completeness: n.Completeness,
+			PaymentTermsDays: n.PaymentTermsDays,
 		})
 		if err != nil {
 			return sqlc.Quote{}, err
@@ -142,7 +160,7 @@ func Record(ctx context.Context, q *sqlc.Queries, pool *pgxpool.Pool, rfqID, sel
 	if _, err := qtx.UpsertQuoteVersion(ctx, sqlc.UpsertQuoteVersionParams{
 		QuoteID: quote.ID, Version: quote.Version, PriceCents: quote.PriceCents, Currency: quote.Currency,
 		DeliveryDays: quote.DeliveryDays, Notes: quote.Notes, Completeness: quote.Completeness,
-		Source: "seller", AgentCommandID: cmd,
+		Source: "seller", AgentCommandID: cmd, PaymentTermsDays: quote.PaymentTermsDays,
 	}); err != nil {
 		return sqlc.Quote{}, err
 	}
@@ -165,6 +183,7 @@ func RecordCounter(ctx context.Context, q *sqlc.Queries, pool *pgxpool.Pool, quo
 	head, err := qtx.BumpQuoteHead(ctx, sqlc.BumpQuoteHeadParams{
 		ID: quoteID, PriceCents: n.PriceCents, Currency: n.Currency,
 		DeliveryDays: n.DeliveryDays, Notes: n.Notes, Completeness: n.Completeness,
+		PaymentTermsDays: n.PaymentTermsDays,
 	})
 	if err != nil {
 		return sqlc.Quote{}, sqlc.QuoteVersion{}, err
@@ -176,7 +195,7 @@ func RecordCounter(ctx context.Context, q *sqlc.Queries, pool *pgxpool.Pool, quo
 	ver, err := qtx.UpsertQuoteVersion(ctx, sqlc.UpsertQuoteVersionParams{
 		QuoteID: head.ID, Version: head.Version, PriceCents: head.PriceCents, Currency: head.Currency,
 		DeliveryDays: head.DeliveryDays, Notes: head.Notes, Completeness: head.Completeness,
-		Source: "counter", AgentCommandID: cmd,
+		Source: "counter", AgentCommandID: cmd, PaymentTermsDays: head.PaymentTermsDays,
 	})
 	if err != nil {
 		return sqlc.Quote{}, sqlc.QuoteVersion{}, err
@@ -273,6 +292,9 @@ func (s *Service) AddMessage(ctx context.Context, q sqlc.Quote, authorCompanyID,
 type counterTerms struct {
 	PriceCents   *int64 `json:"price_cents,omitempty"`
 	DeliveryDays *int32 `json:"delivery_days,omitempty"`
+	// PaymentTermsDays is omitted when the buyer proposed no terms, so the
+	// event is byte-identical for agents that predate payment terms.
+	PaymentTermsDays *int32 `json:"payment_terms_days,omitempty"`
 }
 
 // threadEntry is one message in a quote's thread, as carried in the
@@ -313,13 +335,16 @@ func buildThread(ctx context.Context, q *sqlc.Queries, quoteID string) []threadE
 // counterBody renders the buyer-facing thread message for a counter-offer:
 // their free-text message, plus a human-readable summary of any proposed
 // terms. The price is shown in the quote's currency.
-func counterBody(message string, priceCents *int64, deliveryDays *int32, currency string) string {
+func counterBody(message string, priceCents *int64, deliveryDays, paymentTermsDays *int32, currency string) string {
 	var terms []string
 	if priceCents != nil {
 		terms = append(terms, "price: "+formatAmount(*priceCents, currency))
 	}
 	if deliveryDays != nil {
 		terms = append(terms, fmt.Sprintf("delivery: %d days", *deliveryDays))
+	}
+	if paymentTermsDays != nil {
+		terms = append(terms, "payment: "+PaymentTermsLabel(*paymentTermsDays))
 	}
 	if len(terms) == 0 {
 		return message
@@ -336,54 +361,176 @@ func counterBody(message string, priceCents *int64, deliveryDays *int32, currenc
 // seller's agent carrying the proposed terms + thread. Returns the created
 // message. Only the buyer on the quote's RFQ may counter (ErrNotFound
 // otherwise, so as not to leak existence across tenants).
-func (s *Service) Counter(ctx context.Context, buyerCompanyID, quoteID string, priceCents *int64, deliveryDays *int32, message string) (sqlc.QuoteMessage, error) {
+//
+// The durable writes (thread message + agent event) commit in one
+// transaction; the live side effects run after commit (see DeliverCounter).
+func (s *Service) Counter(ctx context.Context, buyerCompanyID, quoteID string, priceCents *int64, deliveryDays, paymentTermsDays *int32, message string) (sqlc.QuoteMessage, error) {
+	if err := validPaymentTerms(paymentTermsDays); err != nil {
+		return sqlc.QuoteMessage{}, err
+	}
+	plan, err := s.PrepareCounter(ctx, buyerCompanyID, quoteID)
+	if err != nil {
+		return sqlc.QuoteMessage{}, err
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return sqlc.QuoteMessage{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	d, err := s.RecordCounterTx(ctx, s.q.WithTx(tx), plan, priceCents, deliveryDays, paymentTermsDays, message)
+	if err != nil {
+		return sqlc.QuoteMessage{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return sqlc.QuoteMessage{}, err
+	}
+	s.DeliverCounter(ctx, d)
+	return d.Message, nil
+}
+
+// CounterPlan is a validated counter target: the quote, its RFQ and whether
+// the seller's agent answers autonomously. PrepareCounter resolves it with
+// ordinary pooled reads BEFORE the caller opens its transaction, so
+// RecordCounterTx never needs a second connection while holding one (nested
+// pool acquisition can exhaust the pool under load and deadlock).
+type CounterPlan struct {
+	Quote      sqlc.Quote
+	RFQ        sqlc.Rfq
+	Autonomous bool
+}
+
+// PrepareCounter checks that buyerCompanyID owns the quote's RFQ (ErrNotFound
+// otherwise, so as not to leak existence) and resolves the seller's autonomy.
+func (s *Service) PrepareCounter(ctx context.Context, buyerCompanyID, quoteID string) (CounterPlan, error) {
 	quote, err := s.q.GetQuote(ctx, quoteID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return sqlc.QuoteMessage{}, ErrNotFound
+		return CounterPlan{}, ErrNotFound
 	} else if err != nil {
-		return sqlc.QuoteMessage{}, err
+		return CounterPlan{}, err
 	}
 	r, err := s.q.GetRFQ(ctx, quote.RfqID)
 	if err != nil {
-		return sqlc.QuoteMessage{}, err
+		return CounterPlan{}, err
 	}
 	if r.BuyerCompanyID != buyerCompanyID {
-		return sqlc.QuoteMessage{}, ErrNotFound // party-only, no leak
+		return CounterPlan{}, ErrNotFound // party-only, no leak
 	}
-	body := counterBody(message, priceCents, deliveryDays, quote.Currency)
-	msg, err := s.q.CreateQuoteMessage(ctx, sqlc.CreateQuoteMessageParams{
-		QuoteID: quoteID, Author: "buyer", Body: body, Attachments: nil,
+	return CounterPlan{Quote: quote, RFQ: r, Autonomous: s.ent != nil && s.ent.For(ctx, quote.SellerCompanyID).AgentAutonomy}, nil
+}
+
+// CounterDelivery is a committed counter-offer whose live side effects are
+// still owed: the Redis thread publish, the seller notification (no agent
+// autonomy) or the Redis broadcast of the durable message.received event.
+type CounterDelivery struct {
+	Message         sqlc.QuoteMessage
+	Event           *sqlc.AgentEvent // durable message.received; nil without seller agent autonomy
+	Autonomous      bool
+	SellerCompanyID string
+	RFQID           string
+	RFQTitle        string
+}
+
+// RecordCounterTx performs every durable write of a counter-offer inside the
+// caller's transaction (qtx), using only qtx: the buyer thread message and,
+// when the seller has agent autonomy, the message.received agent event (the
+// Gateway replays agent_events, so the seller's agent receives it even if the
+// live publish is lost). Nothing leaves Postgres here: the caller commits,
+// then calls DeliverCounter. That split lets the negotiation engine commit
+// its round row and the counter in the same transaction.
+func (s *Service) RecordCounterTx(ctx context.Context, qtx *sqlc.Queries, plan CounterPlan, priceCents *int64, deliveryDays, paymentTermsDays *int32, message string) (CounterDelivery, error) {
+	if err := validPaymentTerms(paymentTermsDays); err != nil {
+		return CounterDelivery{}, err
+	}
+	quote, r := plan.Quote, plan.RFQ
+	body := counterBody(message, priceCents, deliveryDays, paymentTermsDays, quote.Currency)
+	msg, err := qtx.CreateQuoteMessage(ctx, sqlc.CreateQuoteMessageParams{
+		QuoteID: quote.ID, Author: "buyer", Body: body, Attachments: nil,
 	})
 	if err != nil {
-		return sqlc.QuoteMessage{}, err
+		return CounterDelivery{}, err
 	}
-	s.thread.PublishMessage(ctx, quoteID, mustJSON(messageView(msg)))
-	autonomous := s.ent != nil && s.ent.For(ctx, quote.SellerCompanyID).AgentAutonomy
-	// Without an autonomous agent a person has to answer, so tell the seller.
-	if !autonomous && s.notifier != nil {
-		s.notifier.NotifyCompany(ctx, quote.SellerCompanyID, notify.Event{
-			Type:     notify.TypeQuoteCountered,
-			Title:    "Buyer sent a counter-offer: " + r.Title,
-			Body:     "Review the buyer's terms and revise your quote or reply.",
-			Data:     map[string]any{"rfq_id": r.ID, "quote_id": quoteID},
-			CTALabel: "View RFQ",
-			CTAPath:  "/seller/rfqs/" + r.ID,
-		})
+	d := CounterDelivery{
+		Message: msg, SellerCompanyID: quote.SellerCompanyID, RFQID: r.ID, RFQTitle: r.Title,
+		Autonomous: plan.Autonomous,
 	}
 	// Round-trip to the agent ONLY if the seller has agent autonomy.
-	if autonomous && s.pub != nil {
+	if d.Autonomous && s.pub != nil {
 		payload, err := json.Marshal(messageReceivedEvent{
-			Type: "message.received", QuoteID: quoteID, RFQID: quote.RfqID,
-			Counter: counterTerms{PriceCents: priceCents, DeliveryDays: deliveryDays},
-			Thread:  buildThread(ctx, s.q, quoteID),
+			Type: "message.received", QuoteID: quote.ID, RFQID: quote.RfqID,
+			Counter: counterTerms{PriceCents: priceCents, DeliveryDays: deliveryDays, PaymentTermsDays: paymentTermsDays},
+			Thread:  buildThread(ctx, qtx, quote.ID),
 		})
 		if err != nil {
-			s.logger.Warn().Err(err).Str("quote_id", quoteID).Msg("message.received marshal failed")
-		} else if err := s.pub.Publish(ctx, quote.SellerCompanyID, "message.received", payload); err != nil {
-			s.logger.Warn().Err(err).Str("quote_id", quoteID).Msg("message.received publish failed")
+			return CounterDelivery{}, err
 		}
+		ev, err := qtx.CreateAgentEvent(ctx, sqlc.CreateAgentEventParams{
+			CompanyID: quote.SellerCompanyID, Type: "message.received", Payload: payload,
+		})
+		if err != nil {
+			return CounterDelivery{}, err
+		}
+		d.Event = &ev
 	}
-	return msg, nil
+	return d, nil
+}
+
+// validPaymentTerms rejects payment terms outside 0..MaxPaymentTermsDays.
+func validPaymentTerms(days *int32) error {
+	if days != nil && (*days < 0 || *days > MaxPaymentTermsDays) {
+		return InvalidError{Msg: fmt.Sprintf("payment_terms_days must be between 0 and %d", MaxPaymentTermsDays)}
+	}
+	return nil
+}
+
+// DeliverCounter runs a committed counter's live side effects. Each is
+// best-effort and safe to repeat: the thread stream and agent broadcast are
+// fast paths over durable rows (clients and the Gateway dedupe by id), and a
+// repeated notification is the worst case of a replay.
+func (s *Service) DeliverCounter(ctx context.Context, d CounterDelivery) {
+	s.thread.PublishMessage(ctx, d.Message.QuoteID, mustJSON(messageView(d.Message)))
+	// Without an autonomous agent a person has to answer, so tell the seller.
+	if !d.Autonomous && s.notifier != nil {
+		s.notifier.NotifyCompany(ctx, d.SellerCompanyID, notify.Event{
+			Type:     notify.TypeQuoteCountered,
+			Title:    "Buyer sent a counter-offer: " + d.RFQTitle,
+			Body:     "Review the buyer's terms and revise your quote or reply.",
+			Data:     map[string]any{"rfq_id": d.RFQID, "quote_id": d.Message.QuoteID},
+			CTALabel: "View RFQ",
+			CTAPath:  "/seller/rfqs/" + d.RFQID,
+		})
+	}
+	if d.Event != nil && s.pub != nil {
+		s.pub.PublishExisting(ctx, *d.Event)
+	}
+}
+
+// LoadCounterDelivery rebuilds a committed counter's pending delivery from
+// its durable rows, so a crash between commit and DeliverCounter can be
+// replayed.
+func (s *Service) LoadCounterDelivery(ctx context.Context, quoteMessageID string, agentEventID *string) (CounterDelivery, error) {
+	msg, err := s.q.GetQuoteMessage(ctx, quoteMessageID)
+	if err != nil {
+		return CounterDelivery{}, err
+	}
+	quote, err := s.q.GetQuote(ctx, msg.QuoteID)
+	if err != nil {
+		return CounterDelivery{}, err
+	}
+	r, err := s.q.GetRFQ(ctx, quote.RfqID)
+	if err != nil {
+		return CounterDelivery{}, err
+	}
+	d := CounterDelivery{Message: msg, SellerCompanyID: quote.SellerCompanyID, RFQID: r.ID, RFQTitle: r.Title}
+	if agentEventID != nil {
+		ev, err := s.q.GetAgentEventByID(ctx, *agentEventID)
+		if err != nil {
+			return CounterDelivery{}, err
+		}
+		d.Event, d.Autonomous = &ev, true
+	} else {
+		d.Autonomous = s.ent != nil && s.ent.For(ctx, quote.SellerCompanyID).AgentAutonomy && s.pub != nil
+	}
+	return d, nil
 }
 
 type orderCreatedEvent struct {
@@ -437,6 +584,17 @@ func (s *Service) Accept(ctx context.Context, buyerCompanyID, quoteID string) (s
 	defer func() { _ = tx.Rollback(ctx) }()
 	qtx := s.q.WithTx(tx)
 
+	// Serialise accepts per RFQ (row lock) and re-check under the lock: the
+	// pre-checks above ran outside the transaction, so a concurrent accept on
+	// another quote of the same RFQ may have closed it since.
+	locked, err := qtx.LockRFQForAccept(ctx, quote.RfqID)
+	if err != nil {
+		return sqlc.Order{}, err
+	}
+	if !rfq.CanTransition(locked.Status, rfq.StatusClosed) {
+		return sqlc.Order{}, ConflictError{Msg: "rfq cannot be closed from status " + locked.Status}
+	}
+
 	// Capture the still-submitted losing sellers before RejectOtherQuotes flips
 	// their status, so we know exactly who to notify.
 	losers, err := qtx.ListSubmittedQuoteSellersExcept(ctx, sqlc.ListSubmittedQuoteSellersExceptParams{
@@ -446,7 +604,9 @@ func (s *Service) Accept(ctx context.Context, buyerCompanyID, quoteID string) (s
 		return sqlc.Order{}, err
 	}
 
-	if _, err := qtx.AcceptQuote(ctx, quoteID); err != nil {
+	if _, err := qtx.AcceptQuote(ctx, quoteID); errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.Order{}, ConflictError{Msg: "quote is not in a submitted state"}
+	} else if err != nil {
 		return sqlc.Order{}, err
 	}
 	if err := qtx.RejectOtherQuotes(ctx, sqlc.RejectOtherQuotesParams{RfqID: quote.RfqID, ID: quoteID}); err != nil {

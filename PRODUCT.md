@@ -14,13 +14,13 @@ web
 
 ## Product Purpose
 
-TradeBridge lets a small business describe what it needs in plain language, collects competing quotes from verified suppliers, and lets an AI agent negotiate on the buyer's behalf within limits the buyer sets, ending in a purchase order. Success means the owner spends minutes per purchase instead of days, pays measurably less than the opening quotes, and trusts every deal the agent made.
+TradeBridge lets a small business describe what it needs in plain language, collects competing quotes from verified suppliers, and lets an AI agent negotiate on the buyer's behalf within limits the buyer sets, ending in a purchase order. Success means the owner spends minutes per purchase instead of days, pays measurably less than a fair market reference (not just the opening quotes), and trusts every deal the agent made.
 
 ## Positioning
 
 Two layers in one product:
 1. **A neutral B2B marketplace:** RFQs, normalized quotes, orders, invoicing, reviews and disputes, open to human sellers and to seller agents over an authenticated protocol (Agent Gateway).
-2. **A buyer-side negotiation agent on top:** it counters every quote under a server-enforced mandate (target price, walk-away price, max delivery days, price-vs-delivery weight, round budget, tone, auto-accept or approval). Every round is recorded with its reason, and savings are measured against the opening quote.
+2. **A buyer-side negotiation agent on top:** it counters every quote under a server-enforced mandate (target price, walk-away price, max delivery days, price-vs-delivery weight, round budget, tone, auto-accept or approval). Every round is recorded with its reason, and savings are measured against the lowest fair reference, with inflated opening quotes flagged and set aside.
 
 Enterprise negotiation tools (Pactum-style) sell to large procurement teams. TradeBridge brings agent negotiation to SMB purchases and owns the marketplace where the counterparties are.
 
@@ -55,4 +55,4 @@ Enterprise negotiation tools (Pactum-style) sell to large procurement teams. Tra
 2. **Every decision is explainable.** Each counter, acceptance or walk-away shows its reason and its effect on price, delivery and savings.
 3. **Minutes, not days.** The default path from need to PO should take a busy owner a few minutes of attention.
 4. **Neutral marketplace, fair to suppliers.** Sellers, human or agent, get clear terms and a consistent protocol. The buyer agent negotiates hard but honestly.
-5. **Show the money.** Savings against the opening quote are visible on every deal and in aggregate.
+5. **Show the money.** Savings are visible on every deal and in aggregate. The headline is verified savings against the lowest fair reference (typical market price, the buyer's own last price, or a non-inflated opening quote); savings against the opening quote stay visible as a secondary, labelled figure.

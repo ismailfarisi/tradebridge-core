@@ -11,6 +11,7 @@ export type SellerQuote = {
   price_cents: number;
   currency: string;
   delivery_days?: number | null;
+  payment_terms_days?: number | null;
   notes?: string;
   version?: number;
   updated_at?: string;
@@ -112,6 +113,9 @@ export type SellerQuoteInput = {
   price: number; // major units, e.g. 12500.5
   currency: string;
   delivery_days?: number | null;
+  // Days after delivery the buyer pays (0 = cash). Omitted keeps the
+  // previous terms on a revision.
+  payment_terms_days?: number;
   notes?: string;
 };
 

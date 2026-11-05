@@ -53,7 +53,7 @@ func TestCounter_NoAutonomy_RecordsMessageOnly(t *testing.T) {
 
 	price := int64(4500)
 	days := int32(5)
-	msg, err := svc.Counter(ctx, buyerID, quote.ID, &price, &days, "can you do better?")
+	msg, err := svc.Counter(ctx, buyerID, quote.ID, &price, &days, nil, "can you do better?")
 	require.NoError(t, err)
 	require.Equal(t, "buyer", msg.Author)
 	require.Contains(t, msg.Body, "can you do better?")
@@ -92,7 +92,7 @@ func TestCounter_WithAutonomy_EmitsMessageReceived(t *testing.T) {
 	svc := NewService(q, pool, pub, nil, zerolog.Nop(), nil, invoicing.NewService(zerolog.Nop()), entSvc, nil)
 
 	price := int64(4500)
-	_, err = svc.Counter(ctx, buyerID, quote.ID, &price, nil, "revised offer")
+	_, err = svc.Counter(ctx, buyerID, quote.ID, &price, nil, nil, "revised offer")
 	require.NoError(t, err)
 
 	var evCount int
@@ -123,11 +123,11 @@ func TestCounter_NonBuyerReturnsNotFound(t *testing.T) {
 	svc := NewService(q, pool, pub, nil, zerolog.Nop(), nil, invoicing.NewService(zerolog.Nop()), entSvc, nil)
 
 	price := int64(4500)
-	_, err := svc.Counter(ctx, sellerID, quote.ID, &price, nil, "sneaky")
+	_, err := svc.Counter(ctx, sellerID, quote.ID, &price, nil, nil, "sneaky")
 	require.ErrorIs(t, err, ErrNotFound)
 
 	other, err := q.CreateCompany(ctx, sqlc.CreateCompanyParams{Name: "ctr-third-party", Type: "buyer"})
 	require.NoError(t, err)
-	_, err = svc.Counter(ctx, other.ID, quote.ID, &price, nil, "also sneaky")
+	_, err = svc.Counter(ctx, other.ID, quote.ID, &price, nil, nil, "also sneaky")
 	require.ErrorIs(t, err, ErrNotFound)
 }

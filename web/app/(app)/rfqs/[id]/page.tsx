@@ -12,6 +12,7 @@ import { NegotiationThread } from "@/components/NegotiationThread";
 import { useToken } from "@/lib/auth";
 import { Icon } from "@/components/Icon";
 import { getRfq, rfqQuotes, type QuoteRow, type RFQ } from "@/lib/api";
+import { paymentTermsLabel } from "@/lib/terms";
 
 export default function RfqDetail() {
   const token = useToken();
@@ -114,7 +115,10 @@ export default function RfqDetail() {
                     )}
                   </td>
                   <td><strong>{q.currency} {(q.price_cents / 100).toFixed(2)}</strong></td>
-                  <td className="muted">{q.delivery_days != null ? `${q.delivery_days} days` : "—"}</td>
+                  <td className="muted">
+                    {q.delivery_days != null ? `${q.delivery_days} days` : "—"}
+                    {q.payment_terms_days != null && <span className="small" style={{ display: "block" }}>{paymentTermsLabel(q.payment_terms_days)}</span>}
+                  </td>
                   <td className="muted small">{q.notes}</td>
                   <td style={{ textAlign: "right" }}>
                     {q.status === "accepted" ? (

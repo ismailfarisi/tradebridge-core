@@ -11,6 +11,7 @@ import { useToken } from "@/lib/auth";
 import type { AttachmentMeta } from "@/lib/api";
 import { money, when } from "@/lib/negotiation";
 import { daysLeft, getSellerRfq, sellerState, type SellerRFQ } from "@/lib/seller";
+import { paymentTermsLabel } from "@/lib/terms";
 
 export default function SellerRfqDetailPage() {
   const token = useToken();
@@ -138,6 +139,7 @@ export default function SellerRfqDetailPage() {
                 </p>
                 <p className="muted small" style={{ marginTop: 0 }}>
                   {rfq.quote.delivery_days != null ? `Delivery in ${rfq.quote.delivery_days} day${rfq.quote.delivery_days === 1 ? "" : "s"}` : "No delivery time given"}
+                  {rfq.quote.payment_terms_days != null ? ` · payment ${paymentTermsLabel(rfq.quote.payment_terms_days).toLowerCase()}` : ""}
                   {rfq.quote.version && rfq.quote.version > 1 ? ` · revision ${rfq.quote.version}` : ""}
                   {rfq.quote.updated_at ? ` · updated ${when(rfq.quote.updated_at)}` : ""}
                 </p>

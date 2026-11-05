@@ -34,6 +34,9 @@ type SellerQuoteInput struct {
 	Currency     string   `json:"currency"`
 	DeliveryDays *int32   `json:"delivery_days"`
 	Notes        string   `json:"notes"`
+	// PaymentTermsDays is optional: days after delivery the buyer has to pay
+	// (0 = cash / on delivery). Omitted on a revision keeps the previous terms.
+	PaymentTermsDays *int32 `json:"payment_terms_days,omitempty"`
 }
 
 // SellerQuoteResult is the outcome of SubmitAsSeller.
@@ -147,7 +150,7 @@ func (s *Service) reviseSellerQuote(ctx context.Context, r sqlc.Rfq, existing sq
 	head, err := qtx.ReviseSubmittedQuote(ctx, sqlc.ReviseSubmittedQuoteParams{
 		ID: existing.ID, SellerCompanyID: existing.SellerCompanyID,
 		PriceCents: n.PriceCents, Currency: n.Currency, DeliveryDays: n.DeliveryDays,
-		Notes: n.Notes, Completeness: n.Completeness,
+		Notes: n.Notes, Completeness: n.Completeness, PaymentTermsDays: n.PaymentTermsDays,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		// Accepted or rejected between the read above and this write.
@@ -158,7 +161,7 @@ func (s *Service) reviseSellerQuote(ctx context.Context, r sqlc.Rfq, existing sq
 	ver, err := qtx.UpsertQuoteVersion(ctx, sqlc.UpsertQuoteVersionParams{
 		QuoteID: head.ID, Version: head.Version, PriceCents: head.PriceCents, Currency: head.Currency,
 		DeliveryDays: head.DeliveryDays, Notes: head.Notes, Completeness: head.Completeness,
-		Source: "counter",
+		Source: "counter", PaymentTermsDays: head.PaymentTermsDays,
 	})
 	if err != nil {
 		return SellerQuoteResult{}, err
@@ -216,8 +219,20 @@ func revisionMessage(q sqlc.Quote) string {
 	if q.DeliveryDays != nil {
 		body += fmt.Sprintf(", delivery in %d days", *q.DeliveryDays)
 	}
+	if q.PaymentTermsDays != nil {
+		body += ", payment " + PaymentTermsLabel(*q.PaymentTermsDays)
+	}
 	if q.Notes != "" {
 		body += "\n\n" + q.Notes
 	}
 	return body
+}
+
+// PaymentTermsLabel renders payment terms for people: 0 → "cash on
+// delivery", 30 → "net 30 days".
+func PaymentTermsLabel(days int32) string {
+	if days == 0 {
+		return "cash on delivery"
+	}
+	return fmt.Sprintf("net %d days", days)
 }

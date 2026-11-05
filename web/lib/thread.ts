@@ -14,6 +14,7 @@ export type QuoteVersion = {
   price_cents: number;
   currency: string;
   delivery_days: number | null;
+  payment_terms_days?: number | null;
   notes: string;
   source: "seller" | "counter";
   created_at: string;

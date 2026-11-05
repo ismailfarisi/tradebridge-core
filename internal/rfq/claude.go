@@ -91,3 +91,33 @@ func parseRequirements(s string) (Requirements, bool) {
 	}
 	return req, true
 }
+
+// Completer is a one-shot text completion over the platform's configured LLM
+// provider (the same client and settings RFQ intake uses). Other packages use
+// it for short phrasing tasks, never for decisions.
+type Completer interface {
+	Complete(ctx context.Context, system, user string) (string, error)
+}
+
+// BuildCompleter returns a Completer for the resolved config, or nil when no
+// API key is configured, so callers can treat "no LLM" as a plain branch.
+func BuildCompleter(cfg ProviderConfig, logger zerolog.Logger) Completer {
+	switch {
+	case cfg.APIKey == "":
+		return nil
+	case cfg.Provider == "openai_compatible":
+		return chatCompleter{chat: newOpenAIChat(cfg.BaseURL, cfg.Model, cfg.APIKey, logger)}
+	default: // anthropic
+		model := cfg.Model
+		if model == "" {
+			model = "claude-haiku-4-5"
+		}
+		return chatCompleter{chat: newAnthropicChat(cfg.APIKey, model, logger)}
+	}
+}
+
+type chatCompleter struct{ chat llmChat }
+
+func (c chatCompleter) Complete(ctx context.Context, system, user string) (string, error) {
+	return c.chat.complete(ctx, system, []ChatMessage{{Role: "user", Content: user}})
+}

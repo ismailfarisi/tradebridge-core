@@ -50,6 +50,7 @@ type quoteView struct {
 	PriceCents               int64   `json:"price_cents"`
 	Currency                 string  `json:"currency"`
 	DeliveryDays             *int32  `json:"delivery_days"`
+	PaymentTermsDays         *int32  `json:"payment_terms_days"`
 	Notes                    string  `json:"notes"`
 	Completeness             float64 `json:"completeness"`
 	Status                   string  `json:"status"`
@@ -79,7 +80,8 @@ func (h *Handler) listForRFQ(c *fiber.Ctx) error {
 			SellerAvgRating:          q.SellerAvgRating,
 			SellerReviewCount:        q.SellerReviewCount,
 			PriceCents:               q.PriceCents, Currency: q.Currency, DeliveryDays: q.DeliveryDays,
-			Notes: q.Notes, Completeness: q.Completeness, Status: q.Status, Rank: i + 1,
+			PaymentTermsDays: q.PaymentTermsDays,
+			Notes:            q.Notes, Completeness: q.Completeness, Status: q.Status, Rank: i + 1,
 		}
 	}
 	return c.JSON(fiber.Map{"quotes": out, "count": len(out)})
@@ -115,7 +117,7 @@ func (h *Handler) sellerSubmit(c *fiber.Ctx) error {
 		"quote": fiber.Map{
 			"id": q.ID, "rfq_id": q.RfqID, "status": q.Status,
 			"price_cents": q.PriceCents, "currency": q.Currency,
-			"delivery_days": q.DeliveryDays, "notes": q.Notes,
+			"delivery_days": q.DeliveryDays, "notes": q.Notes, "payment_terms_days": q.PaymentTermsDays,
 			"version": q.Version, "updated_at": q.UpdatedAt.UTC().Format(time.RFC3339),
 		},
 	})
@@ -227,7 +229,9 @@ func (h *Handler) addMessage(c *fiber.Ctx) error {
 type counterReq struct {
 	PriceCents   *int64 `json:"price_cents"`
 	DeliveryDays *int32 `json:"delivery_days"`
-	Message      string `json:"message"`
+	// PaymentTermsDays proposes payment terms (days after delivery, 0 = cash).
+	PaymentTermsDays *int32 `json:"payment_terms_days"`
+	Message          string `json:"message"`
 }
 
 // counter lets the buyer on the RFQ propose new terms on a submitted quote.
@@ -238,12 +242,16 @@ func (h *Handler) counter(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid body")
 	}
-	if req.Message == "" && req.PriceCents == nil && req.DeliveryDays == nil {
+	if req.Message == "" && req.PriceCents == nil && req.DeliveryDays == nil && req.PaymentTermsDays == nil {
 		return fiber.NewError(fiber.StatusBadRequest, "message or proposed terms required")
 	}
-	msg, err := h.svc.Counter(c.Context(), middleware.CompanyID(c), c.Params("id"), req.PriceCents, req.DeliveryDays, req.Message)
+	msg, err := h.svc.Counter(c.Context(), middleware.CompanyID(c), c.Params("id"), req.PriceCents, req.DeliveryDays, req.PaymentTermsDays, req.Message)
 	if errors.Is(err, ErrNotFound) {
 		return fiber.NewError(fiber.StatusNotFound, "quote not found")
+	}
+	var invalid InvalidError
+	if errors.As(err, &invalid) {
+		return fiber.NewError(fiber.StatusBadRequest, invalid.Msg)
 	}
 	if err != nil {
 		return err

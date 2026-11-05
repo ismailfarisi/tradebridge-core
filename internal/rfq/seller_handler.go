@@ -45,9 +45,11 @@ type sellerQuoteSummary struct {
 	PriceCents   int64  `json:"price_cents"`
 	Currency     string `json:"currency"`
 	DeliveryDays *int32 `json:"delivery_days"`
-	Notes        string `json:"notes,omitempty"`
-	Version      int32  `json:"version,omitempty"`
-	UpdatedAt    string `json:"updated_at,omitempty"`
+	// PaymentTermsDays is days after delivery the buyer pays (0 = cash).
+	PaymentTermsDays *int32 `json:"payment_terms_days"`
+	Notes            string `json:"notes,omitempty"`
+	Version          int32  `json:"version,omitempty"`
+	UpdatedAt        string `json:"updated_at,omitempty"`
 }
 
 // sellerRFQView is the RFQ as a matched seller sees it. It carries the same
@@ -153,14 +155,15 @@ func (h *SellerHandler) get(c *fiber.Ctx) error {
 	switch {
 	case err == nil:
 		v.Quote = &sellerQuoteSummary{
-			ID:           q.ID,
-			Status:       q.Status,
-			PriceCents:   q.PriceCents,
-			Currency:     q.Currency,
-			DeliveryDays: q.DeliveryDays,
-			Notes:        q.Notes,
-			Version:      q.Version,
-			UpdatedAt:    formatTime(q.UpdatedAt),
+			ID:               q.ID,
+			Status:           q.Status,
+			PriceCents:       q.PriceCents,
+			Currency:         q.Currency,
+			DeliveryDays:     q.DeliveryDays,
+			PaymentTermsDays: q.PaymentTermsDays,
+			Notes:            q.Notes,
+			Version:          q.Version,
+			UpdatedAt:        formatTime(q.UpdatedAt),
 		}
 	case !errors.Is(err, pgx.ErrNoRows):
 		return err

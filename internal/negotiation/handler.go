@@ -3,6 +3,8 @@ package negotiation
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -31,6 +33,8 @@ func NewHandler(q *sqlc.Queries, eng *Engine, ent *entitlements.Service) *Handle
 func (h *Handler) Register(app *fiber.App, guard ...fiber.Handler) {
 	app.Add("GET", "/v1/negotiations", append(guard, h.list)...)
 	app.Add("GET", "/v1/negotiations/savings", append(guard, h.savings)...)
+	app.Add("GET", "/v1/negotiations/controls", append(guard, h.getControls)...)
+	app.Add("PUT", "/v1/negotiations/controls", append(guard, middleware.RequireRole("owner", "admin"), h.putControls)...)
 	app.Add("GET", "/v1/rfqs/:id/negotiation", append(guard, h.get)...)
 	app.Add("PUT", "/v1/rfqs/:id/negotiation", append(guard, h.upsert)...)
 	app.Add("POST", "/v1/rfqs/:id/negotiation/pause", append(guard, h.pause)...)
@@ -48,7 +52,20 @@ type strategyInput struct {
 	MaxRounds        *int32   `json:"max_rounds"`
 	AutoAccept       bool     `json:"auto_accept"`
 	Tone             string   `json:"tone"`
+
+	// Payment terms (days after delivery the buyer pays; 0 = cash). All
+	// optional: without preferred_payment_terms_days terms are not negotiated.
+	PreferredPaymentTermsDays *int32   `json:"preferred_payment_terms_days"`
+	MinPaymentTermsDays       *int32   `json:"min_payment_terms_days"`
+	TermsWeight               *float64 `json:"terms_weight"`
 }
+
+// maxMandateTermsDays bounds the payment terms a buyer can ask for.
+const maxMandateTermsDays = 180
+
+// defaultTermsWeight is the share terms get when the buyer sets preferred
+// terms without saying how much they matter.
+const defaultTermsWeight = 0.15
 
 func (in *strategyInput) validate() error {
 	if in.TargetPriceCents <= 0 {
@@ -66,6 +83,9 @@ func (in *strategyInput) validate() error {
 	} else if *in.PriceWeight < 0 || *in.PriceWeight > 1 {
 		return fiber.NewError(fiber.StatusBadRequest, "price_weight must be between 0 and 1")
 	}
+	if err := in.validateTerms(); err != nil {
+		return err
+	}
 	if in.MaxRounds == nil {
 		r := int32(4)
 		in.MaxRounds = &r
@@ -78,6 +98,43 @@ func (in *strategyInput) validate() error {
 	case "collaborative", "firm":
 	default:
 		return fiber.NewError(fiber.StatusBadRequest, "tone must be collaborative or firm")
+	}
+	return nil
+}
+
+func (in *strategyInput) validateTerms() error {
+	for name, v := range map[string]*int32{"preferred_payment_terms_days": in.PreferredPaymentTermsDays, "min_payment_terms_days": in.MinPaymentTermsDays} {
+		if v != nil && (*v < 0 || *v > maxMandateTermsDays) {
+			return fiber.NewError(fiber.StatusBadRequest, fmt.Sprintf("%s must be between 0 and %d", name, maxMandateTermsDays))
+		}
+	}
+	if in.PreferredPaymentTermsDays == nil {
+		if in.MinPaymentTermsDays != nil {
+			return fiber.NewError(fiber.StatusBadRequest, "min_payment_terms_days requires preferred_payment_terms_days")
+		}
+		if in.TermsWeight != nil && *in.TermsWeight != 0 {
+			return fiber.NewError(fiber.StatusBadRequest, "terms_weight requires preferred_payment_terms_days")
+		}
+		zero := 0.0
+		in.TermsWeight = &zero
+		return nil
+	}
+	if in.MinPaymentTermsDays != nil && *in.MinPaymentTermsDays > *in.PreferredPaymentTermsDays {
+		return fiber.NewError(fiber.StatusBadRequest, "min_payment_terms_days must not exceed preferred_payment_terms_days")
+	}
+	if in.TermsWeight == nil {
+		w := math.Min(defaultTermsWeight, 1-*in.PriceWeight)
+		in.TermsWeight = &w
+	} else if *in.TermsWeight < 0 || *in.TermsWeight > 1 {
+		return fiber.NewError(fiber.StatusBadRequest, "terms_weight must be between 0 and 1")
+	}
+	if *in.PriceWeight+*in.TermsWeight > 1+1e-9 {
+		return fiber.NewError(fiber.StatusBadRequest, "price_weight + terms_weight must not exceed 1 (delivery gets the rest)")
+	}
+	// Absorb float noise (e.g. 0.7 + 0.3) so the DB check always holds.
+	if *in.PriceWeight+*in.TermsWeight > 1 {
+		w := 1 - *in.PriceWeight
+		in.TermsWeight = &w
 	}
 	return nil
 }
@@ -116,6 +173,8 @@ func (h *Handler) upsert(c *fiber.Ctx) error {
 		RfqID: r.ID, BuyerCompanyID: r.BuyerCompanyID, CreatedBy: createdBy,
 		TargetPriceCents: in.TargetPriceCents, MaxPriceCents: in.MaxPriceCents, MaxDeliveryDays: in.MaxDeliveryDays,
 		PriceWeight: *in.PriceWeight, MaxRounds: *in.MaxRounds, AutoAccept: in.AutoAccept, Tone: in.Tone,
+		PreferredPaymentTermsDays: in.PreferredPaymentTermsDays, MinPaymentTermsDays: in.MinPaymentTermsDays,
+		TermsWeight: *in.TermsWeight,
 	}); err != nil {
 		return err
 	}
@@ -200,6 +259,8 @@ func mapErr(err error) error {
 	switch {
 	case errors.Is(err, ErrNotFound), errors.Is(err, quotes.ErrNotFound):
 		return fiber.NewError(fiber.StatusNotFound, "negotiation not found")
+	case errors.Is(err, ErrBusy):
+		return fiber.NewError(fiber.StatusConflict, ErrBusy.Msg)
 	case errors.As(err, &conflict):
 		return fiber.NewError(fiber.StatusConflict, conflict.Msg)
 	case errors.As(err, &qconflict):
@@ -219,12 +280,18 @@ type supplierView struct {
 	InitialDeliveryDays *int32  `json:"initial_delivery_days"`
 	PriceCents          int64   `json:"price_cents"`
 	DeliveryDays        *int32  `json:"delivery_days"`
+	PaymentTermsDays    *int32  `json:"payment_terms_days"`
 	Version             int32   `json:"version"`
 	Status              string  `json:"status"`
 	Counters            int     `json:"counters"`
 	LastAction          string  `json:"last_action"`
 	Utility             float64 `json:"utility"`
 	Recommended         bool    `json:"recommended"`
+	// Anchored flags an opening quote far above the other suppliers' openings
+	// or the buyer's own past price; such openings never count as a baseline.
+	Anchored   bool    `json:"anchored"`
+	AnchorPct  float64 `json:"anchor_pct"`
+	AnchorNote string  `json:"anchor_note"`
 }
 
 type summaryView struct {
@@ -235,6 +302,22 @@ type summaryView struct {
 	SavingsPct       float64 `json:"savings_pct"`
 	QuoteCount       int     `json:"quote_count"`
 	CounterCount     int     `json:"counter_count"`
+	// Headline figures: savings against the lowest applicable baseline (see
+	// baselines). savings_cents above stays the opening-quote comparison.
+	VerifiedSavingsCents int64   `json:"verified_savings_cents"`
+	VerifiedSavingsPct   float64 `json:"verified_savings_pct"`
+	VerifiedBasis        string  `json:"verified_basis"`
+}
+
+// baselineView is the deal measured against every baseline. Snapshot is true
+// once the negotiation closed and the figures were frozen (source close or
+// backfill); otherwise they are a live preview of the current best deal.
+type baselineView struct {
+	Baselines
+	QuoteID    string     `json:"quote_id"`
+	Snapshot   bool       `json:"snapshot"`
+	Source     string     `json:"source"`
+	ComputedAt *time.Time `json:"computed_at"`
 }
 
 type suggestionView struct {
@@ -242,13 +325,24 @@ type suggestionView struct {
 	MaxPriceCents    int64 `json:"max_price_cents"`
 }
 
+// weightsView is the mandate's utility split, delivery included, so clients
+// never derive it themselves.
+type weightsView struct {
+	Price    float64 `json:"price"`
+	Delivery float64 `json:"delivery"`
+	Terms    float64 `json:"terms"`
+}
+
 type negotiationView struct {
 	RFQ       fiber.Map                 `json:"rfq"`
 	Strategy  *sqlc.NegotiationStrategy `json:"strategy"`
+	Weights   *weightsView              `json:"weights"`
 	Rounds    []roundView               `json:"rounds"`
 	Suppliers []supplierView            `json:"suppliers"`
 	Summary   summaryView               `json:"summary"`
 	Suggested *suggestionView           `json:"suggested"`
+	Pause     pauseView                 `json:"pause"`
+	Baselines *baselineView             `json:"baselines"`
 }
 
 type roundView struct {
@@ -267,6 +361,11 @@ func (h *Handler) respond(c *fiber.Ctx, r sqlc.Rfq) error {
 		Rounds:    []roundView{},
 		Suppliers: []supplierView{},
 	}
+	ps, err := h.eng.PauseState(ctx, r.BuyerCompanyID)
+	if err != nil {
+		return err
+	}
+	v.Pause = viewOf(ps)
 	qs, err := h.q.RankQuotesByRFQ(ctx, r.ID)
 	if err != nil {
 		return err
@@ -308,24 +407,27 @@ func (h *Handler) respond(c *fiber.Ctx, r sqlc.Rfq) error {
 	var m Mandate
 	if v.Strategy != nil {
 		m = mandateOf(s)
+		wp, wd, wt := weights(m)
+		v.Weights = &weightsView{Price: round3(wp), Delivery: round3(wd), Terms: round3(wt)}
 	}
 	var recommendedCents int64
+	var recommendedID, bestID string
 	for _, q := range qs {
 		sv := supplierView{
 			QuoteID: q.ID, SellerCompanyID: q.SellerCompanyID, SellerName: q.SellerName,
 			VerificationStatus: q.VerificationStatus, SellerAvgRating: q.SellerAvgRating, Currency: q.Currency,
 			InitialPriceCents: q.PriceCents, InitialDeliveryDays: q.DeliveryDays,
-			PriceCents: q.PriceCents, DeliveryDays: q.DeliveryDays, Version: q.Version, Status: q.Status,
+			PriceCents: q.PriceCents, DeliveryDays: q.DeliveryDays, PaymentTermsDays: q.PaymentTermsDays, Version: q.Version, Status: q.Status,
 			Counters: counters[q.ID], LastAction: lastAction[q.ID],
 		}
 		if f, ok := firstBy[q.ID]; ok {
 			sv.InitialPriceCents, sv.InitialDeliveryDays = f.PriceCents, f.DeliveryDays
 		}
 		if v.Strategy != nil {
-			sv.Utility = Utility(m, Offer{PriceCents: q.PriceCents, DeliveryDays: q.DeliveryDays})
+			sv.Utility = Utility(m, offerOf(q))
 			sv.Recommended = s.OutcomeQuoteID != nil && *s.OutcomeQuoteID == q.ID
 			if sv.Recommended {
-				recommendedCents = q.PriceCents
+				recommendedCents, recommendedID = q.PriceCents, q.ID
 			}
 		}
 		if v.Summary.Currency == "" {
@@ -335,7 +437,7 @@ func (h *Handler) respond(c *fiber.Ctx, r sqlc.Rfq) error {
 			v.Summary.InitialBestCents = sv.InitialPriceCents
 		}
 		if q.Status != "rejected" && (v.Summary.CurrentBestCents == 0 || q.PriceCents < v.Summary.CurrentBestCents) {
-			v.Summary.CurrentBestCents = q.PriceCents
+			v.Summary.CurrentBestCents, bestID = q.PriceCents, q.ID
 		}
 		v.Suppliers = append(v.Suppliers, sv)
 	}
@@ -348,6 +450,12 @@ func (h *Handler) respond(c *fiber.Ctx, r sqlc.Rfq) error {
 		v.Summary.SavingsCents = v.Summary.InitialBestCents - v.Summary.CurrentBestCents
 		v.Summary.SavingsPct = round3(float64(v.Summary.SavingsCents) / float64(v.Summary.InitialBestCents) * 100)
 	}
+	if recommendedID != "" {
+		bestID = recommendedID
+	}
+	if err := h.attachBaselines(c, r, &v, qs, bestID); err != nil {
+		return err
+	}
 	if v.Strategy == nil && v.Summary.InitialBestCents > 0 {
 		// Anchor 12% under the best opening quote; walk away above it.
 		best := v.Summary.CurrentBestCents
@@ -359,6 +467,10 @@ func (h *Handler) respond(c *fiber.Ctx, r sqlc.Rfq) error {
 type listItem struct {
 	sqlc.ListNegotiationsByBuyerRow
 	SavingsCents int64 `json:"savings_cents"`
+	// Present once the negotiation closed and its baselines were snapshot.
+	VerifiedSavingsCents *int64 `json:"verified_savings_cents"`
+	VerifiedBasis        string `json:"verified_basis"`
+	Anchored             bool   `json:"anchored"`
 }
 
 func (h *Handler) list(c *fiber.Ctx) error {
@@ -366,15 +478,31 @@ func (h *Handler) list(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
+	snaps, err := h.q.ListBuyerNegotiationBaselines(c.Context(), middleware.CompanyID(c))
+	if err != nil {
+		return err
+	}
+	snapBy := map[string]Baselines{}
+	for _, nb := range snaps {
+		snapBy[nb.StrategyID] = baselinesFromSnapshot(nb)
+	}
 	out := make([]listItem, 0, len(rows))
 	for _, r := range rows {
 		it := listItem{ListNegotiationsByBuyerRow: r}
 		if r.Status != "cancelled" && r.InitialBestCents > r.CurrentBestCents && r.CurrentBestCents > 0 {
 			it.SavingsCents = r.InitialBestCents - r.CurrentBestCents
 		}
+		if b, ok := snapBy[r.ID]; ok {
+			v := b.VerifiedSavingsCents
+			it.VerifiedSavingsCents, it.VerifiedBasis, it.Anchored = &v, b.VerifiedBasis, b.Anchor.Flagged
+		}
 		out = append(out, it)
 	}
-	return c.JSON(fiber.Map{"negotiations": out})
+	ps, err := h.eng.PauseState(c.Context(), middleware.CompanyID(c))
+	if err != nil {
+		return err
+	}
+	return c.JSON(fiber.Map{"negotiations": out, "pause": viewOf(ps)})
 }
 
 func (h *Handler) savings(c *fiber.Ctx) error {
@@ -400,18 +528,141 @@ func (h *Handler) savings(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
+	dealRows, err := h.q.BuyerDealBaselines(ctx, me)
+	if err != nil {
+		return err
+	}
 	pct := 0.0
 	if totals.BaselineCents > 0 {
 		pct = round3(float64(totals.SavingsCents) / float64(totals.BaselineCents) * 100)
 	}
+	deals := make([]DealMeasure, 0, len(dealRows))
+	byOrder := map[string]DealMeasure{}
+	for _, r := range dealRows {
+		d := measureDeal(r)
+		deals = append(deals, d)
+		byOrder[d.OrderID] = d
+	}
+	verified := buildVerifiedReport(deals)
+	// totals, savings_pct and the opening-quote fields are kept as they were
+	// (savings vs each supplier's opening quote) for backward compatibility;
+	// "verified" is the headline.
 	return c.JSON(fiber.Map{
 		"totals":        totals,
 		"savings_pct":   pct,
+		"verified":      verified,
 		"negotiations":  counts,
-		"monthly":       fillMonths(monthly, time.Now()),
+		"monthly":       withVerifiedMonthly(fillMonths(monthly, time.Now()), deals, verified.Currency),
 		"top_suppliers": top,
-		"recent_deals":  recent,
+		"recent_deals":  withVerifiedRecent(recent, byOrder),
 	})
+}
+
+type monthlyRow struct {
+	sqlc.BuyerMonthlySpendRow
+	VerifiedSavingsCents int64 `json:"verified_savings_cents"`
+}
+
+func withVerifiedMonthly(rows []sqlc.BuyerMonthlySpendRow, deals []DealMeasure, currency string) []monthlyRow {
+	by := map[string]int64{}
+	for _, d := range deals {
+		if d.Status != "cancelled" && d.Currency == currency {
+			by[d.Month] += d.VerifiedSavingsCents
+		}
+	}
+	out := make([]monthlyRow, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, monthlyRow{BuyerMonthlySpendRow: r, VerifiedSavingsCents: by[r.Month]})
+	}
+	return out
+}
+
+type recentDeal struct {
+	sqlc.BuyerRecentDealsRow
+	VerifiedBaselineCents int64   `json:"verified_baseline_cents"`
+	VerifiedBasis         string  `json:"verified_basis"`
+	VerifiedSavingsCents  int64   `json:"verified_savings_cents"`
+	MarketCents           *int64  `json:"market_cents"`
+	HistoricalCents       *int64  `json:"historical_cents"`
+	Anchored              bool    `json:"anchored"`
+	AnchorPct             float64 `json:"anchor_pct"`
+	BasisReason           string  `json:"basis_reason"`
+	BaselineSource        string  `json:"baseline_source"`
+}
+
+func withVerifiedRecent(rows []sqlc.BuyerRecentDealsRow, by map[string]DealMeasure) []recentDeal {
+	out := make([]recentDeal, 0, len(rows))
+	for _, r := range rows {
+		rd := recentDeal{BuyerRecentDealsRow: r, VerifiedBasis: BasisNone, VerifiedBaselineCents: r.TotalCents}
+		if d, ok := by[r.OrderID]; ok {
+			rd.VerifiedBaselineCents, rd.VerifiedBasis, rd.VerifiedSavingsCents = d.VerifiedBaselineCents, d.VerifiedBasis, d.VerifiedSavingsCents
+			rd.MarketCents, rd.HistoricalCents = d.MarketCents, d.HistoricalCents
+			rd.Anchored, rd.AnchorPct, rd.BasisReason, rd.BaselineSource = d.Anchor.Flagged, d.Anchor.Pct, d.Reason, d.Source
+		}
+		out = append(out, rd)
+	}
+	return out
+}
+
+// attachBaselines measures the deal (the agent's pick, else the current best
+// quote) against every baseline and flags anchored opening quotes. A closed
+// negotiation reports its frozen snapshot.
+func (h *Handler) attachBaselines(c *fiber.Ctx, r sqlc.Rfq, v *negotiationView, qs []sqlc.RankQuotesByRFQRow, dealID string) error {
+	ctx := c.Context()
+	if dealID == "" {
+		return nil
+	}
+	var deal *sqlc.RankQuotesByRFQRow
+	for i := range qs {
+		if qs[i].ID == dealID {
+			deal = &qs[i]
+		}
+	}
+	if deal == nil {
+		return nil
+	}
+	in, err := baselineInput(ctx, h.q, r, deal.ID, deal.PriceCents, deal.Currency, time.Now())
+	if err != nil {
+		return err
+	}
+	bv := &baselineView{Baselines: ComputeBaselines(in), QuoteID: deal.ID, Source: "live"}
+	if v.Strategy != nil {
+		snap, err := getSnapshot(ctx, h.q, v.Strategy.ID)
+		if err != nil {
+			return err
+		}
+		if snap != nil && snap.QuoteID == deal.ID {
+			at := snap.ComputedAt
+			bv = &baselineView{Baselines: baselinesFromSnapshot(*snap), QuoteID: snap.QuoteID, Snapshot: true, Source: snap.Source, ComputedAt: &at}
+		}
+	}
+	v.Baselines = bv
+	v.Summary.VerifiedSavingsCents = bv.VerifiedSavingsCents
+	v.Summary.VerifiedSavingsPct = bv.VerifiedSavingsPct
+	v.Summary.VerifiedBasis = bv.VerifiedBasis
+
+	// Per-supplier anchor flags, against the other openings in the same
+	// currency and (for the deal currency) the historical reference.
+	for i := range v.Suppliers {
+		sv := &v.Suppliers[i]
+		if sv.QuoteID == deal.ID {
+			sv.Anchored, sv.AnchorPct, sv.AnchorNote = bv.Anchor.Flagged, bv.Anchor.Pct, bv.Anchor.Note
+			continue
+		}
+		var others []int64
+		for _, o := range in.Openings {
+			if o.QuoteID != sv.QuoteID && o.Currency == sv.Currency && o.PriceCents > 0 {
+				others = append(others, o.PriceCents)
+			}
+		}
+		var hist *int64
+		if sv.Currency == bv.Currency {
+			hist = bv.HistoricalCents
+		}
+		a := DetectAnchor(sv.InitialPriceCents, others, hist)
+		sv.Anchored, sv.AnchorPct, sv.AnchorNote = a.Flagged, a.Pct, a.Note
+	}
+	return nil
 }
 
 // fillMonths returns the trailing 12 months with zero rows for gaps so charts

@@ -128,6 +128,7 @@ export type QuoteRow = {
   price_cents: number;
   currency: string;
   delivery_days: number | null;
+  payment_terms_days?: number | null;
   notes: string;
   status: string;
   rank?: number;

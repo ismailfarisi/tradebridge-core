@@ -5,7 +5,17 @@ import { DEFAULT_CURRENCY, money, monthLabel, type Savings } from "@/lib/negotia
 
 // SpendChart is a dependency-free SVG stacked bar chart: negotiated spend with
 // the savings captured on top, one bar per month.
-export function SpendChart({ data, currency = DEFAULT_CURRENCY, height = 220 }: { data: Savings["monthly"]; currency?: string; height?: number }) {
+export function SpendChart({
+  data,
+  currency = DEFAULT_CURRENCY,
+  height = 220,
+  savingsLabel = "Savings vs cheapest opening quotes",
+}: {
+  data: Savings["monthly"];
+  currency?: string;
+  height?: number;
+  savingsLabel?: string;
+}) {
   const ref = useRef<HTMLElement>(null);
   const [W, setW] = useState(720);
   useEffect(() => {
@@ -59,7 +69,7 @@ export function SpendChart({ data, currency = DEFAULT_CURRENCY, height = 220 }: 
       </svg>
       <figcaption className="row small muted" style={{ gap: "1rem", marginTop: "0.4rem" }}>
         <Legend color="var(--primary)" label="Negotiated spend" />
-        <Legend color="#22c55e" label="Savings vs cheapest opening quotes" />
+        <Legend color="#22c55e" label={savingsLabel} />
       </figcaption>
     </figure>
   );

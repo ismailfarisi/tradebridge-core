@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  BASIS_LABEL,
+  basisSentence,
   deadlineDays,
   describeLimits,
   dollarsToCents,
@@ -8,16 +10,20 @@ import {
   money,
   monthLabel,
   parseLimits,
+  priceShareOf,
   quoteRange,
   rfqStatus,
   roundDownCents,
   shortDate,
+  splitWeights,
   statusClass,
   suggestTarget,
   type Supplier,
+  verifiedHeadline,
   when,
   wholeAmount,
 } from "./negotiation";
+import { paymentTermsLabel, shortTermsLabel } from "./terms";
 
 describe("negotiation helpers", () => {
   it("formats money from cents", () => {
@@ -45,6 +51,7 @@ const sup = (
   name: string,
   price: number,
   delivery: number | null,
+  terms: number | null = null,
 ): Supplier => ({
   quote_id: name,
   seller_company_id: name,
@@ -56,6 +63,7 @@ const sup = (
   initial_delivery_days: delivery,
   price_cents: price,
   delivery_days: delivery,
+  payment_terms_days: terms,
   version: 1,
   status: "submitted",
   counters: 0,
@@ -84,6 +92,41 @@ describe("explainPick", () => {
     expect(
       explainPick(sup("A", 1000000, null), sup("B", 1000000, 6), 0.7),
     ).toBe("Same price as B.");
+  });
+});
+
+describe("payment terms", () => {
+  it("mentions terms only when the mandate negotiates them and they differ", () => {
+    expect(explainPick(sup("A", 1000000, 5, 60), sup("B", 1100000, 6, 0), 0.7)).toBe(
+      "AED\u00a01,000 cheaper than B, and 1 day sooner.",
+    );
+    expect(explainPick(sup("A", 1000000, 5, 60), sup("B", 1100000, 6, 0), 0.6, { weight: 0.1 })).toBe(
+      "AED\u00a01,000 cheaper than B, and 1 day sooner. Pays on net 60 days (more time to pay than cash).",
+    );
+    expect(explainPick(sup("Fast", 1070000, 7, 30), sup("Cheap", 1052500, 14, 30), 0.6, { weight: 0.1 })).toBe(
+      "AED\u00a0175 more than Cheap, but 7 days sooner. Your mandate weighs delivery at 30%.",
+    );
+  });
+
+  it("splits weights so terms come first and the rest follows the priority", () => {
+    expect(splitWeights(0.7, 0.1)).toEqual({ price_weight: 0.63, terms_weight: 0.1 });
+    expect(splitWeights(0.5, 0)).toEqual({ price_weight: 0.5, terms_weight: 0 });
+    expect(priceShareOf({ price_weight: 0.63, terms_weight: 0.1, preferred_payment_terms_days: 60 })).toBe(0.7);
+    expect(priceShareOf({ price_weight: 0.7, terms_weight: 0, preferred_payment_terms_days: null })).toBe(0.7);
+  });
+
+  it("reads payment terms from plain words without mistaking them for delivery", () => {
+    expect(parseLimits("Up to AED 50k within 2 weeks, net 60")).toEqual({ maxCents: 5_000_000, days: 14, termsDays: 60 });
+    expect(parseLimits("we need 45 days credit, deliver in 10 days")).toEqual({ days: 10, termsDays: 45 });
+    expect(parseLimits("cash on delivery is fine")).toEqual({ termsDays: 0 });
+    expect(describeLimits({ termsDays: 60 })).toBe("Understood: pay on net 60 days");
+  });
+
+  it("labels terms for people", () => {
+    expect(paymentTermsLabel(0)).toBe("Cash on delivery");
+    expect(paymentTermsLabel(30)).toBe("Net 30 days");
+    expect(paymentTermsLabel(null)).toBe("—");
+    expect(shortTermsLabel(45)).toBe("Net 45");
   });
 });
 
@@ -142,5 +185,49 @@ describe("mandate suggestions", () => {
     expect(rfqStatus("quoted")).toEqual({ label: "Quotes in", cls: "badge sc badge-info" });
     expect(rfqStatus("open").label).toBe("Waiting for quotes");
     expect(rfqStatus("on_hold").label).toBe("on hold");
+  });
+});
+
+describe("verified savings helpers", () => {
+  const base = {
+    totals: { deals: 1, spend_cents: 80000, savings_cents: 120000, baseline_cents: 200000, negotiated_deals: 1 },
+    savings_pct: 60,
+    negotiations: { active: 0, awaiting_approval: 0, completed: 1, avg_rounds: 1 },
+    monthly: [],
+    top_suppliers: [],
+    recent_deals: [],
+  };
+
+  it("headline prefers verified savings over opening-quote savings", () => {
+    const h = verifiedHeadline({
+      ...base,
+      verified: {
+        currency: "USD",
+        deals: 1,
+        spend_cents: 80000,
+        baseline_cents: 105000,
+        savings_cents: 25000,
+        savings_pct: 23.81,
+        opening_quote_savings_cents: 120000,
+        by_basis: { market: 1, historical: 0, opening_quote: 0, none: 0 },
+        anchored_deals: 1,
+        snapshot_deals: 1,
+        other_currency_deals: 0,
+        explanation: "",
+      },
+    });
+    expect(h).toEqual({ cents: 25000, pct: 23.81, currency: "USD", verified: true });
+  });
+
+  it("falls back to opening-quote totals for an older API", () => {
+    expect(verifiedHeadline(base)).toEqual({ cents: 120000, pct: 60, currency: "AED", verified: false });
+  });
+
+  it("explains each basis in plain words", () => {
+    expect(basisSentence("market", { market_quote_count: 3 })).toBe("Measured against the typical opening price across 3 suppliers.");
+    expect(basisSentence("historical")).toContain("last paid");
+    expect(basisSentence("opening_quote")).toContain("opening quote");
+    expect(basisSentence("none")).toContain("no savings are claimed");
+    expect(BASIS_LABEL.market).toBe("typical market price");
   });
 });

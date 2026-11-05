@@ -230,7 +230,7 @@ func (q *Queries) DeleteNegotiationRound(ctx context.Context, id string) error {
 }
 
 const getNegotiationStrategyByRFQ = `-- name: GetNegotiationStrategyByRFQ :one
-SELECT id, rfq_id, buyer_company_id, created_by, target_price_cents, max_price_cents, max_delivery_days, price_weight, max_rounds, auto_accept, tone, status, outcome_quote_id, outcome_summary, created_at, updated_at FROM negotiation_strategies WHERE rfq_id = $1
+SELECT id, rfq_id, buyer_company_id, created_by, target_price_cents, max_price_cents, max_delivery_days, price_weight, max_rounds, auto_accept, tone, status, outcome_quote_id, outcome_summary, created_at, updated_at, preferred_payment_terms_days, min_payment_terms_days, terms_weight FROM negotiation_strategies WHERE rfq_id = $1
 `
 
 func (q *Queries) GetNegotiationStrategyByRFQ(ctx context.Context, rfqID string) (NegotiationStrategy, error) {
@@ -253,6 +253,9 @@ func (q *Queries) GetNegotiationStrategyByRFQ(ctx context.Context, rfqID string)
 		&i.OutcomeSummary,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PreferredPaymentTermsDays,
+		&i.MinPaymentTermsDays,
+		&i.TermsWeight,
 	)
 	return i, err
 }
@@ -260,29 +263,34 @@ func (q *Queries) GetNegotiationStrategyByRFQ(ctx context.Context, rfqID string)
 const insertNegotiationRound = `-- name: InsertNegotiationRound :one
 INSERT INTO negotiation_rounds (
     strategy_id, quote_id, round, responded_to_version, action, seller_price_cents,
-    seller_delivery_days, offer_price_cents, offer_delivery_days, utility, rationale, message
+    seller_delivery_days, offer_price_cents, offer_delivery_days, utility, rationale, message,
+    seller_payment_terms_days, offer_payment_terms_days, message_source
 ) VALUES (
     $1, $2, $3, $4, $5, $6,
     $7, $8, $9,
-    $10, $11, $12
+    $10, $11, $12,
+    $13, $14, $15
 )
 ON CONFLICT (quote_id, responded_to_version) DO NOTHING
-RETURNING id, strategy_id, quote_id, round, responded_to_version, action, seller_price_cents, seller_delivery_days, offer_price_cents, offer_delivery_days, utility, rationale, message, created_at
+RETURNING id, strategy_id, quote_id, round, responded_to_version, action, seller_price_cents, seller_delivery_days, offer_price_cents, offer_delivery_days, utility, rationale, message, created_at, delivery_status, quote_message_id, agent_event_id, delivered_at, seller_payment_terms_days, offer_payment_terms_days, message_source
 `
 
 type InsertNegotiationRoundParams struct {
-	StrategyID         string  `json:"strategy_id"`
-	QuoteID            string  `json:"quote_id"`
-	Round              int32   `json:"round"`
-	RespondedToVersion int32   `json:"responded_to_version"`
-	Action             string  `json:"action"`
-	SellerPriceCents   int64   `json:"seller_price_cents"`
-	SellerDeliveryDays *int32  `json:"seller_delivery_days"`
-	OfferPriceCents    *int64  `json:"offer_price_cents"`
-	OfferDeliveryDays  *int32  `json:"offer_delivery_days"`
-	Utility            float64 `json:"utility"`
-	Rationale          string  `json:"rationale"`
-	Message            string  `json:"message"`
+	StrategyID             string  `json:"strategy_id"`
+	QuoteID                string  `json:"quote_id"`
+	Round                  int32   `json:"round"`
+	RespondedToVersion     int32   `json:"responded_to_version"`
+	Action                 string  `json:"action"`
+	SellerPriceCents       int64   `json:"seller_price_cents"`
+	SellerDeliveryDays     *int32  `json:"seller_delivery_days"`
+	OfferPriceCents        *int64  `json:"offer_price_cents"`
+	OfferDeliveryDays      *int32  `json:"offer_delivery_days"`
+	Utility                float64 `json:"utility"`
+	Rationale              string  `json:"rationale"`
+	Message                string  `json:"message"`
+	SellerPaymentTermsDays *int32  `json:"seller_payment_terms_days"`
+	OfferPaymentTermsDays  *int32  `json:"offer_payment_terms_days"`
+	MessageSource          string  `json:"message_source"`
 }
 
 // ON CONFLICT DO NOTHING: a concurrent tick that already answered this seller
@@ -301,6 +309,9 @@ func (q *Queries) InsertNegotiationRound(ctx context.Context, arg InsertNegotiat
 		arg.Utility,
 		arg.Rationale,
 		arg.Message,
+		arg.SellerPaymentTermsDays,
+		arg.OfferPaymentTermsDays,
+		arg.MessageSource,
 	)
 	var i NegotiationRound
 	err := row.Scan(
@@ -318,6 +329,13 @@ func (q *Queries) InsertNegotiationRound(ctx context.Context, arg InsertNegotiat
 		&i.Rationale,
 		&i.Message,
 		&i.CreatedAt,
+		&i.DeliveryStatus,
+		&i.QuoteMessageID,
+		&i.AgentEventID,
+		&i.DeliveredAt,
+		&i.SellerPaymentTermsDays,
+		&i.OfferPaymentTermsDays,
+		&i.MessageSource,
 	)
 	return i, err
 }
@@ -350,7 +368,7 @@ func (q *Queries) ListActiveNegotiationRFQIDs(ctx context.Context, lim int32) ([
 }
 
 const listNegotiationRounds = `-- name: ListNegotiationRounds :many
-SELECT id, strategy_id, quote_id, round, responded_to_version, action, seller_price_cents, seller_delivery_days, offer_price_cents, offer_delivery_days, utility, rationale, message, created_at FROM negotiation_rounds WHERE strategy_id = $1 ORDER BY created_at ASC, round ASC
+SELECT id, strategy_id, quote_id, round, responded_to_version, action, seller_price_cents, seller_delivery_days, offer_price_cents, offer_delivery_days, utility, rationale, message, created_at, delivery_status, quote_message_id, agent_event_id, delivered_at, seller_payment_terms_days, offer_payment_terms_days, message_source FROM negotiation_rounds WHERE strategy_id = $1 ORDER BY created_at ASC, round ASC
 `
 
 func (q *Queries) ListNegotiationRounds(ctx context.Context, strategyID string) ([]NegotiationRound, error) {
@@ -377,6 +395,13 @@ func (q *Queries) ListNegotiationRounds(ctx context.Context, strategyID string) 
 			&i.Rationale,
 			&i.Message,
 			&i.CreatedAt,
+			&i.DeliveryStatus,
+			&i.QuoteMessageID,
+			&i.AgentEventID,
+			&i.DeliveredAt,
+			&i.SellerPaymentTermsDays,
+			&i.OfferPaymentTermsDays,
+			&i.MessageSource,
 		); err != nil {
 			return nil, err
 		}
@@ -389,7 +414,7 @@ func (q *Queries) ListNegotiationRounds(ctx context.Context, strategyID string) 
 }
 
 const listNegotiationsByBuyer = `-- name: ListNegotiationsByBuyer :many
-SELECT s.id, s.rfq_id, s.buyer_company_id, s.created_by, s.target_price_cents, s.max_price_cents, s.max_delivery_days, s.price_weight, s.max_rounds, s.auto_accept, s.tone, s.status, s.outcome_quote_id, s.outcome_summary, s.created_at, s.updated_at, r.title AS rfq_title, r.status AS rfq_status,
+SELECT s.id, s.rfq_id, s.buyer_company_id, s.created_by, s.target_price_cents, s.max_price_cents, s.max_delivery_days, s.price_weight, s.max_rounds, s.auto_accept, s.tone, s.status, s.outcome_quote_id, s.outcome_summary, s.created_at, s.updated_at, s.preferred_payment_terms_days, s.min_payment_terms_days, s.terms_weight, r.title AS rfq_title, r.status AS rfq_status,
     (SELECT COUNT(*) FROM quotes q WHERE q.rfq_id = s.rfq_id)::bigint AS quote_count,
     (SELECT COUNT(*) FROM negotiation_rounds nr WHERE nr.strategy_id = s.id AND nr.action = 'counter')::bigint AS round_count,
     COALESCE((SELECT MIN(qv.price_cents) FROM quote_versions qv JOIN quotes q ON q.id = qv.quote_id
@@ -409,28 +434,31 @@ type ListNegotiationsByBuyerParams struct {
 }
 
 type ListNegotiationsByBuyerRow struct {
-	ID               string    `json:"id"`
-	RfqID            string    `json:"rfq_id"`
-	BuyerCompanyID   string    `json:"buyer_company_id"`
-	CreatedBy        *string   `json:"created_by"`
-	TargetPriceCents int64     `json:"target_price_cents"`
-	MaxPriceCents    int64     `json:"max_price_cents"`
-	MaxDeliveryDays  *int32    `json:"max_delivery_days"`
-	PriceWeight      float64   `json:"price_weight"`
-	MaxRounds        int32     `json:"max_rounds"`
-	AutoAccept       bool      `json:"auto_accept"`
-	Tone             string    `json:"tone"`
-	Status           string    `json:"status"`
-	OutcomeQuoteID   *string   `json:"outcome_quote_id"`
-	OutcomeSummary   string    `json:"outcome_summary"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
-	RfqTitle         string    `json:"rfq_title"`
-	RfqStatus        string    `json:"rfq_status"`
-	QuoteCount       int64     `json:"quote_count"`
-	RoundCount       int64     `json:"round_count"`
-	InitialBestCents int64     `json:"initial_best_cents"`
-	CurrentBestCents int64     `json:"current_best_cents"`
+	ID                        string    `json:"id"`
+	RfqID                     string    `json:"rfq_id"`
+	BuyerCompanyID            string    `json:"buyer_company_id"`
+	CreatedBy                 *string   `json:"created_by"`
+	TargetPriceCents          int64     `json:"target_price_cents"`
+	MaxPriceCents             int64     `json:"max_price_cents"`
+	MaxDeliveryDays           *int32    `json:"max_delivery_days"`
+	PriceWeight               float64   `json:"price_weight"`
+	MaxRounds                 int32     `json:"max_rounds"`
+	AutoAccept                bool      `json:"auto_accept"`
+	Tone                      string    `json:"tone"`
+	Status                    string    `json:"status"`
+	OutcomeQuoteID            *string   `json:"outcome_quote_id"`
+	OutcomeSummary            string    `json:"outcome_summary"`
+	CreatedAt                 time.Time `json:"created_at"`
+	UpdatedAt                 time.Time `json:"updated_at"`
+	PreferredPaymentTermsDays *int32    `json:"preferred_payment_terms_days"`
+	MinPaymentTermsDays       *int32    `json:"min_payment_terms_days"`
+	TermsWeight               float64   `json:"terms_weight"`
+	RfqTitle                  string    `json:"rfq_title"`
+	RfqStatus                 string    `json:"rfq_status"`
+	QuoteCount                int64     `json:"quote_count"`
+	RoundCount                int64     `json:"round_count"`
+	InitialBestCents          int64     `json:"initial_best_cents"`
+	CurrentBestCents          int64     `json:"current_best_cents"`
 }
 
 func (q *Queries) ListNegotiationsByBuyer(ctx context.Context, arg ListNegotiationsByBuyerParams) ([]ListNegotiationsByBuyerRow, error) {
@@ -459,6 +487,9 @@ func (q *Queries) ListNegotiationsByBuyer(ctx context.Context, arg ListNegotiati
 			&i.OutcomeSummary,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.PreferredPaymentTermsDays,
+			&i.MinPaymentTermsDays,
+			&i.TermsWeight,
 			&i.RfqTitle,
 			&i.RfqStatus,
 			&i.QuoteCount,
@@ -515,7 +546,7 @@ SET status = $1,
     outcome_summary = COALESCE($3, outcome_summary),
     updated_at = NOW()
 WHERE id = $4
-RETURNING id, rfq_id, buyer_company_id, created_by, target_price_cents, max_price_cents, max_delivery_days, price_weight, max_rounds, auto_accept, tone, status, outcome_quote_id, outcome_summary, created_at, updated_at
+RETURNING id, rfq_id, buyer_company_id, created_by, target_price_cents, max_price_cents, max_delivery_days, price_weight, max_rounds, auto_accept, tone, status, outcome_quote_id, outcome_summary, created_at, updated_at, preferred_payment_terms_days, min_payment_terms_days, terms_weight
 `
 
 type SetNegotiationStatusParams struct {
@@ -550,6 +581,9 @@ func (q *Queries) SetNegotiationStatus(ctx context.Context, arg SetNegotiationSt
 		&i.OutcomeSummary,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PreferredPaymentTermsDays,
+		&i.MinPaymentTermsDays,
+		&i.TermsWeight,
 	)
 	return i, err
 }
@@ -557,10 +591,12 @@ func (q *Queries) SetNegotiationStatus(ctx context.Context, arg SetNegotiationSt
 const upsertNegotiationStrategy = `-- name: UpsertNegotiationStrategy :one
 INSERT INTO negotiation_strategies (
     rfq_id, buyer_company_id, created_by, target_price_cents, max_price_cents,
-    max_delivery_days, price_weight, max_rounds, auto_accept, tone
+    max_delivery_days, price_weight, max_rounds, auto_accept, tone,
+    preferred_payment_terms_days, min_payment_terms_days, terms_weight
 ) VALUES (
     $1, $2, $3, $4, $5,
-    $6, $7, $8, $9, $10
+    $6, $7, $8, $9, $10,
+    $11, $12, $13
 )
 ON CONFLICT (rfq_id) DO UPDATE
 SET target_price_cents = EXCLUDED.target_price_cents,
@@ -570,23 +606,29 @@ SET target_price_cents = EXCLUDED.target_price_cents,
     max_rounds         = EXCLUDED.max_rounds,
     auto_accept        = EXCLUDED.auto_accept,
     tone               = EXCLUDED.tone,
+    preferred_payment_terms_days = EXCLUDED.preferred_payment_terms_days,
+    min_payment_terms_days       = EXCLUDED.min_payment_terms_days,
+    terms_weight                 = EXCLUDED.terms_weight,
     status             = CASE WHEN negotiation_strategies.status IN ('completed', 'cancelled')
                               THEN negotiation_strategies.status ELSE 'active' END,
     updated_at         = NOW()
-RETURNING id, rfq_id, buyer_company_id, created_by, target_price_cents, max_price_cents, max_delivery_days, price_weight, max_rounds, auto_accept, tone, status, outcome_quote_id, outcome_summary, created_at, updated_at
+RETURNING id, rfq_id, buyer_company_id, created_by, target_price_cents, max_price_cents, max_delivery_days, price_weight, max_rounds, auto_accept, tone, status, outcome_quote_id, outcome_summary, created_at, updated_at, preferred_payment_terms_days, min_payment_terms_days, terms_weight
 `
 
 type UpsertNegotiationStrategyParams struct {
-	RfqID            string  `json:"rfq_id"`
-	BuyerCompanyID   string  `json:"buyer_company_id"`
-	CreatedBy        *string `json:"created_by"`
-	TargetPriceCents int64   `json:"target_price_cents"`
-	MaxPriceCents    int64   `json:"max_price_cents"`
-	MaxDeliveryDays  *int32  `json:"max_delivery_days"`
-	PriceWeight      float64 `json:"price_weight"`
-	MaxRounds        int32   `json:"max_rounds"`
-	AutoAccept       bool    `json:"auto_accept"`
-	Tone             string  `json:"tone"`
+	RfqID                     string  `json:"rfq_id"`
+	BuyerCompanyID            string  `json:"buyer_company_id"`
+	CreatedBy                 *string `json:"created_by"`
+	TargetPriceCents          int64   `json:"target_price_cents"`
+	MaxPriceCents             int64   `json:"max_price_cents"`
+	MaxDeliveryDays           *int32  `json:"max_delivery_days"`
+	PriceWeight               float64 `json:"price_weight"`
+	MaxRounds                 int32   `json:"max_rounds"`
+	AutoAccept                bool    `json:"auto_accept"`
+	Tone                      string  `json:"tone"`
+	PreferredPaymentTermsDays *int32  `json:"preferred_payment_terms_days"`
+	MinPaymentTermsDays       *int32  `json:"min_payment_terms_days"`
+	TermsWeight               float64 `json:"terms_weight"`
 }
 
 func (q *Queries) UpsertNegotiationStrategy(ctx context.Context, arg UpsertNegotiationStrategyParams) (NegotiationStrategy, error) {
@@ -601,6 +643,9 @@ func (q *Queries) UpsertNegotiationStrategy(ctx context.Context, arg UpsertNegot
 		arg.MaxRounds,
 		arg.AutoAccept,
 		arg.Tone,
+		arg.PreferredPaymentTermsDays,
+		arg.MinPaymentTermsDays,
+		arg.TermsWeight,
 	)
 	var i NegotiationStrategy
 	err := row.Scan(
@@ -620,6 +665,9 @@ func (q *Queries) UpsertNegotiationStrategy(ctx context.Context, arg UpsertNegot
 		&i.OutcomeSummary,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PreferredPaymentTermsDays,
+		&i.MinPaymentTermsDays,
+		&i.TermsWeight,
 	)
 	return i, err
 }

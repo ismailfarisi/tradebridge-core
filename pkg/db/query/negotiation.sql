@@ -1,10 +1,12 @@
 -- name: UpsertNegotiationStrategy :one
 INSERT INTO negotiation_strategies (
     rfq_id, buyer_company_id, created_by, target_price_cents, max_price_cents,
-    max_delivery_days, price_weight, max_rounds, auto_accept, tone
+    max_delivery_days, price_weight, max_rounds, auto_accept, tone,
+    preferred_payment_terms_days, min_payment_terms_days, terms_weight
 ) VALUES (
     @rfq_id, @buyer_company_id, sqlc.narg(created_by), @target_price_cents, @max_price_cents,
-    sqlc.narg(max_delivery_days), @price_weight, @max_rounds, @auto_accept, @tone
+    sqlc.narg(max_delivery_days), @price_weight, @max_rounds, @auto_accept, @tone,
+    sqlc.narg(preferred_payment_terms_days), sqlc.narg(min_payment_terms_days), @terms_weight
 )
 ON CONFLICT (rfq_id) DO UPDATE
 SET target_price_cents = EXCLUDED.target_price_cents,
@@ -14,6 +16,9 @@ SET target_price_cents = EXCLUDED.target_price_cents,
     max_rounds         = EXCLUDED.max_rounds,
     auto_accept        = EXCLUDED.auto_accept,
     tone               = EXCLUDED.tone,
+    preferred_payment_terms_days = EXCLUDED.preferred_payment_terms_days,
+    min_payment_terms_days       = EXCLUDED.min_payment_terms_days,
+    terms_weight                 = EXCLUDED.terms_weight,
     status             = CASE WHEN negotiation_strategies.status IN ('completed', 'cancelled')
                               THEN negotiation_strategies.status ELSE 'active' END,
     updated_at         = NOW()
@@ -56,11 +61,13 @@ LIMIT @lim;
 -- version wins; the caller sees pgx.ErrNoRows and skips.
 INSERT INTO negotiation_rounds (
     strategy_id, quote_id, round, responded_to_version, action, seller_price_cents,
-    seller_delivery_days, offer_price_cents, offer_delivery_days, utility, rationale, message
+    seller_delivery_days, offer_price_cents, offer_delivery_days, utility, rationale, message,
+    seller_payment_terms_days, offer_payment_terms_days, message_source
 ) VALUES (
     @strategy_id, @quote_id, @round, @responded_to_version, @action, @seller_price_cents,
     sqlc.narg(seller_delivery_days), sqlc.narg(offer_price_cents), sqlc.narg(offer_delivery_days),
-    @utility, @rationale, @message
+    @utility, @rationale, @message,
+    sqlc.narg(seller_payment_terms_days), sqlc.narg(offer_payment_terms_days), @message_source
 )
 ON CONFLICT (quote_id, responded_to_version) DO NOTHING
 RETURNING *;

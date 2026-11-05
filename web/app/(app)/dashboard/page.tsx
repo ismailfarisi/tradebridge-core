@@ -10,7 +10,7 @@ import { ActivationChecklist } from "@/components/ActivationChecklist";
 import { Icon } from "@/components/Icon";
 import { NeedsYou, needsYou } from "@/components/NeedsYou";
 import { listRfqs, type RFQ } from "@/lib/api";
-import { getSavings, listNegotiations, money, pct, rfqStatus, type NegotiationListItem, type Savings } from "@/lib/negotiation";
+import { getSavings, listNegotiations, money, pct, rfqStatus, verifiedHeadline, type NegotiationListItem, type Savings } from "@/lib/negotiation";
 
 export default function Dashboard() {
   const { token, me } = useMe();
@@ -49,16 +49,24 @@ export default function Dashboard() {
 
       {todo && <NeedsYou {...todo} />}
 
-      {isBuyer && savings && savings.totals.deals > 0 && (
-        <Link href="/savings" className="card savings-strip">
-          <Icon name="trending" size={18} />
-          <span className="grow">
-            Your agent has saved <span className="amt">{money(savings.totals.savings_cents)}</span>{" "}
-            <span className="small muted">{pct(savings.savings_pct)} below the cheapest opening quotes, across {savings.totals.deals} deal{savings.totals.deals === 1 ? "" : "s"}</span>
-          </span>
-          <span className="small row" style={{ display: "inline-flex", gap: "0.3rem", color: "var(--primary)" }}>Savings report <Icon name="arrowRight" size={14} /></span>
-        </Link>
-      )}
+      {isBuyer && savings && savings.totals.deals > 0 && (() => {
+        const head = verifiedHeadline(savings);
+        return (
+          <Link href="/savings" className="card savings-strip">
+            <Icon name="trending" size={18} />
+            <span className="grow">
+              Your agent has saved <span className="amt">{money(head.cents, head.currency)}</span>{" "}
+              <span className="small muted">
+                {head.verified
+                  ? `verified, ${pct(head.pct)} below the lowest fair reference`
+                  : `${pct(head.pct)} below the cheapest opening quotes`}
+                , across {savings.totals.deals} deal{savings.totals.deals === 1 ? "" : "s"}
+              </span>
+            </span>
+            <span className="small row" style={{ display: "inline-flex", gap: "0.3rem", color: "var(--primary)" }}>Savings report <Icon name="arrowRight" size={14} /></span>
+          </Link>
+        );
+      })()}
 
       {isBuyer && buyer && (
         <section>
