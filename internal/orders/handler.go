@@ -32,7 +32,7 @@ func (h *Handler) Register(app *fiber.App, guard ...fiber.Handler) {
 
 // list returns every order the caller's company is a party to.
 func (h *Handler) list(c *fiber.Ctx) error {
-	orders, err := h.svc.List(c.Context(), middleware.CompanyID(c))
+	orders, err := h.q.ListOrderSummariesByCompany(c.Context(), middleware.CompanyID(c))
 	if err != nil {
 		return err
 	}
@@ -46,7 +46,11 @@ func (h *Handler) get(c *fiber.Ctx) error {
 	if err != nil {
 		return mapErr(err)
 	}
-	return c.JSON(fiber.Map{"order": order, "events": events})
+	parties, err := h.q.GetOrderParties(c.Context(), order.ID)
+	if err != nil {
+		return err
+	}
+	return c.JSON(fiber.Map{"order": order, "events": events, "parties": parties})
 }
 
 type transitionReq struct {

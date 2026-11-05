@@ -7,6 +7,7 @@ package sqlc
 
 import (
 	"context"
+	"time"
 )
 
 const createOrderEvent = `-- name: CreateOrderEvent :one
@@ -47,6 +48,30 @@ func (q *Queries) CreateOrderEvent(ctx context.Context, arg CreateOrderEventPara
 	return i, err
 }
 
+const getOrderParties = `-- name: GetOrderParties :one
+SELECT COALESCE(r.title, '')::text AS rfq_title,
+       b.name AS buyer_name,
+       s.name AS seller_name
+FROM orders o
+LEFT JOIN rfqs r ON r.id = o.rfq_id
+JOIN companies b ON b.id = o.buyer_company_id
+JOIN companies s ON s.id = o.seller_company_id
+WHERE o.id = $1
+`
+
+type GetOrderPartiesRow struct {
+	RfqTitle   string `json:"rfq_title"`
+	BuyerName  string `json:"buyer_name"`
+	SellerName string `json:"seller_name"`
+}
+
+func (q *Queries) GetOrderParties(ctx context.Context, id string) (GetOrderPartiesRow, error) {
+	row := q.db.QueryRow(ctx, getOrderParties, id)
+	var i GetOrderPartiesRow
+	err := row.Scan(&i.RfqTitle, &i.BuyerName, &i.SellerName)
+	return i, err
+}
+
 const listOrderEvents = `-- name: ListOrderEvents :many
 SELECT id, order_id, from_status, to_status, actor, actor_company_id, note, created_at FROM order_events WHERE order_id = $1 ORDER BY created_at ASC
 `
@@ -69,6 +94,68 @@ func (q *Queries) ListOrderEvents(ctx context.Context, orderID string) ([]OrderE
 			&i.ActorCompanyID,
 			&i.Note,
 			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOrderSummariesByCompany = `-- name: ListOrderSummariesByCompany :many
+SELECT o.id, o.rfq_id, o.quote_id, o.buyer_company_id, o.seller_company_id,
+       o.total_cents, o.currency, o.status, o.created_at,
+       COALESCE(r.title, '')::text AS rfq_title,
+       b.name AS buyer_name,
+       s.name AS seller_name
+FROM orders o
+LEFT JOIN rfqs r ON r.id = o.rfq_id
+JOIN companies b ON b.id = o.buyer_company_id
+JOIN companies s ON s.id = o.seller_company_id
+WHERE o.buyer_company_id = $1 OR o.seller_company_id = $1
+ORDER BY o.created_at DESC
+`
+
+type ListOrderSummariesByCompanyRow struct {
+	ID              string    `json:"id"`
+	RfqID           string    `json:"rfq_id"`
+	QuoteID         string    `json:"quote_id"`
+	BuyerCompanyID  string    `json:"buyer_company_id"`
+	SellerCompanyID string    `json:"seller_company_id"`
+	TotalCents      int64     `json:"total_cents"`
+	Currency        string    `json:"currency"`
+	Status          string    `json:"status"`
+	CreatedAt       time.Time `json:"created_at"`
+	RfqTitle        string    `json:"rfq_title"`
+	BuyerName       string    `json:"buyer_name"`
+	SellerName      string    `json:"seller_name"`
+}
+
+func (q *Queries) ListOrderSummariesByCompany(ctx context.Context, companyID string) ([]ListOrderSummariesByCompanyRow, error) {
+	rows, err := q.db.Query(ctx, listOrderSummariesByCompany, companyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListOrderSummariesByCompanyRow
+	for rows.Next() {
+		var i ListOrderSummariesByCompanyRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.RfqID,
+			&i.QuoteID,
+			&i.BuyerCompanyID,
+			&i.SellerCompanyID,
+			&i.TotalCents,
+			&i.Currency,
+			&i.Status,
+			&i.CreatedAt,
+			&i.RfqTitle,
+			&i.BuyerName,
+			&i.SellerName,
 		); err != nil {
 			return nil, err
 		}

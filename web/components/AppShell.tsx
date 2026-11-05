@@ -104,7 +104,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         ))}
         <div className="side-foot">
           <div className="truncate" style={{ color: "#fff", fontWeight: 600 }}>{me.company_name ?? "—"}</div>
-          <div style={{ color: "#94a3b8", textTransform: "capitalize" }}>{me.company_type ?? "company"} · {me.role}</div>
         </div>
       </aside>
 

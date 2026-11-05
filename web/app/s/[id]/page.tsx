@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { ReportBlockActions } from "@/components/ReportBlockActions";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { StarRating } from "@/components/StarRating";
+import { shortDate } from "@/lib/negotiation";
 import { getPublicSeller, getPublicSellerReviews, type PublicReview, type PublicSeller } from "@/lib/trust";
 
 export default function StorefrontPage() {
@@ -75,7 +76,7 @@ export default function StorefrontPage() {
                 <div className="row small" style={{ gap: "0.4rem", alignItems: "center" }}>
                   <StarRating value={r.rating} />
                   <strong>{r.reviewer_name}</strong>
-                  <span className="muted">{new Date(r.created_at).toLocaleDateString()}</span>
+                  <span className="muted">{shortDate(r.created_at)}</span>
                 </div>
                 <p className="small" style={{ margin: "0.2rem 0 0" }}>{r.body}</p>
               </li>
