@@ -23,6 +23,7 @@ const PATHS: Record<string, React.ReactNode> = {
   arrowRight: <path d="M5 12h14m-6-6 6 6-6 6" />,
   arrowLeft: <path d="M19 12H5m6-6-6 6 6 6" />,
   arrowDown: <path d="M12 5v14m-6-6 6 6 6-6" />,
+  chevronDown: <path d="m6 9 6 6 6-6" />,
   play: <path d="M7 4v16l13-8L7 4Z" />,
   pause: <path d="M8 4v16M16 4v16" />,
   zap: <path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z" />,
